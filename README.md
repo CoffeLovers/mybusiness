@@ -91,18 +91,19 @@ flowchart TD
 
 ## 💻 Stack Tecnológico
 
-| Capa / Componente           | Tecnología                                                                                                        | Propósito                                                                                      |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| **Backend Framework**       | [NestJS](https://nestjs.com/) (Microservices Module)                                                              | Framework modular con soporte nativo para microservicios (`@MessagePattern`, `@EventPattern`). |
-| **Transport Layer**         | Redis (TCP / PubSub / Redis Streams)                                                                              | Bus de transporte para mensajes RPC entre servicios y eventos asíncronos desacoplados.         |
-| **Cliente Móvil**           | [Kotlin](https://kotlinlang.org/) + [Jetpack Compose](https://developer.android.com/jetpack/compose) (Material 3) | App Android nativa; consume exclusivamente el API Gateway (sin frontend web).                  |
-| **Base de Datos**           | [PostgreSQL 16](https://www.postgresql.org/)                                                                      | Persistencia ACID estructurada bajo patrón Database-per-Service (o esquemas aislados).         |
-| **Memoria Vectorial**       | [pgvector](https://github.com/pgvector/pgvector)                                                                  | Búsqueda por similitud semántica de embeddings para el agente de IA.                           |
-| **Caché y Colas**           | [Redis 7](https://redis.io/) / [BullMQ](https://bullmq.io/)                                                       | Rate-limiting distribuido, gestión de colas de procesamiento en segundo plano y caché.         |
-| **Seguridad Criptográfica** | Argon2id, AES-256-GCM, Passport JWT                                                                               | Hashing de alta resistencia, rotación segura de tokens y cifrado en reposo.                    |
-| **Contenedores**            | [Docker](https://www.docker.com/) & Docker Compose                                                                | Orquestación reproducible de microservicios y dependencias locales.                            |
-| **CI / CD**                 | [GitHub Actions](https://github.com/features/actions)                                                             | Pipelines automatizados de linting, typecheck, tests y builds paralelos de microservicios.     |
-| **Seguridad Estática**      | [SonarQube](https://www.sonarqube.org/) & [Trivy](https://trivy.dev/)                                             | Análisis estático (SAST), detección de dependencias vulnerables y escaneo de contenedores.     |
+| Capa / Componente           | Tecnología                                                                                                        | Propósito                                                                                                                                                              |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Backend Framework**       | [NestJS](https://nestjs.com/) (Microservices Module)                                                              | Framework modular con soporte nativo para microservicios (`@MessagePattern`, `@EventPattern`).                                                                         |
+| **Transport Layer**         | Redis (TCP / PubSub / Redis Streams)                                                                              | Bus de transporte para mensajes RPC entre servicios y eventos asíncronos desacoplados.                                                                                 |
+| **Cliente Móvil**           | [Kotlin](https://kotlinlang.org/) + [Jetpack Compose](https://developer.android.com/jetpack/compose) (Material 3) | App Android nativa; consume exclusivamente el API Gateway (sin frontend web).                                                                                          |
+| **Base de Datos**           | [PostgreSQL 16](https://www.postgresql.org/)                                                                      | Persistencia ACID estructurada bajo patrón Database-per-Service (o esquemas aislados).                                                                                 |
+| **ORM y Migraciones**       | [Drizzle ORM](https://orm.drizzle.team/) + `drizzle-kit`                                                          | Esquemas tipados y migraciones aisladas por microservicio (un `schema.ts` y un historial `drizzle/` por servicio). Decisión en [ADR 001](docs/adr/001-orm-drizzle.md). |
+| **Memoria Vectorial**       | [pgvector](https://github.com/pgvector/pgvector)                                                                  | Búsqueda por similitud semántica de embeddings para el agente de IA.                                                                                                   |
+| **Caché y Colas**           | [Redis 7](https://redis.io/) / [BullMQ](https://bullmq.io/)                                                       | Rate-limiting distribuido, gestión de colas de procesamiento en segundo plano y caché.                                                                                 |
+| **Seguridad Criptográfica** | Argon2id, AES-256-GCM, Passport JWT                                                                               | Hashing de alta resistencia, rotación segura de tokens y cifrado en reposo.                                                                                            |
+| **Contenedores**            | [Docker](https://www.docker.com/) & Docker Compose                                                                | Orquestación reproducible de microservicios y dependencias locales.                                                                                                    |
+| **CI / CD**                 | [GitHub Actions](https://github.com/features/actions)                                                             | Pipelines automatizados de linting, typecheck, tests y builds paralelos de microservicios.                                                                             |
+| **Seguridad Estática**      | [SonarQube](https://www.sonarqube.org/) & [Trivy](https://trivy.dev/)                                             | Análisis estático (SAST), detección de dependencias vulnerables y escaneo de contenedores.                                                                             |
 
 ---
 
@@ -112,7 +113,7 @@ flowchart TD
 mybusiness/
 ├── apps/
 │   ├── api-gateway/          # Entrada HTTP, autenticación perimetral, rate-limiting
-│   ├── auth-service/         # Microservicio de Identidad, Tenants y RBAC
+│   ├── auth-service/         # Identidad, Tenants y RBAC (Drizzle ORM + auth_db)
 │   ├── finance-service/      # Microservicio Financiero (Bancos, Transacciones, Facturas)
 │   ├── agent-service/        # Microservicio de Memoria de IA (pgvector)
 │   ├── audit-service/        # Microservicio de Auditoría inmutable (Consumidor asíncrono)
@@ -120,7 +121,7 @@ mybusiness/
 ├── packages/
 │   ├── common/               # Decoradores, filtros globales, guards compartidos
 │   ├── contracts/            # DTOs, EventPatterns, MessagePatterns y contratos tipados
-│   └── database/             # Clientes ORM compartidos, migraciones y utilidades de BD
+│   └── database/             # Utilidades compartidas de BD (el esquema Drizzle vive en cada servicio)
 ├── docker/
 │   ├── docker-compose.yml    # Infraestructura: Postgres (pgvector) y Redis
 │   └── docker-compose.dev.yml# Orquestación completa de microservicios en local
@@ -133,7 +134,7 @@ mybusiness/
 
 ## 🗄️ Modelo de Datos por Servicio
 
-Siguiendo el principio de **Database-per-Service** (con bases de datos o esquemas independientes en PostgreSQL para mantener bajo acoplamiento):
+Siguiendo el principio de **Database-per-Service** (con bases de datos o esquemas independientes en PostgreSQL para mantener bajo acoplamiento). Cada servicio define su esquema con **Drizzle ORM** y versiona sus propias migraciones en `drizzle/`; no existen joins entre bases de datos de servicios distintos.
 
 1. **`auth-service` (`auth_db`)**:
    - `Tenant` (Company): Empresa, taxId (RUT/RFC/NIF), timezone, moneda default, estado.
@@ -226,7 +227,16 @@ docker compose -f docker/docker-compose.yml up -d postgres redis
 pnpm install
 ```
 
-### 5. Iniciar Microservicios en Desarrollo
+### 5. Aplicar el Esquema de Auth (Drizzle)
+
+```bash
+pnpm --filter @mybusiness/auth-service db:migrate
+pnpm --filter @mybusiness/auth-service db:seed
+```
+
+El seed crea la empresa y el usuario demo `admin@mybusiness.demo` / `Demo1234!` (solo para desarrollo).
+
+### 6. Iniciar Microservicios en Desarrollo
 
 ```bash
 # Iniciar todos los microservicios y el gateway simultáneamente:
@@ -240,7 +250,7 @@ pnpm dev:agent
 pnpm dev:audit
 ```
 
-### 6. Ejecutar la App Móvil (Android)
+### 7. Ejecutar la App Móvil (Android)
 
 ```bash
 cd apps/mobile-android
