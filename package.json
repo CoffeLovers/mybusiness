@@ -1,0 +1,53 @@
+{
+  "name": "mybusiness-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MyBusiness — Plataforma Financiera y Contable Inteligente con Arquitectura de Microservicios",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "pnpm --parallel run dev",
+    "dev:gateway": "pnpm --filter @mybusiness/api-gateway dev",
+    "dev:auth": "pnpm --filter @mybusiness/auth-service dev",
+    "dev:finance": "pnpm --filter @mybusiness/finance-service dev",
+    "dev:agent": "pnpm --filter @mybusiness/agent-service dev",
+    "dev:audit": "pnpm --filter @mybusiness/audit-service dev",
+    "build": "pnpm -r run build",
+    "build:packages": "pnpm --filter './packages/*' run build",
+    "lint": "eslint '{apps,packages}/**/*.ts' --max-warnings=0",
+    "format": "prettier --write '{apps,packages}/**/*.{ts,tsx,json,md}'",
+    "format:check": "prettier --check '{apps,packages}/**/*.{ts,tsx,json,md}'",
+    "typecheck": "pnpm --filter './packages/*' run build && tsc --build --noEmit",
+    "test": "pnpm -r --if-present run test",
+    "test:e2e": "pnpm -r --if-present run test:e2e",
+    "test:cov": "pnpm -r --if-present run test:cov",
+    "docker:up": "docker compose -f docker/docker-compose.yml up -d",
+    "docker:down": "docker compose -f docker/docker-compose.yml down",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@typescript-eslint/eslint-plugin": "^8.18.0",
+    "@typescript-eslint/parser": "^8.18.0",
+    "eslint": "^9.16.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.2.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.2.11",
+    "prettier": "^3.4.2",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.7.2"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  },
+  "packageManager": "pnpm@12.9.1"
+}
