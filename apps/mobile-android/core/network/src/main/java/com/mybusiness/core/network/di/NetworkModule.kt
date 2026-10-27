@@ -40,6 +40,8 @@ object NetworkModule {
             } else {
                 HttpLoggingInterceptor.Level.NONE
             }
+            redactHeader("Authorization")
+            redactHeader("x-refresh-token")
         }
     }
 
