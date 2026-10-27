@@ -15,7 +15,7 @@ module.paths.push(
 
 const { NestFactory } = require('@nestjs/core');
 const { ClientProxyFactory, Transport } = require('@nestjs/microservices');
-const { firstValueFrom } = require('rxjs');
+const { firstValueFrom, timeout } = require('rxjs');
 const { Queue, Worker } = require('bullmq');
 const Redis = require('ioredis');
 const { Client } = require('pg');
@@ -445,6 +445,17 @@ async function run() {
 
   await verifyPostgres();
 
+  console.log('\n🧱 Paso 1b: Aplicar esquema y seed de Auth para probar login real...');
+  execSync('pnpm --filter @mybusiness/auth-service db:migrate', {
+    cwd: rootDir,
+    stdio: 'inherit',
+  });
+  execSync('pnpm --filter @mybusiness/auth-service db:seed', {
+    cwd: rootDir,
+    stdio: 'inherit',
+  });
+  console.log('   ✅ Esquema y usuario de prueba disponibles para la verificación RPC.');
+
   console.log('\n🔴 Paso 2: Configurar y verificar Redis Server (autenticación + AOF)...');
 
   let redisProc = null;
@@ -624,6 +635,38 @@ async function run() {
       throw new Error(`Respuesta RPC no válida: ${JSON.stringify(rpcResponse)}`);
     }
     console.log('   ✅ RPC por Redis (@MessagePattern) validado exitosamente con usuario demo.');
+
+    console.log('\n🔄 Paso 6b: Rotar Refresh Token y verificar detección de reuso...');
+    if (!rpcResponse.refreshToken) {
+      throw new Error('El login no devolvió un Refresh Token para probar la rotación.');
+    }
+
+    const refreshed = await firstValueFrom(
+      client
+        .send(AuthPatterns.REFRESH, { refreshToken: rpcResponse.refreshToken })
+        .pipe(timeout(5000)),
+    );
+
+    if (!refreshed?.accessToken || refreshed.refreshToken === rpcResponse.refreshToken) {
+      throw new Error(`Rotación de Refresh Token no válida: ${JSON.stringify(refreshed)}`);
+    }
+
+    let reuseRejected = false;
+    try {
+      await firstValueFrom(
+        client
+          .send(AuthPatterns.REFRESH, { refreshToken: rpcResponse.refreshToken })
+          .pipe(timeout(5000)),
+      );
+    } catch {
+      reuseRejected = true;
+    }
+
+    if (!reuseRejected) {
+      throw new Error('El reuso de un Refresh Token revocado no fue rechazado.');
+    }
+
+    console.log('   ✅ Rotación estricta y detección de reuso verificadas contra PostgreSQL.');
 
     console.log('\n📢 Paso 7: Emitir evento de dominio: client.emit(AuditEvents.LOG_EVENT)...');
     const eventEntityId = randomUUID();

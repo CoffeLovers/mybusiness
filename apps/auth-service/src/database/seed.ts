@@ -7,7 +7,6 @@ config();
 
 import argon2 from 'argon2';
 import { UserRole, UserStatus } from '@mybusiness/contracts';
-import { eq } from 'drizzle-orm';
 import { createDatabase } from './client';
 import { tenants, users } from './schema';
 
@@ -39,7 +38,7 @@ async function seed(): Promise<void> {
   try {
     const passwordHash = await argon2.hash(adminPassword, { type: argon2.argon2id });
 
-    const [insertedTenant] = await db
+    const [seededTenant] = await db
       .insert(tenants)
       .values({
         legalName: tenantLegalName,
@@ -50,18 +49,20 @@ async function seed(): Promise<void> {
         timezone: tenantTimezone,
         settings: { locale: tenantLocale, demo: true },
       })
-      .onConflictDoNothing({ target: tenants.taxId })
+      .onConflictDoUpdate({
+        target: tenants.taxId,
+        set: {
+          legalName: tenantLegalName,
+          tradeName: tenantTradeName,
+          country: tenantCountry,
+          currency: tenantCurrency,
+          timezone: tenantTimezone,
+          settings: { locale: tenantLocale, demo: true },
+        },
+      })
       .returning({ id: tenants.id });
 
-    const tenantId =
-      insertedTenant?.id ??
-      (
-        await db
-          .select({ id: tenants.id })
-          .from(tenants)
-          .where(eq(tenants.taxId, tenantTaxId))
-          .limit(1)
-      )[0]?.id;
+    const tenantId = seededTenant?.id;
 
     if (!tenantId) {
       throw new Error('No fue posible crear ni recuperar el tenant de demostración');
@@ -78,7 +79,18 @@ async function seed(): Promise<void> {
         role: UserRole.TENANT_ADMIN,
         status: UserStatus.ACTIVE,
       })
-      .onConflictDoNothing({ target: users.email });
+      .onConflictDoUpdate({
+        target: users.email,
+        set: {
+          tenantId,
+          passwordHash,
+          firstName: adminFirstName,
+          lastName: adminLastName,
+          role: UserRole.TENANT_ADMIN,
+          status: UserStatus.ACTIVE,
+          deletedAt: null,
+        },
+      });
 
     console.log('Seed completado:', { tenantId, email: adminEmail });
   } finally {
