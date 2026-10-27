@@ -191,7 +191,7 @@ El desarrollo del proyecto se encuentra estructurado en torno al diseño de micr
 
 ### Sprint 2: Autenticación, Seguridad y Pipelines CI/CD
 
-- [ ] [#5 — [Sprint 2][Security] Auth Service con JWT y Refresh Tokens opacos (hash SHA-256)](https://github.com/Umbrex47/mybusiness/issues/5)
+- [x] [#5 — [Sprint 2][Security] Auth Service con JWT y Refresh Tokens opacos (hash SHA-256)](https://github.com/Umbrex47/mybusiness/issues/5)
 - [ ] [#6 — [Sprint 2][Security] RBAC y propagación de contexto Multi-Tenant entre microservicios](https://github.com/Umbrex47/mybusiness/issues/6)
 - [ ] [#7 — [Sprint 2][Security] Rate-Limiting distribuido en API Gateway con Redis y endurecimiento HTTP](https://github.com/Umbrex47/mybusiness/issues/7)
 - [ ] [#8 — [Sprint 2][DevOps] Pipelines de CI para Microservicios en GitHub Actions (Lint, Tests, Build)](https://github.com/Umbrex47/mybusiness/issues/8)
