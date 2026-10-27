@@ -9,9 +9,11 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@mybusiness/contracts": "workspace:*",
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
-    "@mybusiness/contracts": "workspace:*",
+    "bullmq": "^6.4.2",
+    "ioredis": "^6.0.0",
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
