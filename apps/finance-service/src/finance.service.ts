@@ -15,8 +15,8 @@ export class FinanceService {
         accountType: AccountType.CHECKING,
         accountNumberMasked: '****4589',
         currency: 'COP',
-        currentBalance: 15420000,
-        availableBalance: 15420000,
+        currentBalanceMinor: '15420000',
+        availableBalanceMinor: '15420000',
       },
     ];
   }
@@ -35,7 +35,7 @@ export class FinanceService {
       {
         id: 'tx-1',
         tenantId,
-        amount: 250000,
+        amountMinor: '250000',
         currency: 'COP',
         type: TransactionType.EXPENSE,
         status: TransactionStatus.SETTLED,

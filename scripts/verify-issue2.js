@@ -2,6 +2,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
 const { spawn, execSync } = require('node:child_process');
+const { randomUUID } = require('node:crypto');
 
 // Asegurar resolución de dependencias en monorepo pnpm
 const rootDir = path.resolve(__dirname, '..');
@@ -35,6 +36,8 @@ loadRootEnv();
 const REDIS_TEST_PORT = Number(process.env.REDIS_PORT || 6386);
 const REDIS_TEST_PASS = process.env.REDIS_PASSWORD;
 const REDIS_TEST_HOST = process.env.REDIS_HOST || '127.0.0.1';
+const SEED_ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL;
+const SEED_ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD;
 
 process.env.REDIS_HOST = REDIS_TEST_HOST;
 process.env.REDIS_PORT = String(REDIS_TEST_PORT);
@@ -128,7 +131,9 @@ function validateInitScriptsDeclaratively() {
       throw new Error(`Falta la declaración de creación de base de datos: ${db}`);
     }
   }
-  console.log('   ✅ Las 4 bases de datos (auth_db, finance_db, agent_db, audit_db) están declaradas.');
+  console.log(
+    '   ✅ Las 4 bases de datos (auth_db, finance_db, agent_db, audit_db) están declaradas.',
+  );
 
   const requiredRoles = [
     ['AUTH_DB_USER', 'AUTH_USER'],
@@ -155,7 +160,9 @@ function validateInitScriptsDeclaratively() {
   if (shContent.includes('change_in_production')) {
     throw new Error('El script no debe contener contraseñas por defecto.');
   }
-  console.log('   ✅ Rol legacy mybusiness_user con limpieza declarada y sin contraseñas embebidas.');
+  console.log(
+    '   ✅ Rol legacy mybusiness_user con limpieza declarada y sin contraseñas embebidas.',
+  );
 
   const configureCalls = (shContent.match(/configure_db\s+"/g) || []).length;
   if (!shContent.includes('CREATE EXTENSION IF NOT EXISTS vector;') || configureCalls < 4) {
@@ -222,7 +229,9 @@ async function verifyPostgres() {
   const adminPass = process.env.POSTGRES_PASSWORD;
 
   if (!adminPass) {
-    throw new Error('POSTGRES_PASSWORD es obligatorio para ejecutar la verificación de PostgreSQL.');
+    throw new Error(
+      'POSTGRES_PASSWORD es obligatorio para ejecutar la verificación de PostgreSQL.',
+    );
   }
 
   for (const key of [
@@ -425,6 +434,11 @@ async function run() {
       'REDIS_PASSWORD es obligatorio para ejecutar la verificación. Copia .env.example a .env.',
     );
   }
+  if (!SEED_ADMIN_EMAIL || !SEED_ADMIN_PASSWORD) {
+    throw new Error(
+      'SEED_ADMIN_EMAIL y SEED_ADMIN_PASSWORD son obligatorios para verificar el login demo.',
+    );
+  }
   if (!Number.isInteger(REDIS_TEST_PORT) || REDIS_TEST_PORT <= 0) {
     throw new Error(`REDIS_PORT inválido: ${process.env.REDIS_PORT}`);
   }
@@ -459,7 +473,9 @@ async function run() {
           `Redis en ${REDIS_TEST_HOST}:${REDIS_TEST_PORT} no tiene AOF habilitado (appendonly=${aofValue}).`,
         );
       }
-      console.log(`   ✅ Conexión establecida a Redis en ${REDIS_TEST_HOST}:${REDIS_TEST_PORT} con AOF.`);
+      console.log(
+        `   ✅ Conexión establecida a Redis en ${REDIS_TEST_HOST}:${REDIS_TEST_PORT} con AOF.`,
+      );
     }
   } catch (error) {
     if (runningRedis) throw error;
@@ -600,26 +616,24 @@ async function run() {
     console.log('\n🔁 Paso 6: Ejecutar llamada RPC: client.send(AuthPatterns.LOGIN)...');
     const rpcResponse = await firstValueFrom(
       client.send(AuthPatterns.LOGIN, {
-        email: 'admin@mybusiness.demo',
-        password: 'Demo1234!',
+        email: SEED_ADMIN_EMAIL,
+        password: SEED_ADMIN_PASSWORD,
       }),
     );
-    if (
-      !rpcResponse ||
-      !rpcResponse.accessToken ||
-      rpcResponse.user.email !== 'admin@mybusiness.demo'
-    ) {
+    if (!rpcResponse || !rpcResponse.accessToken || rpcResponse.user.email !== SEED_ADMIN_EMAIL) {
       throw new Error(`Respuesta RPC no válida: ${JSON.stringify(rpcResponse)}`);
     }
     console.log('   ✅ RPC por Redis (@MessagePattern) validado exitosamente con usuario demo.');
 
     console.log('\n📢 Paso 7: Emitir evento de dominio: client.emit(AuditEvents.LOG_EVENT)...');
+    const eventEntityId = randomUUID();
+    const eventTenantId = randomUUID();
     const eventPayload = {
       action: 'USER_LOGIN_SUCCESS',
       entityName: 'User',
-      entityId: 'user-sample-id',
-      actorId: 'user-sample-id',
-      tenantId: 'tenant-sample-id',
+      entityId: eventEntityId,
+      actorId: eventEntityId,
+      tenantId: eventTenantId,
       occurredAt: new Date().toISOString(),
     };
     client.emit(AuditEvents.LOG_EVENT, eventPayload);
@@ -629,7 +643,7 @@ async function run() {
       await sleep(200);
     }
 
-    if (!capturedAuditEvent || capturedAuditEvent.action !== 'USER_LOGIN_SUCCESS') {
+    if (!capturedAuditEvent || capturedAuditEvent.action !== eventPayload.action) {
       throw new Error(
         `AuditService no recibió el evento emitido. Estado capturado: ${JSON.stringify(capturedAuditEvent)}`,
       );
@@ -656,11 +670,16 @@ async function run() {
       { connection: bullmqConfig },
     );
 
-    const testJob = await testQueue.add(
-      'durable-transaction-job',
-      { transactionId: 'tx-10001', amount: 99.99, idempotencyKey: 'idemp-abc-123' },
-      { attempts: 3, backoff: { type: 'exponential', delay: 500 } },
-    );
+    const testTransaction = {
+      transactionId: randomUUID(),
+      amountMinor: '9999',
+      currency: 'COP',
+      idempotencyKey: randomUUID(),
+    };
+    const testJob = await testQueue.add('durable-transaction-job', testTransaction, {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 500 },
+    });
     console.log(`   Job encolado en BullMQ con ID: ${testJob.id}`);
 
     for (let i = 0; i < 25; i++) {
@@ -668,7 +687,11 @@ async function run() {
       await sleep(200);
     }
 
-    if (!workerProcessed || !processedData || processedData.transactionId !== 'tx-10001') {
+    if (
+      !workerProcessed ||
+      !processedData ||
+      processedData.transactionId !== testTransaction.transactionId
+    ) {
       throw new Error('BullMQ Worker no procesó el trabajo correctamente.');
     }
     console.log('   Job completado por BullMQ Worker:', processedData);
