@@ -36,6 +36,7 @@ dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":core:datastore"))
     implementation(project(":core:network"))
+    implementation(libs.retrofit.core)
     implementation(project(":core:di"))
     implementation(project(":core:navigation"))
 
