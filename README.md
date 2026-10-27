@@ -25,7 +25,7 @@ flowchart TD
     subgraph GatewayLayer ["Perímetro y Entrada: API Gateway"]
         Gateway["API Gateway (NestJS)
 - Reverse Proxy & Routing
-- Rate Limiting Distribuido (Redis)
+- Rate Limiting base (Redis distribuido en #7)
 - Helmet & CORS
 - Validación JWT Perimetral"]
     end
@@ -39,7 +39,7 @@ flowchart TD
         AuthService["Auth & Identity Service
 - Tenant / Company
 - Users & RBAC
-- Refresh Tokens Cifrados"]
+- Refresh Tokens con hash SHA-256"]
         FinanceService["Finance & Banking Service
 - BankAccounts & Balances
 - Transactions & Deduplication
@@ -79,13 +79,13 @@ flowchart TD
 
 ## 🧩 Catálogo de Microservicios
 
-| Servicio              | Responsabilidad de Dominio                                                                                    | Comunicación                                                       | Almacenamiento                       |
-| --------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------ |
-| **`api-gateway`**     | Punto de entrada único, routing, rate-limiting, CORS, Helmet y verificación JWT.                              | HTTP REST (hacia clientes) / RPC (hacia microservicios)            | Redis (Throttler storage)            |
-| **`auth-service`**    | Gestión de Tenants (empresas), usuarios, login, registro, rotación de Refresh Tokens con hash SHA-256 y RBAC. | RPC (Request-Response) + Eventos (UserRegistered, TenantCreated)   | PostgreSQL (`auth_db`)               |
-| **`finance-service`** | Cuentas bancarias, transacciones con deduplicación por clave de idempotencia, facturas e impuestos.           | RPC (Request-Response) + Eventos (TransactionCreated, InvoicePaid) | PostgreSQL (`finance_db`)            |
-| **`agent-service`**   | Memoria semántica del agente de IA, indexación vectorial con pgvector (HNSW) y recuperación contextual.       | RPC (Similarity Search, Store Memory)                              | PostgreSQL + `pgvector` (`agent_db`) |
-| **`audit-service`**   | Registro inmutable de auditoría (append-only), trazabilidad de acciones y cambios de estado.                  | Asíncrona (EventPattern subscriber vía Redis)                      | PostgreSQL (`audit_db`)              |
+| Servicio              | Responsabilidad de Dominio                                                                                    | Comunicación                                                       | Almacenamiento                        |
+| --------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------- |
+| **`api-gateway`**     | Punto de entrada único, routing, rate-limiting, CORS, Helmet y verificación JWT.                              | HTTP REST (hacia clientes) / RPC (hacia microservicios)            | Redis (Broker) / Throttler en memoria |
+| **`auth-service`**    | Gestión de Tenants (empresas), usuarios, login, registro, rotación de Refresh Tokens con hash SHA-256 y RBAC. | RPC (Request-Response) + Eventos (UserRegistered, TenantCreated)   | PostgreSQL (`auth_db`)                |
+| **`finance-service`** | Cuentas bancarias, transacciones con deduplicación por clave de idempotencia, facturas e impuestos.           | RPC (Request-Response) + Eventos (TransactionCreated, InvoicePaid) | PostgreSQL (`finance_db`)             |
+| **`agent-service`**   | Memoria semántica del agente de IA, indexación vectorial con pgvector (HNSW) y recuperación contextual.       | RPC (Similarity Search, Store Memory)                              | PostgreSQL + `pgvector` (`agent_db`)  |
+| **`audit-service`**   | Registro inmutable de auditoría (append-only), trazabilidad de acciones y cambios de estado.                  | Asíncrona (EventPattern subscriber vía Redis)                      | PostgreSQL (`audit_db`)               |
 
 ---
 
@@ -101,7 +101,7 @@ flowchart TD
 | **Precisión Monetaria**     | `BIGINT` en unidades menores + `string` en JSON                                                                   | Importes exactos sin `float`; los DTOs usan `*Minor` y moneda ISO 4217. Decisión en [ADR 003](docs/adr/003-dinero.md).                                                            |
 | **Contratos Compartidos**   | `@mybusiness/contracts`                                                                                           | DTOs, enums, `MessagePatterns` y `EventPatterns` como fuente única de verdad. Decisión en [ADR 004](docs/adr/004-contratos.md).                                                   |
 | **Memoria Vectorial**       | [pgvector](https://github.com/pgvector/pgvector)                                                                  | Búsqueda por similitud semántica de embeddings para el agente de IA.                                                                                                              |
-| **Caché y Colas**           | [Redis 7](https://redis.io/) / [BullMQ](https://bullmq.io/)                                                       | Rate-limiting distribuido, gestión de colas de procesamiento en segundo plano y caché.                                                                                            |
+| **Caché y Colas**           | [Redis 7](https://redis.io/) / [BullMQ](https://bullmq.io/)                                                       | Rate-limiting base en memoria (la distribución con Redis se completa en #7), colas de procesamiento en segundo plano y caché.                                                     |
 | **Seguridad Criptográfica** | Argon2id, SHA-256 para Refresh Tokens y JWT                                                                       | Hashing de passwords, tokens opacos con hash de una sola vía y Access Tokens de corta duración.                                                                                   |
 | **Contenedores**            | [Docker](https://www.docker.com/) & Docker Compose                                                                | Orquestación reproducible de microservicios y dependencias locales.                                                                                                               |
 | **CI / CD**                 | [GitHub Actions](https://github.com/features/actions)                                                             | Pipelines automatizados de linting, typecheck, tests y builds paralelos de microservicios.                                                                                        |
@@ -155,10 +155,22 @@ Siguiendo el principio de **Database-per-Service** (con bases de datos o esquema
 
 ## 🔐 Seguridad y Propagación de Contexto
 
-- **Autenticación en Gateway**: El `api-gateway` valida el token JWT emitido por `auth-service` y propaga los metadatos de identidad (`X-User-Id`, `X-Tenant-Id`, `X-Roles`) de forma segura en las llamadas RPC a los microservicios internos.
+- **Autenticación en Gateway**: El `api-gateway` valida el Access Token JWT emitido por `auth-service`, adjunta la identidad y el tenant al request y usa esos datos en las llamadas RPC a los microservicios internos. Los Refresh Tokens viajan en cookies `HttpOnly`, `SameSite=Strict` y `Secure` en producción.
 - **Aislamiento Multi-Tenant**: Cada microservicio aplica internamente el filtro obligatorio de `tenantId` en sus consultas, impidiendo accesos cruzados (prevención hermética de vulnerabilidades IDOR).
-- **Protección Perimetral y Rate-Limiting**: `@nestjs/throttler` en el API Gateway respaldado por Redis para prevenir ataques de fuerza bruta en login (5 req/min) y scraping indebido de APIs.
+- **Protección Perimetral y Rate-Limiting**: `@nestjs/throttler` aplica un límite global de 100 req/min y 5 req/min en `login`/`register`. El almacenamiento distribuido en Redis y el endurecimiento HTTP completo se completan en #7; por ahora el contador es por instancia del Gateway.
 - **Trazabilidad Asíncrona**: Cada operación crítica emite un evento al bus de Redis que es procesado de forma no bloqueante por el `audit-service`.
+
+### Endpoints de Autenticación
+
+| Método | Ruta                    | Acceso  | Descripción                                               |
+| ------ | ----------------------- | ------- | --------------------------------------------------------- |
+| POST   | `/api/v1/auth/register` | Público | Crea tenant + usuario administrador y abre una sesión.    |
+| POST   | `/api/v1/auth/login`    | Público | Valida credenciales y abre una sesión.                    |
+| POST   | `/api/v1/auth/refresh`  | Cookie  | Rota el Refresh Token y renueva el Access Token.          |
+| POST   | `/api/v1/auth/logout`   | Cookie  | Revoca la familia de Refresh Tokens y limpia las cookies. |
+| GET    | `/api/v1/auth/me`       | JWT     | Devuelve el perfil y el tenant del usuario autenticado.   |
+
+`login`, `register` y `refresh` establecen las cookies `HttpOnly` `mybusiness_access_token` y `mybusiness_refresh_token`; el Gateway no devuelve el Refresh Token en el cuerpo. `GET /me` acepta el Access Token en la cookie o como `Authorization: Bearer <token>`. El límite de intentos es de 5 req/min para `login` y `register`.
 
 ---
 
@@ -251,17 +263,7 @@ docker compose --env-file .env -f docker/docker-compose.yml ps
 pnpm install
 ```
 
-### 5. Verificar Infraestructura
-
-Con los contenedores `healthy` y las dependencias instaladas:
-
-```bash
-pnpm test:infra
-```
-
-La verificación **falla por defecto** si PostgreSQL o Redis no están disponibles, si el Redis no tiene AOF o si no se puede reiniciar el Redis de Compose. No se acepta una validación meramente declarativa como sustituto.
-
-### 6. Aplicar el Esquema de Auth (Drizzle)
+### 5. Aplicar el Esquema de Auth (Drizzle)
 
 ```bash
 pnpm --filter @mybusiness/auth-service db:migrate
@@ -269,6 +271,16 @@ pnpm --filter @mybusiness/auth-service db:seed
 ```
 
 El seed crea la empresa y el usuario demo usando `SEED_TENANT_*`, `SEED_ADMIN_EMAIL` y `SEED_ADMIN_PASSWORD` definidos en `.env` (solo para desarrollo). No hay credenciales de seed embebidas en el código.
+
+### 6. Verificar Infraestructura
+
+Con los contenedores `healthy` y las dependencias instaladas:
+
+```bash
+pnpm test:infra
+```
+
+La verificación **falla por defecto** si PostgreSQL o Redis no están disponibles, si el Redis no tiene AOF o si no se puede reiniciar el Redis de Compose. No se acepta una validación meramente declarativa como sustituto. El script aplica automáticamente las migraciones y el seed de Auth antes de probar el login real, la rotación y la detección de reuso de Refresh Tokens.
 
 ### 7. Iniciar Microservicios en Desarrollo
 

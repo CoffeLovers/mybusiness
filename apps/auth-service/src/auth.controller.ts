@@ -1,6 +1,12 @@
 import { Controller } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
-import { AuthPatterns, LoginDto, RefreshTokenDto, RegisterDto } from '@mybusiness/contracts';
+import {
+  AuthPatterns,
+  LoginDto,
+  RefreshTokenDto,
+  RegisterDto,
+  type UserContext,
+} from '@mybusiness/contracts';
 import { AuthService } from './auth.service';
 
 @Controller()
@@ -19,11 +25,21 @@ export class AuthController {
 
   @MessagePattern(AuthPatterns.REFRESH)
   refresh(@Payload() data: RefreshTokenDto) {
-    return this.authService.refresh(data);
+    return this.authService.refresh(data.refreshToken);
+  }
+
+  @MessagePattern(AuthPatterns.LOGOUT)
+  logout(@Payload() data: RefreshTokenDto) {
+    return this.authService.logout(data.refreshToken);
+  }
+
+  @MessagePattern(AuthPatterns.VALIDATE_TOKEN)
+  validateToken(@Payload() data: { accessToken: string }) {
+    return this.authService.validateToken(data.accessToken);
   }
 
   @MessagePattern(AuthPatterns.GET_PROFILE)
-  getProfile(@Payload() data: any) {
-    return this.authService.getProfile(data);
+  getProfile(@Payload() user: UserContext) {
+    return this.authService.getProfile(user);
   }
 }
