@@ -79,13 +79,13 @@ flowchart TD
 
 ## 🧩 Catálogo de Microservicios
 
-| Servicio              | Responsabilidad de Dominio                                                                              | Comunicación                                                       | Almacenamiento                       |
-| --------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------ |
-| **`api-gateway`**     | Punto de entrada único, routing, rate-limiting, CORS, Helmet y verificación JWT.                        | HTTP REST (hacia clientes) / RPC (hacia microservicios)            | Redis (Throttler storage)            |
-| **`auth-service`**    | Gestión de Tenants (empresas), usuarios, login, registro, rotación cifrada de Refresh Tokens y RBAC.    | RPC (Request-Response) + Eventos (UserRegistered, TenantCreated)   | PostgreSQL (`auth_db`)               |
-| **`finance-service`** | Cuentas bancarias, transacciones con deduplicación por clave de idempotencia, facturas e impuestos.     | RPC (Request-Response) + Eventos (TransactionCreated, InvoicePaid) | PostgreSQL (`finance_db`)            |
-| **`agent-service`**   | Memoria semántica del agente de IA, indexación vectorial con pgvector (HNSW) y recuperación contextual. | RPC (Similarity Search, Store Memory)                              | PostgreSQL + `pgvector` (`agent_db`) |
-| **`audit-service`**   | Registro inmutable de auditoría (append-only), trazabilidad de acciones y cambios de estado.            | Asíncrona (EventPattern subscriber vía Redis)                      | PostgreSQL (`audit_db`)              |
+| Servicio              | Responsabilidad de Dominio                                                                                    | Comunicación                                                       | Almacenamiento                       |
+| --------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------ |
+| **`api-gateway`**     | Punto de entrada único, routing, rate-limiting, CORS, Helmet y verificación JWT.                              | HTTP REST (hacia clientes) / RPC (hacia microservicios)            | Redis (Throttler storage)            |
+| **`auth-service`**    | Gestión de Tenants (empresas), usuarios, login, registro, rotación de Refresh Tokens con hash SHA-256 y RBAC. | RPC (Request-Response) + Eventos (UserRegistered, TenantCreated)   | PostgreSQL (`auth_db`)               |
+| **`finance-service`** | Cuentas bancarias, transacciones con deduplicación por clave de idempotencia, facturas e impuestos.           | RPC (Request-Response) + Eventos (TransactionCreated, InvoicePaid) | PostgreSQL (`finance_db`)            |
+| **`agent-service`**   | Memoria semántica del agente de IA, indexación vectorial con pgvector (HNSW) y recuperación contextual.       | RPC (Similarity Search, Store Memory)                              | PostgreSQL + `pgvector` (`agent_db`) |
+| **`audit-service`**   | Registro inmutable de auditoría (append-only), trazabilidad de acciones y cambios de estado.                  | Asíncrona (EventPattern subscriber vía Redis)                      | PostgreSQL (`audit_db`)              |
 
 ---
 
@@ -98,9 +98,11 @@ flowchart TD
 | **Cliente Móvil**           | [Kotlin](https://kotlinlang.org/) + [Jetpack Compose](https://developer.android.com/jetpack/compose) (Material 3) | App Android nativa; consume exclusivamente el API Gateway (sin frontend web).                                                                                                     |
 | **Base de Datos**           | [PostgreSQL 16](https://www.postgresql.org/)                                                                      | Persistencia ACID estructurada bajo patrón Database-per-Service (o esquemas aislados).                                                                                            |
 | **ORM y Migraciones**       | [Drizzle ORM](https://orm.drizzle.team/) + `drizzle-kit`                                                          | Esquemas tipados y migraciones aisladas por microservicio (un `schema.ts` y un historial `drizzle/` por servicio). Decisión en [ADR 001](docs/adr/001-orm-drizzle.md).            |
+| **Precisión Monetaria**     | `BIGINT` en unidades menores + `string` en JSON                                                                   | Importes exactos sin `float`; los DTOs usan `*Minor` y moneda ISO 4217. Decisión en [ADR 003](docs/adr/003-dinero.md).                                                            |
+| **Contratos Compartidos**   | `@mybusiness/contracts`                                                                                           | DTOs, enums, `MessagePatterns` y `EventPatterns` como fuente única de verdad. Decisión en [ADR 004](docs/adr/004-contratos.md).                                                   |
 | **Memoria Vectorial**       | [pgvector](https://github.com/pgvector/pgvector)                                                                  | Búsqueda por similitud semántica de embeddings para el agente de IA.                                                                                                              |
 | **Caché y Colas**           | [Redis 7](https://redis.io/) / [BullMQ](https://bullmq.io/)                                                       | Rate-limiting distribuido, gestión de colas de procesamiento en segundo plano y caché.                                                                                            |
-| **Seguridad Criptográfica** | Argon2id, AES-256-GCM, Passport JWT                                                                               | Hashing de alta resistencia, rotación segura de tokens y cifrado en reposo.                                                                                                       |
+| **Seguridad Criptográfica** | Argon2id, SHA-256 para Refresh Tokens y JWT                                                                       | Hashing de passwords, tokens opacos con hash de una sola vía y Access Tokens de corta duración.                                                                                   |
 | **Contenedores**            | [Docker](https://www.docker.com/) & Docker Compose                                                                | Orquestación reproducible de microservicios y dependencias locales.                                                                                                               |
 | **CI / CD**                 | [GitHub Actions](https://github.com/features/actions)                                                             | Pipelines automatizados de linting, typecheck, tests y builds paralelos de microservicios.                                                                                        |
 | **Seguridad Estática**      | [SonarQube](https://www.sonarqube.org/) & [Trivy](https://trivy.dev/)                                             | Análisis estático (SAST), detección de dependencias vulnerables y escaneo de contenedores.                                                                                        |
@@ -124,7 +126,7 @@ mybusiness/
 │   └── database/             # Utilidades compartidas de BD (el esquema Drizzle vive en cada servicio)
 ├── docker/
 │   ├── docker-compose.yml    # Infraestructura: Postgres (pgvector) y Redis
-│   └── docker-compose.dev.yml# Orquestación completa de microservicios en local
+│   └── init-microservices-dbs.sh
 ├── .github/
 │   └── workflows/            # Pipelines CI/CD y análisis de seguridad
 └── README.md
@@ -139,11 +141,11 @@ Siguiendo el principio de **Database-per-Service** (con bases de datos o esquema
 1. **`auth-service` (`auth_db`)**:
    - `Tenant` (Company): Empresa, taxId (RUT/RFC/NIF), timezone, moneda default, estado.
    - `User`: Credenciales (Argon2id), roles (RBAC: `SUPER_ADMIN`, `TENANT_ADMIN`, `ACCOUNTANT`, etc.), asociación a tenants.
-   - `RefreshToken`: Tokens cifrados (AES-256) con `familyId` para detección y revocación automática de reuso.
+   - `RefreshToken`: Token opaco almacenado como hash SHA-256 (`token_hash`) con `familyId` para detección y revocación automática de reuso. El token en claro nunca se persiste.
 2. **`finance-service` (`finance_db`)**:
-   - `BankAccount`: Entidad financiera, número enmascarado, moneda, saldos y metadatos.
-   - `Transaction`: Monto, divisa, tipo (ingreso/egreso), idempotencyKey de deduplicación, fecha y estado.
-   - `Invoice`: Facturas emitidas/recibidas, numeración por tenant, impuestos, ítems y enlace a transacción.
+   - `BankAccount`: Entidad financiera, número enmascarado, moneda, saldos en unidades menores y metadatos.
+   - `Transaction`: `amountMinor` entero, divisa, tipo (ingreso/egreso), `idempotencyKey` obligatoria por tenant, fecha y estado.
+   - `Invoice`: Facturas emitidas/recibidas, numeración por tenant, impuestos y totales en unidades menores, ítems y enlace a transacción. Ver [ADR 003](docs/adr/003-dinero.md).
 3. **`agent-service` (`agent_db`)**:
    - `AgentMemory`: Contenido textual, metadata y columna de vector embedding (`vector(1536)`) con índice HNSW para búsqueda por distancia coseno.
 4. **`audit-service` (`audit_db`)**:
@@ -168,11 +170,11 @@ El desarrollo del proyecto se encuentra estructurado en torno al diseño de micr
 
 ### Sprint 1: Arquitectura de Microservicios, Infraestructura y Datos
 
-- [ ] [#1 — [Sprint 1][Setup] Monorepo y arquitectura de microservicios (API Gateway, Servicios y App Móvil Kotlin)](https://github.com/Umbrex47/mybusiness/issues/1)
+- [x] [#1 — [Sprint 1][Setup] Monorepo y arquitectura de microservicios (API Gateway, Servicios y App Móvil Kotlin)](https://github.com/Umbrex47/mybusiness/issues/1)
 - [x] [#2 — [Sprint 1][Infra] PostgreSQL con pgvector y Redis como Event Bus/Broker y Caché](https://github.com/Umbrex47/mybusiness/issues/2)
-- [ ] [#3 — [Sprint 1][Database] Esquema de Auth Service: Tenant/Company, User y BankAccount](https://github.com/Umbrex47/mybusiness/issues/3)
+- [x] [#3 — [Sprint 1][Database] Esquema de Auth Service: Tenant/Company y User](https://github.com/Umbrex47/mybusiness/issues/3)
 - [ ] [#4 — [Sprint 1][Database] Esquemas de Finance Service, Audit Service y Agent Memory (pgvector)](https://github.com/Umbrex47/mybusiness/issues/4)
-- [ ] [#11 — [Sprint 1][Architecture] ADRs iniciales: transporte, ORM, precisión monetaria y contratos](https://github.com/Umbrex47/mybusiness/issues/11)
+- [ ] [#11 — [Sprint 1][Architecture] ADRs iniciales: transporte, ORM, precisión monetaria y contratos](https://github.com/Umbrex47/mybusiness/issues/11) — ADRs 001–004 publicados; pendiente confirmación de B.
 - [ ] [#12 — [Sprint 1][Mobile] App Android en Kotlin: base, autenticación y dashboard](https://github.com/Umbrex47/mybusiness/issues/12)
 
 ### Sprint 2: Autenticación, Seguridad y Pipelines CI/CD
@@ -266,7 +268,7 @@ pnpm --filter @mybusiness/auth-service db:migrate
 pnpm --filter @mybusiness/auth-service db:seed
 ```
 
-El seed crea la empresa y el usuario demo `admin@mybusiness.demo` / `Demo1234!` (solo para desarrollo).
+El seed crea la empresa y el usuario demo usando `SEED_TENANT_*`, `SEED_ADMIN_EMAIL` y `SEED_ADMIN_PASSWORD` definidos en `.env` (solo para desarrollo). No hay credenciales de seed embebidas en el código.
 
 ### 7. Iniciar Microservicios en Desarrollo
 

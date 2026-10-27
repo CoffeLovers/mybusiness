@@ -1,4 +1,5 @@
 export * from './enums';
+export * from './money';
 export * from './patterns';
 export * from './dtos/auth.dto';
 export * from './dtos/finance.dto';

@@ -1,5 +1,6 @@
-import { IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { AccountType, TransactionType } from '../enums';
+import { CURRENCY_CODE_PATTERN, MAX_MONEY_MINOR_DIGITS, MONEY_MINOR_PATTERN } from '../money';
 
 export class CreateBankAccountDto {
   @IsString()
@@ -14,11 +15,14 @@ export class CreateBankAccountDto {
   accountNumberMasked!: string;
 
   @IsString()
+  @Matches(CURRENCY_CODE_PATTERN)
   currency!: string;
 
-  @IsNumber()
+  @IsString()
   @IsOptional()
-  initialBalance?: number;
+  @Matches(MONEY_MINOR_PATTERN)
+  @MaxLength(MAX_MONEY_MINOR_DIGITS)
+  initialBalanceMinor?: string;
 }
 
 export class CreateTransactionDto {
@@ -26,10 +30,14 @@ export class CreateTransactionDto {
   @IsNotEmpty()
   bankAccountId!: string;
 
-  @IsNumber()
-  amount!: number;
+  @IsString()
+  @IsNotEmpty()
+  @Matches(MONEY_MINOR_PATTERN)
+  @MaxLength(MAX_MONEY_MINOR_DIGITS)
+  amountMinor!: string;
 
   @IsString()
+  @Matches(CURRENCY_CODE_PATTERN)
   currency!: string;
 
   @IsEnum(TransactionType)
@@ -44,8 +52,8 @@ export class CreateTransactionDto {
   category?: string;
 
   @IsString()
-  @IsOptional()
-  idempotencyKey?: string;
+  @IsNotEmpty()
+  idempotencyKey!: string;
 }
 
 export class CreateInvoiceDto {
@@ -58,20 +66,32 @@ export class CreateInvoiceDto {
   counterpartyName!: string;
 
   @IsString()
+  @IsNotEmpty()
   counterpartyTaxId!: string;
 
-  @IsNumber()
-  subtotal!: number;
-
-  @IsNumber()
-  taxAmount!: number;
-
-  @IsNumber()
-  totalAmount!: number;
+  @IsString()
+  @IsNotEmpty()
+  @Matches(MONEY_MINOR_PATTERN)
+  @MaxLength(MAX_MONEY_MINOR_DIGITS)
+  subtotalMinor!: string;
 
   @IsString()
+  @IsNotEmpty()
+  @Matches(MONEY_MINOR_PATTERN)
+  @MaxLength(MAX_MONEY_MINOR_DIGITS)
+  taxAmountMinor!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @Matches(MONEY_MINOR_PATTERN)
+  @MaxLength(MAX_MONEY_MINOR_DIGITS)
+  totalAmountMinor!: string;
+
+  @IsString()
+  @Matches(CURRENCY_CODE_PATTERN)
   currency!: string;
 
   @IsString()
+  @IsNotEmpty()
   dueDate!: string;
 }

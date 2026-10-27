@@ -6,14 +6,18 @@ import { defineConfig } from 'drizzle-kit';
 config({ path: resolve(__dirname, '../../.env') });
 config();
 
+const databaseUrl = process.env.AUTH_DATABASE_URL;
+
+if (!databaseUrl) {
+  throw new Error('AUTH_DATABASE_URL es obligatoria para ejecutar drizzle-kit.');
+}
+
 export default defineConfig({
   schema: './src/database/schema.ts',
   out: './drizzle',
   dialect: 'postgresql',
   dbCredentials: {
-    url:
-      process.env.AUTH_DATABASE_URL ??
-      'postgresql://auth_user:change_in_production_auth_pass@localhost:5432/auth_db',
+    url: databaseUrl,
   },
   strict: true,
   verbose: true,

@@ -6,30 +6,49 @@ config({ path: resolve(__dirname, '../../../../.env') });
 config();
 
 import argon2 from 'argon2';
+import { UserRole, UserStatus } from '@mybusiness/contracts';
 import { eq } from 'drizzle-orm';
 import { createDatabase } from './client';
 import { tenants, users } from './schema';
 
-const DEMO_TAX_ID = '900123456-7';
-const DEMO_EMAIL = 'admin@mybusiness.demo';
-const DEMO_PASSWORD = 'Demo1234!';
+function requiredEnv(name: string): string {
+  const value = process.env[name];
+
+  if (!value || value.trim().length === 0) {
+    throw new Error(`${name} es obligatoria para ejecutar el seed de desarrollo.`);
+  }
+
+  return value;
+}
 
 async function seed(): Promise<void> {
+  const tenantTaxId = requiredEnv('SEED_TENANT_TAX_ID');
+  const tenantLegalName = requiredEnv('SEED_TENANT_LEGAL_NAME');
+  const tenantTradeName = requiredEnv('SEED_TENANT_TRADE_NAME');
+  const tenantCountry = requiredEnv('SEED_TENANT_COUNTRY');
+  const tenantCurrency = requiredEnv('SEED_TENANT_CURRENCY');
+  const tenantTimezone = requiredEnv('SEED_TENANT_TIMEZONE');
+  const tenantLocale = requiredEnv('SEED_TENANT_LOCALE');
+  const adminEmail = requiredEnv('SEED_ADMIN_EMAIL');
+  const adminPassword = requiredEnv('SEED_ADMIN_PASSWORD');
+  const adminFirstName = requiredEnv('SEED_ADMIN_FIRST_NAME');
+  const adminLastName = requiredEnv('SEED_ADMIN_LAST_NAME');
+
   const { db, pool } = createDatabase();
 
   try {
-    const passwordHash = await argon2.hash(DEMO_PASSWORD, { type: argon2.argon2id });
+    const passwordHash = await argon2.hash(adminPassword, { type: argon2.argon2id });
 
     const [insertedTenant] = await db
       .insert(tenants)
       .values({
-        legalName: 'MyBusiness Demo S.A.S.',
-        tradeName: 'MyBusiness Demo',
-        taxId: DEMO_TAX_ID,
-        country: 'CO',
-        currency: 'COP',
-        timezone: 'America/Bogota',
-        settings: { locale: 'es-CO', demo: true },
+        legalName: tenantLegalName,
+        tradeName: tenantTradeName,
+        taxId: tenantTaxId,
+        country: tenantCountry,
+        currency: tenantCurrency,
+        timezone: tenantTimezone,
+        settings: { locale: tenantLocale, demo: true },
       })
       .onConflictDoNothing({ target: tenants.taxId })
       .returning({ id: tenants.id });
@@ -40,7 +59,7 @@ async function seed(): Promise<void> {
         await db
           .select({ id: tenants.id })
           .from(tenants)
-          .where(eq(tenants.taxId, DEMO_TAX_ID))
+          .where(eq(tenants.taxId, tenantTaxId))
           .limit(1)
       )[0]?.id;
 
@@ -52,16 +71,16 @@ async function seed(): Promise<void> {
       .insert(users)
       .values({
         tenantId,
-        email: DEMO_EMAIL,
+        email: adminEmail,
         passwordHash,
-        firstName: 'Admin',
-        lastName: 'Demo',
-        role: 'TENANT_ADMIN',
-        status: 'ACTIVE',
+        firstName: adminFirstName,
+        lastName: adminLastName,
+        role: UserRole.TENANT_ADMIN,
+        status: UserStatus.ACTIVE,
       })
       .onConflictDoNothing({ target: users.email });
 
-    console.log('Seed completado:', { tenantId, email: DEMO_EMAIL, password: DEMO_PASSWORD });
+    console.log('Seed completado:', { tenantId, email: adminEmail });
   } finally {
     await pool.end();
   }
