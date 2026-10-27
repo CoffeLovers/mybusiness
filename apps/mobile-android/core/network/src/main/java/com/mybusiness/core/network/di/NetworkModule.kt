@@ -1,5 +1,6 @@
 package com.mybusiness.core.network.di
 
+import com.mybusiness.core.common.constants.Constants
 import com.mybusiness.core.network.BuildConfig
 import com.mybusiness.core.network.api.AuthApiService
 import com.mybusiness.core.network.interceptor.AuthInterceptor
@@ -40,8 +41,8 @@ object NetworkModule {
             } else {
                 HttpLoggingInterceptor.Level.NONE
             }
-            redactHeader("Authorization")
-            redactHeader("x-refresh-token")
+            redactHeader(Constants.HEADER_AUTHORIZATION)
+            redactHeader(Constants.HEADER_REFRESH_TOKEN)
         }
     }
 
@@ -54,9 +55,9 @@ object NetworkModule {
         return OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
             .addInterceptor(loggingInterceptor)
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .writeTimeout(15, TimeUnit.SECONDS)
+            .connectTimeout(Constants.NETWORK_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .readTimeout(Constants.NETWORK_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .writeTimeout(Constants.NETWORK_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .build()
     }
 

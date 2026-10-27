@@ -22,14 +22,20 @@ class FakeAuthRepository @Inject constructor(
         // Simular latencia de red
         delay(600)
 
-        // Simulación: acepta credenciales demo o cualquier contraseña de 8+ caracteres
+        // Simulación: genera usuario mock basado en el email ingresado
+        val derivedName = email.substringBefore("@")
+            .split(".", "_", "-")
+            .filter { it.isNotBlank() }
+            .joinToString(" ") { part -> part.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() } }
+            .ifBlank { "Usuario" }
+
         val mockUser = User(
-            id = "mock-user-12345",
+            id = "mock-user-${System.currentTimeMillis() % 100000}",
             email = email,
-            firstName = "Alejandro",
+            firstName = derivedName,
             lastName = "Demo",
             role = UserRole.TENANT_ADMIN,
-            tenantId = "mock-tenant-9999",
+            tenantId = "mock-tenant-${System.currentTimeMillis() % 10000}",
             companyName = "MyBusiness Demo S.A.S."
         )
 

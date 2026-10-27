@@ -12,7 +12,10 @@ android {
 
     defaultConfig {
         minSdk = 26
-        buildConfigField("Boolean", "USE_MOCK_AUTH", "true")
+        val useMockAuth = (project.findProperty("use.mock.auth") as? String)
+            ?: System.getenv("USE_MOCK_AUTH")
+            ?: "true"
+        buildConfigField("Boolean", "USE_MOCK_AUTH", useMockAuth)
     }
 
     compileOptions {

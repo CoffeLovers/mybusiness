@@ -12,7 +12,10 @@ android {
 
     defaultConfig {
         minSdk = 26
-        buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:3000/api/v1/\"")
+        val apiBaseUrl = (project.findProperty("api.base.url") as? String)
+            ?: System.getenv("API_BASE_URL")
+            ?: "http://10.0.2.2:3000/api/v1/"
+        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
     }
 
     compileOptions {

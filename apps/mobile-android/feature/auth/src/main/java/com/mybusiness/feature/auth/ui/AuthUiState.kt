@@ -1,8 +1,8 @@
 package com.mybusiness.feature.auth.ui
 
 data class AuthUiState(
-    val email: String = "admin@mybusiness.demo",
-    val password: String = "Demo1234!",
+    val email: String = "",
+    val password: String = "",
     val isPasswordVisible: Boolean = false,
     val emailError: String? = null,
     val passwordError: String? = null,

@@ -110,7 +110,7 @@ fun DashboardScreen(
                 uiState.summary != null -> {
                     DashboardContent(
                         summary = uiState.summary!!,
-                        userEmail = uiState.userEmail ?: "admin@mybusiness.demo"
+                        userEmail = uiState.userEmail.orEmpty()
                     )
                 }
             }
@@ -191,11 +191,13 @@ private fun GreetingSection(userEmail: String) {
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary
         )
-        Text(
-            text = userEmail,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        if (userEmail.isNotBlank()) {
+            Text(
+                text = userEmail,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
