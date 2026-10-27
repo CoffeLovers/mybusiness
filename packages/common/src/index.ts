@@ -6,3 +6,6 @@ export * from './guards/tenant.guard';
 export * from './filters/global-exception.filter';
 export * from './interceptors/transform.interceptor';
 export * from './interceptors/logging.interceptor';
+export * from './redis/redis.config';
+export * from './rpc/rpc-send';
+export * from './config/env.loader';

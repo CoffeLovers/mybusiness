@@ -13,7 +13,7 @@ export default defineConfig({
   dbCredentials: {
     url:
       process.env.AUTH_DATABASE_URL ??
-      'postgresql://mybusiness_user:mybusiness_pass@localhost:5432/auth_db',
+      'postgresql://auth_user:change_in_production_auth_pass@localhost:5432/auth_db',
   },
   strict: true,
   verbose: true,
