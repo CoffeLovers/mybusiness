@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { getMicroserviceRedisOptions } from '@mybusiness/common';
+import { getMicroserviceRedisOptions, getRootEnvFilePaths } from '@mybusiness/common';
 import { HealthController } from './health/health.controller';
 import { AuthGatewayController } from './auth/auth-gateway.controller';
 import { FinanceGatewayController } from './finance/finance-gateway.controller';
@@ -10,7 +10,10 @@ import { AgentGatewayController } from './agent/agent-gateway.controller';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: getRootEnvFilePaths(),
+    }),
     ThrottlerModule.forRoot([
       {
         ttl: 60000,

@@ -13,7 +13,7 @@
 
 ## 🏗️ Arquitectura de Microservicios
 
-El sistema adopta el patrón **API Gateway + Microservicios de Dominio** con comunicación híbrida (Síncrona vía RPC/TCP y Asíncrona basada en eventos con Redis):
+El sistema adopta el patrón **API Gateway + Microservicios de Dominio** con comunicación híbrida (Síncrona vía RPC con transporte Redis y Asíncrona basada en eventos con Redis Pub/Sub):
 
 ```mermaid
 flowchart TD
@@ -32,7 +32,7 @@ flowchart TD
 
     subgraph EventBroker ["Bus de Mensajería & Transporte"]
         RedisBus[("Redis 7: Event Bus & Broker
-(TCP / PubSub / BullMQ Streams)")]
+(Transporte Redis / PubSub / BullMQ Streams)")]
     end
 
     subgraph Microservices ["Microservicios de Backend (NestJS)"]
@@ -61,9 +61,9 @@ flowchart TD
 
     Clients --> Gateway
     Gateway -->|HTTP / REST| Gateway
-    Gateway -->|RPC / TCP / Redis| AuthService
-    Gateway -->|RPC / TCP / Redis| FinanceService
-    Gateway -->|RPC / TCP / Redis| AgentService
+    Gateway -->|RPC (Redis Pub/Sub)| AuthService
+    Gateway -->|RPC (Redis Pub/Sub)| FinanceService
+    Gateway -->|RPC (Redis Pub/Sub)| AgentService
 
     AuthService -.->|Eventos Asíncronos| RedisBus
     FinanceService -.->|Eventos Asíncronos| RedisBus
@@ -220,26 +220,27 @@ Inicia PostgreSQL (con `pgvector`) y Redis (Broker de eventos y colas):
 ```bash
 # Iniciar PostgreSQL 16 (pgvector) y Redis 7 con persistencia AOF
 pnpm docker:up
-# O directamente con Compose:
-docker compose -f docker/docker-compose.yml up -d
-`
+# O directamente con Compose usando el archivo .env de la raíz:
+docker compose --env-file .env -f docker/docker-compose.yml up -d
+```
 
 Verificar estado healthy de los contenedores:
 
-`ash
-docker compose -f docker/docker-compose.yml ps
-`
+```bash
+docker compose --env-file .env -f docker/docker-compose.yml ps
+```
 
 > [!NOTE]
 > **Actualización no destructiva en volúmenes existentes:**
 > Los scripts en /docker-entrypoint-initdb.d solo se ejecutan al crear un volumen nuevo. Si ya tienes un volumen inicializado, aplica de forma no destructiva las 4 bases, roles de servicio y extensiones con:
-> `ash
-> docker compose -f docker/docker-compose.yml exec -T postgres psql -U mybusiness_admin -d postgres -f /docker-entrypoint-initdb.d/init-microservices-dbs.sql
-> `
+>
+> ```bash
+> docker compose --env-file .env -f docker/docker-compose.yml exec -T postgres /docker-entrypoint-initdb.d/init-microservices-dbs.sh
+> ```
 
 Para verificar automáticamente la salud, la persistencia de datos AOF y la mensajería RPC y eventos con Redis:
 
-`ash
+```bash
 pnpm test:infra
 ```
 

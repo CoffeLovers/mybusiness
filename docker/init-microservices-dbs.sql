@@ -2,6 +2,8 @@
 -- MyBusiness — Inicialización de Bases de Datos y Roles con Privilegio Mínimo
 -- Stack: PostgreSQL 16 con extensión pgvector
 -- Principio: Database-per-Service
+-- NOTA: Este archivo es una referencia declarativa. En el contenedor Docker,
+-- docker/init-microservices-dbs.sh gestiona la inyección de contraseñas dinámicas.
 -- ==============================================================================
 
 -- 1. Crear roles y usuarios dedicados por microservicio (idempotente)
@@ -21,11 +23,6 @@ BEGIN
 
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'audit_user') THEN
     CREATE ROLE audit_user LOGIN PASSWORD 'change_in_production_audit_pass';
-  END IF;
-
-  -- Usuario de compatibilidad / administración de desarrollo
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'mybusiness_user') THEN
-    CREATE ROLE mybusiness_user LOGIN PASSWORD 'change_in_production_dev_pass';
   END IF;
 END $$;
 
@@ -67,13 +64,6 @@ GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO auth_user;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO auth_user;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO auth_user;
 
-GRANT CONNECT ON DATABASE auth_db TO mybusiness_user;
-GRANT ALL ON SCHEMA public TO mybusiness_user;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO mybusiness_user;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO mybusiness_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO mybusiness_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO mybusiness_user;
-
 REVOKE CONNECT ON DATABASE auth_db FROM finance_user, agent_user, audit_user;
 
 -- ==============================================================================
@@ -89,13 +79,6 @@ GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO finance_user;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO finance_user;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO finance_user;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO finance_user;
-
-GRANT CONNECT ON DATABASE finance_db TO mybusiness_user;
-GRANT ALL ON SCHEMA public TO mybusiness_user;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO mybusiness_user;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO mybusiness_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO mybusiness_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO mybusiness_user;
 
 REVOKE CONNECT ON DATABASE finance_db FROM auth_user, agent_user, audit_user;
 
@@ -113,13 +96,6 @@ GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO agent_user;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO agent_user;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO agent_user;
 
-GRANT CONNECT ON DATABASE agent_db TO mybusiness_user;
-GRANT ALL ON SCHEMA public TO mybusiness_user;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO mybusiness_user;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO mybusiness_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO mybusiness_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO mybusiness_user;
-
 REVOKE CONNECT ON DATABASE agent_db FROM auth_user, finance_user, audit_user;
 
 -- ==============================================================================
@@ -135,12 +111,5 @@ GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO audit_user;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO audit_user;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO audit_user;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO audit_user;
-
-GRANT CONNECT ON DATABASE audit_db TO mybusiness_user;
-GRANT ALL ON SCHEMA public TO mybusiness_user;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO mybusiness_user;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO mybusiness_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO mybusiness_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO mybusiness_user;
 
 REVOKE CONNECT ON DATABASE audit_db FROM auth_user, finance_user, agent_user;
