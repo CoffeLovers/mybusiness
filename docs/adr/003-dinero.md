@@ -2,7 +2,7 @@
 
 - **Estado:** Aceptado
 - **Fecha:** 2026-10-27
-- **Issues:** #11 (ADRs iniciales), #3 (esquema financiero movido a #4), #4 (esquemas de Finance/Audit/Agent)
+- **Issues:** #11 (ADRs iniciales), #3 (BankAccount movido a #4), #4 (esquemas de Finance/Audit/Agent)
 - **Relacionado:** [ADR 001 — Drizzle ORM](001-orm-drizzle.md), [ADR 004 — Contratos](004-contratos.md)
 
 ## Contexto
