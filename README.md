@@ -91,19 +91,19 @@ flowchart TD
 
 ## 💻 Stack Tecnológico
 
-| Capa / Componente           | Tecnología                                                                                                        | Propósito                                                                                                                                                              |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Backend Framework**       | [NestJS](https://nestjs.com/) (Microservices Module)                                                              | Framework modular con soporte nativo para microservicios (`@MessagePattern`, `@EventPattern`).                                                                         |
-| **Transport Layer**         | Redis (TCP / PubSub / Redis Streams)                                                                              | Bus de transporte para mensajes RPC entre servicios y eventos asíncronos desacoplados.                                                                                 |
-| **Cliente Móvil**           | [Kotlin](https://kotlinlang.org/) + [Jetpack Compose](https://developer.android.com/jetpack/compose) (Material 3) | App Android nativa; consume exclusivamente el API Gateway (sin frontend web).                                                                                          |
-| **Base de Datos**           | [PostgreSQL 16](https://www.postgresql.org/)                                                                      | Persistencia ACID estructurada bajo patrón Database-per-Service (o esquemas aislados).                                                                                 |
-| **ORM y Migraciones**       | [Drizzle ORM](https://orm.drizzle.team/) + `drizzle-kit`                                                          | Esquemas tipados y migraciones aisladas por microservicio (un `schema.ts` y un historial `drizzle/` por servicio). Decisión en [ADR 001](docs/adr/001-orm-drizzle.md). |
-| **Memoria Vectorial**       | [pgvector](https://github.com/pgvector/pgvector)                                                                  | Búsqueda por similitud semántica de embeddings para el agente de IA.                                                                                                   |
-| **Caché y Colas**           | [Redis 7](https://redis.io/) / [BullMQ](https://bullmq.io/)                                                       | Rate-limiting distribuido, gestión de colas de procesamiento en segundo plano y caché.                                                                                 |
-| **Seguridad Criptográfica** | Argon2id, AES-256-GCM, Passport JWT                                                                               | Hashing de alta resistencia, rotación segura de tokens y cifrado en reposo.                                                                                            |
-| **Contenedores**            | [Docker](https://www.docker.com/) & Docker Compose                                                                | Orquestación reproducible de microservicios y dependencias locales.                                                                                                    |
-| **CI / CD**                 | [GitHub Actions](https://github.com/features/actions)                                                             | Pipelines automatizados de linting, typecheck, tests y builds paralelos de microservicios.                                                                             |
-| **Seguridad Estática**      | [SonarQube](https://www.sonarqube.org/) & [Trivy](https://trivy.dev/)                                             | Análisis estático (SAST), detección de dependencias vulnerables y escaneo de contenedores.                                                                             |
+| Capa / Componente           | Tecnología                                                                                                        | Propósito                                                                                                                                                                              |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Backend Framework**       | [NestJS](https://nestjs.com/) (Microservices Module)                                                              | Framework modular con soporte nativo para microservicios (`@MessagePattern`, `@EventPattern`).                                                                                         |
+| **Transport Layer**         | [Redis 7](https://redis.io/) (Pub/Sub para RPC/Eventos + BullMQ para colas durables)                              | Bus de transporte para mensajes RPC (`@MessagePattern`), eventos desacoplados (`@EventPattern`) y colas de reintentos BullMQ. Decisión en [ADR 002](docs/adr/002-transporte-redis.md). |
+| **Cliente Móvil**           | [Kotlin](https://kotlinlang.org/) + [Jetpack Compose](https://developer.android.com/jetpack/compose) (Material 3) | App Android nativa; consume exclusivamente el API Gateway (sin frontend web).                                                                                                          |
+| **Base de Datos**           | [PostgreSQL 16](https://www.postgresql.org/)                                                                      | Persistencia ACID estructurada bajo patrón Database-per-Service (o esquemas aislados).                                                                                                 |
+| **ORM y Migraciones**       | [Drizzle ORM](https://orm.drizzle.team/) + `drizzle-kit`                                                          | Esquemas tipados y migraciones aisladas por microservicio (un `schema.ts` y un historial `drizzle/` por servicio). Decisión en [ADR 001](docs/adr/001-orm-drizzle.md).                 |
+| **Memoria Vectorial**       | [pgvector](https://github.com/pgvector/pgvector)                                                                  | Búsqueda por similitud semántica de embeddings para el agente de IA.                                                                                                                   |
+| **Caché y Colas**           | [Redis 7](https://redis.io/) / [BullMQ](https://bullmq.io/)                                                       | Rate-limiting distribuido, gestión de colas de procesamiento en segundo plano y caché.                                                                                                 |
+| **Seguridad Criptográfica** | Argon2id, AES-256-GCM, Passport JWT                                                                               | Hashing de alta resistencia, rotación segura de tokens y cifrado en reposo.                                                                                                            |
+| **Contenedores**            | [Docker](https://www.docker.com/) & Docker Compose                                                                | Orquestación reproducible de microservicios y dependencias locales.                                                                                                                    |
+| **CI / CD**                 | [GitHub Actions](https://github.com/features/actions)                                                             | Pipelines automatizados de linting, typecheck, tests y builds paralelos de microservicios.                                                                                             |
+| **Seguridad Estática**      | [SonarQube](https://www.sonarqube.org/) & [Trivy](https://trivy.dev/)                                             | Análisis estático (SAST), detección de dependencias vulnerables y escaneo de contenedores.                                                                                             |
 
 ---
 
@@ -169,7 +169,7 @@ El desarrollo del proyecto se encuentra estructurado en torno al diseño de micr
 ### Sprint 1: Arquitectura de Microservicios, Infraestructura y Datos
 
 - [ ] [#1 — [Sprint 1][Setup] Monorepo y arquitectura de microservicios (API Gateway, Servicios y App Móvil Kotlin)](https://github.com/Umbrex47/mybusiness/issues/1)
-- [ ] [#2 — [Sprint 1][Infra] PostgreSQL con pgvector y Redis como Event Bus/Broker y Caché](https://github.com/Umbrex47/mybusiness/issues/2)
+- [x] [#2 — [Sprint 1][Infra] PostgreSQL con pgvector y Redis como Event Bus/Broker y Caché](https://github.com/Umbrex47/mybusiness/issues/2)
 - [ ] [#3 — [Sprint 1][Database] Esquema de Auth Service: Tenant/Company, User y BankAccount](https://github.com/Umbrex47/mybusiness/issues/3)
 - [ ] [#4 — [Sprint 1][Database] Esquemas de Finance Service, Audit Service y Agent Memory (pgvector)](https://github.com/Umbrex47/mybusiness/issues/4)
 - [ ] [#11 — [Sprint 1][Architecture] ADRs iniciales: transporte, ORM, precisión monetaria y contratos](https://github.com/Umbrex47/mybusiness/issues/11)
@@ -218,7 +218,29 @@ cp .env.example .env
 Inicia PostgreSQL (con `pgvector`) y Redis (Broker de eventos y colas):
 
 ```bash
-docker compose -f docker/docker-compose.yml up -d postgres redis
+# Iniciar PostgreSQL 16 (pgvector) y Redis 7 con persistencia AOF
+pnpm docker:up
+# O directamente con Compose:
+docker compose -f docker/docker-compose.yml up -d
+`
+
+Verificar estado healthy de los contenedores:
+
+`ash
+docker compose -f docker/docker-compose.yml ps
+`
+
+> [!NOTE]
+> **Actualización no destructiva en volúmenes existentes:**
+> Los scripts en /docker-entrypoint-initdb.d solo se ejecutan al crear un volumen nuevo. Si ya tienes un volumen inicializado, aplica de forma no destructiva las 4 bases, roles de servicio y extensiones con:
+> `ash
+> docker compose -f docker/docker-compose.yml exec -T postgres psql -U mybusiness_admin -d postgres -f /docker-entrypoint-initdb.d/init-microservices-dbs.sql
+> `
+
+Para verificar automáticamente la salud, la persistencia de datos AOF y la mensajería RPC y eventos con Redis:
+
+`ash
+pnpm test:infra
 ```
 
 ### 4. Instalar Dependencias del Monorepo

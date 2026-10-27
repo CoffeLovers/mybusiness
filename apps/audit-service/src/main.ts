@@ -1,21 +1,21 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
+import { getMicroserviceRedisOptions } from '@mybusiness/common';
 import { AuditServiceModule } from './audit-service.module';
 
 async function bootstrap() {
   const logger = new Logger('AuditService');
-  const port = parseInt(process.env.AUDIT_SERVICE_PORT || '3004', 10);
+  const redisOptions = getMicroserviceRedisOptions();
 
   const app = await NestFactory.createMicroservice<MicroserviceOptions>(AuditServiceModule, {
-    transport: Transport.TCP,
-    options: {
-      host: '0.0.0.0',
-      port,
-    },
+    transport: Transport.REDIS,
+    options: redisOptions,
   });
 
   await app.listen();
-  logger.log(`📜 Audit & Logging Service corriendo en TCP puerto ${port}`);
+  logger.log(
+    `📜 Audit & Logging Service conectado a Redis Broker en ${redisOptions.host}:${redisOptions.port}`,
+  );
 }
 bootstrap();
