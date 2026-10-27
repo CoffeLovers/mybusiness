@@ -32,13 +32,17 @@ const {
 // Cargar variables de entorno raíz si no están ya en process.env
 loadRootEnv();
 
-let REDIS_TEST_PORT = Number(process.env.REDIS_PORT || 6386);
-let REDIS_TEST_PASS = process.env.REDIS_PASSWORD || 'test_redis_secret_123';
-let REDIS_TEST_HOST = process.env.REDIS_HOST || '127.0.0.1';
+const REDIS_TEST_PORT = Number(process.env.REDIS_PORT || 6386);
+const REDIS_TEST_PASS = process.env.REDIS_PASSWORD;
+const REDIS_TEST_HOST = process.env.REDIS_HOST || '127.0.0.1';
 
 process.env.REDIS_HOST = REDIS_TEST_HOST;
 process.env.REDIS_PORT = String(REDIS_TEST_PORT);
-process.env.REDIS_PASSWORD = REDIS_TEST_PASS;
+if (REDIS_TEST_PASS) {
+  process.env.REDIS_PASSWORD = REDIS_TEST_PASS;
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function findRedisServerBinary() {
   if (process.env.REDIS_SERVER_BIN && fs.existsSync(process.env.REDIS_SERVER_BIN)) {
@@ -47,7 +51,10 @@ function findRedisServerBinary() {
   try {
     const cmd = process.platform === 'win32' ? 'where redis-server' : 'which redis-server';
     const out = execSync(cmd, { stdio: ['pipe', 'pipe', 'ignore'], encoding: 'utf8' }).trim();
-    const lines = out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const lines = out
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
     const exe = lines.find((l) => l.toLowerCase().endsWith('.exe'));
     if (exe && fs.existsSync(exe)) {
       return exe;
@@ -102,54 +109,134 @@ function findRedisServerBinary() {
 }
 
 function validateInitScriptsDeclaratively() {
-  const sqlPath = path.resolve(__dirname, '../docker/init-microservices-dbs.sql');
   const shPath = path.resolve(__dirname, '../docker/init-microservices-dbs.sh');
 
-  const sqlContent = fs.readFileSync(sqlPath, 'utf8');
-  const shContent = fs.existsSync(shPath) ? fs.readFileSync(shPath, 'utf8') : '';
+  if (!fs.existsSync(shPath)) {
+    throw new Error(`No existe el script de inicialización: ${shPath}`);
+  }
+
+  const stat = fs.statSync(shPath);
+  if ((stat.mode & 0o111) === 0) {
+    throw new Error('docker/init-microservices-dbs.sh debe ser ejecutable (chmod +x).');
+  }
+
+  const shContent = fs.readFileSync(shPath, 'utf8');
 
   const requiredDatabases = ['auth_db', 'finance_db', 'agent_db', 'audit_db'];
   for (const db of requiredDatabases) {
-    if (!sqlContent.includes(`CREATE DATABASE ${db}`) && !shContent.includes(`CREATE DATABASE ${db}`)) {
+    if (!shContent.includes(`'${db}'`)) {
       throw new Error(`Falta la declaración de creación de base de datos: ${db}`);
     }
   }
   console.log('   ✅ Las 4 bases de datos (auth_db, finance_db, agent_db, audit_db) están declaradas.');
 
-  const requiredUsers = ['auth_user', 'finance_user', 'agent_user', 'audit_user'];
-  for (const user of requiredUsers) {
-    if (!sqlContent.includes(`rolname = '${user}'`) && !shContent.includes(`$AUTH_USER`)) {
-      throw new Error(`Falta el rol de servicio con mínimos privilegios: ${user}`);
+  const requiredRoles = [
+    ['AUTH_DB_USER', 'AUTH_USER'],
+    ['FINANCE_DB_USER', 'FINANCE_USER'],
+    ['AGENT_DB_USER', 'AGENT_USER'],
+    ['AUDIT_DB_USER', 'AUDIT_USER'],
+  ];
+  for (const [envVar, shellVar] of requiredRoles) {
+    if (!shContent.includes(envVar) || !shContent.includes(shellVar)) {
+      throw new Error(`Falta el rol de servicio con mínimos privilegios: ${envVar}`);
     }
   }
   console.log('   ✅ Los 4 roles de servicio con privilegio mínimo están declarados.');
 
-  if (sqlContent.includes('mybusiness_user') || shContent.includes('mybusiness_user')) {
-    throw new Error('Violación de mínimos privilegios: mybusiness_user no debe estar presente.');
+  if (/CREATE\s+ROLE\s+mybusiness_user/i.test(shContent)) {
+    throw new Error('Violación de mínimos privilegios: mybusiness_user no debe crearse.');
   }
-  console.log('   ✅ Usuario no documentado mybusiness_user eliminado (principio de mínimo privilegio).');
+  if (!/DROP\s+ROLE\s+IF\s+EXISTS\s+mybusiness_user/i.test(shContent)) {
+    throw new Error('Falta la limpieza del rol legacy mybusiness_user.');
+  }
+  if (/PASSWORD\s+'/i.test(shContent)) {
+    throw new Error('El script no debe interpolar contraseñas directamente en SQL.');
+  }
+  if (shContent.includes('change_in_production')) {
+    throw new Error('El script no debe contener contraseñas por defecto.');
+  }
+  console.log('   ✅ Rol legacy mybusiness_user con limpieza declarada y sin contraseñas embebidas.');
 
-  const vectorMatches = (sqlContent.match(/CREATE EXTENSION IF NOT EXISTS vector;/g) || []).length;
-  if (vectorMatches < 4 && !shContent.includes('CREATE EXTENSION IF NOT EXISTS vector;')) {
+  const configureCalls = (shContent.match(/configure_db\s+"/g) || []).length;
+  if (!shContent.includes('CREATE EXTENSION IF NOT EXISTS vector;') || configureCalls < 4) {
     throw new Error(`Se esperaban activaciones de extensión vector en las 4 bases`);
   }
   console.log('   ✅ Extensión pgvector activa en las 4 bases de datos.');
 
-  const uuidMatches = (sqlContent.match(/CREATE EXTENSION IF NOT EXISTS "uuid-ossp";/g) || []).length;
-  if (uuidMatches < 4 && !shContent.includes('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";')) {
+  if (!shContent.includes('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";') || configureCalls < 4) {
     throw new Error(`Se esperaban activaciones de uuid-ossp en las 4 bases`);
   }
   console.log('   ✅ Extensión uuid-ossp activa en las 4 bases de datos.');
 }
 
+function validateEnvConsistency() {
+  const expectedPort = String(process.env.POSTGRES_PORT || '5432');
+  if (!/^\d+$/.test(expectedPort)) {
+    throw new Error(`POSTGRES_PORT inválido: ${expectedPort}`);
+  }
+
+  const urls = [
+    ['AUTH_DATABASE_URL', 'AUTH_DB_USER'],
+    ['FINANCE_DATABASE_URL', 'FINANCE_DB_USER'],
+    ['AGENT_DATABASE_URL', 'AGENT_DB_USER'],
+    ['AUDIT_DATABASE_URL', 'AUDIT_DB_USER'],
+  ];
+
+  for (const [urlKey, userKey] of urls) {
+    const rawUrl = process.env[urlKey];
+    if (!rawUrl) continue;
+
+    let parsed;
+    try {
+      parsed = new URL(rawUrl);
+    } catch {
+      throw new Error(`${urlKey} no es una URL válida.`);
+    }
+
+    const urlPort = parsed.port || '5432';
+    if (urlPort !== expectedPort) {
+      throw new Error(
+        `${urlKey} usa el puerto ${urlPort}, pero POSTGRES_PORT=${expectedPort}. ` +
+          'Actualiza las URLs o el puerto para que coincidan.',
+      );
+    }
+
+    const expectedUser = process.env[userKey];
+    if (expectedUser && decodeURIComponent(parsed.username) !== expectedUser) {
+      throw new Error(
+        `${urlKey} usa el usuario ${parsed.username}, pero ${userKey}=${expectedUser}.`,
+      );
+    }
+  }
+}
+
 async function verifyPostgres() {
   console.log('📦 Paso 1: Validar PostgreSQL 16 + pgvector (4 DBs + roles)...');
+
+  validateInitScriptsDeclaratively();
+  validateEnvConsistency();
+
   const host = process.env.POSTGRES_HOST || '127.0.0.1';
   const port = Number(process.env.POSTGRES_PORT || 5432);
   const adminUser = process.env.POSTGRES_USER || 'mybusiness_admin';
-  const adminPass = process.env.POSTGRES_PASSWORD || 'change_in_production_postgres_admin_pass';
+  const adminPass = process.env.POSTGRES_PASSWORD;
 
-  let client = new Client({
+  if (!adminPass) {
+    throw new Error('POSTGRES_PASSWORD es obligatorio para ejecutar la verificación de PostgreSQL.');
+  }
+
+  for (const key of [
+    'AUTH_DB_PASSWORD',
+    'FINANCE_DB_PASSWORD',
+    'AGENT_DB_PASSWORD',
+    'AUDIT_DB_PASSWORD',
+  ]) {
+    if (!process.env[key]) {
+      throw new Error(`${key} es obligatorio para ejecutar la verificación de PostgreSQL.`);
+    }
+  }
+
+  const client = new Client({
     host,
     port,
     user: adminUser,
@@ -158,102 +245,173 @@ async function verifyPostgres() {
     connectionTimeoutMillis: 2500,
   });
 
-  let connected = false;
   try {
     await client.connect();
-    connected = true;
-  } catch {
-    // Si postgres no está en puerto 5432, verificar declarativamente
+  } catch (error) {
+    throw new Error(
+      `No se pudo conectar a PostgreSQL en ${host}:${port} como ${adminUser}. ` +
+        `Ejecuta "pnpm docker:up" y verifica .env. Causa: ${error.message}`,
+    );
   }
 
-  if (connected) {
-    console.log(`   ✅ Conexión con PostgreSQL (${adminUser}@${host}:${port}) exitosa.`);
-    try {
-      // 1. Validar las 4 bases de datos
-      const dbRes = await client.query(
-        "SELECT datname FROM pg_database WHERE datname IN ('auth_db', 'finance_db', 'agent_db', 'audit_db')"
+  console.log(`   ✅ Conexión con PostgreSQL (${adminUser}@${host}:${port}) exitosa.`);
+
+  try {
+    const dbRes = await client.query(
+      "SELECT datname FROM pg_database WHERE datname IN ('auth_db', 'finance_db', 'agent_db', 'audit_db')",
+    );
+    const existingDbs = dbRes.rows.map((r) => r.datname);
+    for (const db of ['auth_db', 'finance_db', 'agent_db', 'audit_db']) {
+      if (!existingDbs.includes(db)) {
+        throw new Error(`Base de datos faltante en PostgreSQL: ${db}`);
+      }
+    }
+    console.log(`   ✅ Bases de datos verificadas vía pg: ${existingDbs.join(', ')}`);
+
+    const rolesRes = await client.query(
+      "SELECT rolname FROM pg_roles WHERE rolname IN ('auth_user', 'finance_user', 'agent_user', 'audit_user', 'mybusiness_user')",
+    );
+    const existingRoles = rolesRes.rows.map((r) => r.rolname);
+    for (const role of ['auth_user', 'finance_user', 'agent_user', 'audit_user']) {
+      if (!existingRoles.includes(role)) {
+        throw new Error(`Rol de servicio faltante en PostgreSQL: ${role}`);
+      }
+    }
+    if (existingRoles.includes('mybusiness_user')) {
+      throw new Error(
+        'Rol no deseado mybusiness_user existe en PostgreSQL. ' +
+          'Ejecuta el script de inicialización para limpiar el volumen existente.',
       );
-      const existingDbs = dbRes.rows.map((r) => r.datname);
-      for (const db of ['auth_db', 'finance_db', 'agent_db', 'audit_db']) {
-        if (!existingDbs.includes(db)) {
-          throw new Error(`Base de datos faltante en PostgreSQL: ${db}`);
-        }
-      }
-      console.log(`   ✅ Bases de datos verificadas vía pg: ${existingDbs.join(', ')}`);
+    }
+    console.log(`   ✅ Roles de servicio verificados vía pg: ${existingRoles.join(', ')}`);
 
-      // 2. Validar roles
-      const rolesRes = await client.query(
-        "SELECT rolname FROM pg_roles WHERE rolname IN ('auth_user', 'finance_user', 'agent_user', 'audit_user', 'mybusiness_user')"
-      );
-      const existingRoles = rolesRes.rows.map((r) => r.rolname);
-      for (const role of ['auth_user', 'finance_user', 'agent_user', 'audit_user']) {
-        if (!existingRoles.includes(role)) {
-          throw new Error(`Rol de servicio faltante en PostgreSQL: ${role}`);
-        }
-      }
-      if (existingRoles.includes('mybusiness_user')) {
-        throw new Error('Rol no deseado mybusiness_user existe en PostgreSQL');
-      }
-      console.log(`   ✅ Roles de servicio verificados vía pg: ${existingRoles.join(', ')}`);
-      await client.end();
+    const services = [
+      {
+        db: 'auth_db',
+        user: process.env.AUTH_DB_USER || 'auth_user',
+        pass: process.env.AUTH_DB_PASSWORD,
+      },
+      {
+        db: 'finance_db',
+        user: process.env.FINANCE_DB_USER || 'finance_user',
+        pass: process.env.FINANCE_DB_PASSWORD,
+      },
+      {
+        db: 'agent_db',
+        user: process.env.AGENT_DB_USER || 'agent_user',
+        pass: process.env.AGENT_DB_PASSWORD,
+      },
+      {
+        db: 'audit_db',
+        user: process.env.AUDIT_DB_USER || 'audit_user',
+        pass: process.env.AUDIT_DB_PASSWORD,
+      },
+    ];
 
-      // 3. Validar conexión y extensiones por base de datos
-      const services = [
-        { db: 'auth_db', user: process.env.AUTH_DB_USER || 'auth_user', pass: process.env.AUTH_DB_PASSWORD || 'change_in_production_auth_pass' },
-        { db: 'finance_db', user: process.env.FINANCE_DB_USER || 'finance_user', pass: process.env.FINANCE_DB_PASSWORD || 'change_in_production_finance_pass' },
-        { db: 'agent_db', user: process.env.AGENT_DB_USER || 'agent_user', pass: process.env.AGENT_DB_PASSWORD || 'change_in_production_agent_pass' },
-        { db: 'audit_db', user: process.env.AUDIT_DB_USER || 'audit_user', pass: process.env.AUDIT_DB_PASSWORD || 'change_in_production_audit_pass' },
-      ];
-
-      for (const svc of services) {
-        const svcClient = new Client({
-          host,
-          port,
-          user: svc.user,
-          password: svc.pass,
-          database: svc.db,
-          connectionTimeoutMillis: 2500,
-        });
+    for (const svc of services) {
+      const svcClient = new Client({
+        host,
+        port,
+        user: svc.user,
+        password: svc.pass,
+        database: svc.db,
+        connectionTimeoutMillis: 2500,
+      });
+      try {
         await svcClient.connect();
         const extRes = await svcClient.query(
-          "SELECT extname FROM pg_extension WHERE extname IN ('vector', 'uuid-ossp')"
+          "SELECT extname FROM pg_extension WHERE extname IN ('vector', 'uuid-ossp')",
         );
         const exts = extRes.rows.map((r) => r.extname);
         if (!exts.includes('vector') || !exts.includes('uuid-ossp')) {
           throw new Error(`Extensiones faltantes en ${svc.db}: ${exts.join(', ')}`);
         }
-        console.log(`   ✅ [${svc.db}] Conectado como ${svc.user}. Extensiones verificadas: vector, uuid-ossp.`);
-        await svcClient.end();
+        console.log(
+          `   ✅ [${svc.db}] Conectado como ${svc.user}. Extensiones verificadas: vector, uuid-ossp.`,
+        );
+      } finally {
+        await svcClient.end().catch(() => {});
       }
-
-      // 4. Validar aislamiento (menor privilegio): auth_user no debe poder conectarse a finance_db
-      const unauthClient = new Client({
-        host,
-        port,
-        user: process.env.AUTH_DB_USER || 'auth_user',
-        password: process.env.AUTH_DB_PASSWORD || 'change_in_production_auth_pass',
-        database: 'finance_db',
-        connectionTimeoutMillis: 2500,
-      });
-      let connectedUnauth = false;
-      try {
-        await unauthClient.connect();
-        connectedUnauth = true;
-        await unauthClient.end();
-      } catch {
-        console.log('   ✅ Aislamiento de privilegio mínimo verificado: auth_user no puede acceder a finance_db.');
-      }
-      if (connectedUnauth) {
-        throw new Error('Violación de seguridad: auth_user logró conectarse a finance_db');
-      }
-    } catch (e) {
-      try { await client.end(); } catch {}
-      throw e;
     }
-  } else {
-    console.log('   ℹ️ Instancia PostgreSQL en vivo no detectada en este host. Validando estructura declarativa...');
-    validateInitScriptsDeclaratively();
+
+    const unauthClient = new Client({
+      host,
+      port,
+      user: process.env.AUTH_DB_USER || 'auth_user',
+      password: process.env.AUTH_DB_PASSWORD,
+      database: 'finance_db',
+      connectionTimeoutMillis: 2500,
+    });
+    let connectedUnauth = false;
+    try {
+      await unauthClient.connect();
+      connectedUnauth = true;
+    } catch {
+      console.log(
+        '   ✅ Aislamiento de privilegio mínimo verificado: auth_user no puede acceder a finance_db.',
+      );
+    } finally {
+      if (connectedUnauth) {
+        await unauthClient.end().catch(() => {});
+      }
+    }
+    if (connectedUnauth) {
+      throw new Error('Violación de seguridad: auth_user logró conectarse a finance_db');
+    }
+  } finally {
+    await client.end().catch(() => {});
   }
+}
+
+async function waitForRedis(timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError;
+
+  while (Date.now() < deadline) {
+    const probe = new Redis({
+      host: REDIS_TEST_HOST,
+      port: REDIS_TEST_PORT,
+      password: REDIS_TEST_PASS,
+      lazyConnect: true,
+      connectTimeout: 1000,
+      retryStrategy: () => null,
+    });
+    probe.on('error', () => {});
+    try {
+      await probe.connect();
+      const pong = await probe.ping();
+      if (pong === 'PONG') {
+        return;
+      }
+    } catch (error) {
+      lastError = error;
+    } finally {
+      try {
+        await probe.quit();
+      } catch {}
+    }
+    await sleep(300);
+  }
+
+  throw new Error(
+    `Redis no respondió en ${REDIS_TEST_HOST}:${REDIS_TEST_PORT} tras ${timeoutMs}ms. ` +
+      `Último error: ${lastError?.message || 'desconocido'}`,
+  );
+}
+
+async function stopChild(child) {
+  if (!child || child.exitCode !== null) return;
+  await new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      resolve();
+    }, 3000);
+    child.once('exit', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    child.kill('SIGTERM');
+  });
 }
 
 async function run() {
@@ -262,17 +420,22 @@ async function run() {
   console.log('   PostgreSQL 16 + pgvector y Redis 7 (Microservicios + BullMQ)');
   console.log('================================================================\n');
 
-  // Paso 1: Validar PostgreSQL
+  if (!REDIS_TEST_PASS) {
+    throw new Error(
+      'REDIS_PASSWORD es obligatorio para ejecutar la verificación. Copia .env.example a .env.',
+    );
+  }
+  if (!Number.isInteger(REDIS_TEST_PORT) || REDIS_TEST_PORT <= 0) {
+    throw new Error(`REDIS_PORT inválido: ${process.env.REDIS_PORT}`);
+  }
+
   await verifyPostgres();
 
-  // Paso 2: Iniciar o conectar a Redis Server con contraseña y AOF
   console.log('\n🔴 Paso 2: Configurar y verificar Redis Server (autenticación + AOF)...');
 
   let redisProc = null;
   let tempAofDir = null;
-  let isDockerManaged = false;
 
-  // Intentar conectar al Redis existente (e.g. Docker Compose en puerto REDIS_PORT)
   const existingRedis = new Redis({
     host: REDIS_TEST_HOST,
     port: REDIS_TEST_PORT,
@@ -289,12 +452,21 @@ async function run() {
     const pong = await existingRedis.ping();
     if (pong === 'PONG') {
       runningRedis = true;
-      console.log(`   ✅ Conexión establecida a Redis en ${REDIS_TEST_HOST}:${REDIS_TEST_PORT}.`);
+      const config = await existingRedis.config('GET', 'appendonly');
+      const aofValue = Array.isArray(config) ? config[1] : String(config).split(/\s+/).pop();
+      if (String(aofValue).toLowerCase() !== 'yes') {
+        throw new Error(
+          `Redis en ${REDIS_TEST_HOST}:${REDIS_TEST_PORT} no tiene AOF habilitado (appendonly=${aofValue}).`,
+        );
+      }
+      console.log(`   ✅ Conexión establecida a Redis en ${REDIS_TEST_HOST}:${REDIS_TEST_PORT} con AOF.`);
     }
-  } catch {
-    // Redis no está corriendo en el puerto configurado
+  } catch (error) {
+    if (runningRedis) throw error;
   } finally {
-    try { await existingRedis.quit(); } catch {}
+    try {
+      await existingRedis.quit();
+    } catch {}
   }
 
   const spawnRedisInstance = (dir) => {
@@ -302,14 +474,20 @@ async function run() {
     if (!bin) {
       throw new Error(
         'No se encontró el ejecutable redis-server en PATH ni en ubicaciones del sistema. ' +
-        'Inicia el contenedor con "pnpm docker:up" o instala redis-server.'
+          'Inicia el contenedor con "pnpm docker:up" o instala redis-server.',
       );
     }
     const args = [
-      '--port', String(REDIS_TEST_PORT),
-      '--requirepass', String(REDIS_TEST_PASS),
-      '--appendonly', 'yes',
-      '--dir', String(dir),
+      '--port',
+      String(REDIS_TEST_PORT),
+      '--requirepass',
+      String(REDIS_TEST_PASS),
+      '--appendonly',
+      'yes',
+      '--appendfsync',
+      'always',
+      '--dir',
+      String(dir),
     ];
     const isCmdOrBat = bin.toLowerCase().endsWith('.cmd') || bin.toLowerCase().endsWith('.bat');
     return spawn(bin, args, { stdio: 'ignore', shell: isCmdOrBat });
@@ -320,15 +498,24 @@ async function run() {
     if (redisBin) {
       tempAofDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redis_issue2_test_'));
       redisProc = spawnRedisInstance(tempAofDir);
-      await new Promise((r) => setTimeout(r, 1200));
-      console.log(`   ✅ Redis iniciado localmente (pid ${redisProc.pid}) en puerto ${REDIS_TEST_PORT} con AOF.`);
+      await waitForRedis();
+      console.log(
+        `   ✅ Redis iniciado localmente (pid ${redisProc.pid}) en puerto ${REDIS_TEST_PORT} con AOF.`,
+      );
     } else {
-      throw new Error('Redis no está corriendo y no se encontró redis-server local. Ejecuta "pnpm docker:up" primero.');
+      throw new Error(
+        'Redis no está corriendo y no se encontró redis-server local. Ejecuta "pnpm docker:up" primero.',
+      );
     }
   }
 
+  let authApp;
+  let auditApp;
+  let client;
+  let testQueue;
+  let worker;
+
   try {
-    // Paso 2.1: Validar persistencia AOF ante reinicio
     console.log('   Probando persistencia AOF tras reinicio de Redis...');
     const redisClient = new Redis({
       host: REDIS_TEST_HOST,
@@ -341,19 +528,27 @@ async function run() {
     await redisClient.quit();
 
     if (redisProc && tempAofDir) {
-      // Reiniciar proceso local usando el mismo directorio AOF
-      redisProc.kill();
-      await new Promise((r) => setTimeout(r, 800));
+      await stopChild(redisProc);
+      await sleep(300);
       redisProc = spawnRedisInstance(tempAofDir);
-      await new Promise((r) => setTimeout(r, 1200));
+      await waitForRedis();
     } else {
-      // Si corre en Docker Compose, intentar reinicio del contenedor
       try {
         execSync('docker compose --env-file .env -f docker/docker-compose.yml restart redis', {
-          stdio: 'ignore',
+          cwd: rootDir,
+          stdio: 'pipe',
         });
-        await new Promise((r) => setTimeout(r, 2000));
-      } catch {}
+      } catch (error) {
+        const stderr = error.stderr ? error.stderr.toString().trim() : '';
+        throw new Error(
+          'No se pudo reiniciar el Redis de Docker Compose para validar AOF. ' +
+            'Este test exige que el Redis en ' +
+            `${REDIS_TEST_HOST}:${REDIS_TEST_PORT} sea el servicio "redis" de docker-compose.yml. ` +
+            `Detén cualquier Redis local en ese puerto o levanta la infraestructura con "pnpm docker:up". ` +
+            `Causa: ${stderr || error.message}`,
+        );
+      }
+      await waitForRedis();
     }
 
     const verifyAofClient = new Redis({
@@ -370,23 +565,17 @@ async function run() {
     }
     console.log('   ✅ Persistencia AOF verificada: los datos sobreviven al reinicio de Redis.');
 
-    // -------------------------------------------------------------------------
-    // Paso 3: Levantar AuthService real sobre Transport.REDIS
-    // -------------------------------------------------------------------------
     console.log('\n⚡ Paso 3: Arrancar AuthService real con Transport.REDIS...');
     const redisOptions = getMicroserviceRedisOptions();
-    const authApp = await NestFactory.createMicroservice(AuthServiceModule, {
+    authApp = await NestFactory.createMicroservice(AuthServiceModule, {
       transport: Transport.REDIS,
       options: redisOptions,
     });
     await authApp.listen();
     console.log('   ✅ AuthService escuchando sobre Redis Pub/Sub.');
 
-    // -------------------------------------------------------------------------
-    // Paso 4: Levantar AuditService real sobre Transport.REDIS
-    // -------------------------------------------------------------------------
     console.log('\n📜 Paso 4: Arrancar AuditService real con Transport.REDIS...');
-    const auditApp = await NestFactory.createMicroservice(AuditServiceModule, {
+    auditApp = await NestFactory.createMicroservice(AuditServiceModule, {
       transport: Transport.REDIS,
       options: redisOptions,
     });
@@ -400,20 +589,14 @@ async function run() {
     await auditApp.listen();
     console.log('   ✅ AuditService escuchando sobre Redis Pub/Sub.');
 
-    // -------------------------------------------------------------------------
-    // Paso 5: Conectar ClientProxy de API Gateway hacia Redis
-    // -------------------------------------------------------------------------
     console.log('\n📡 Paso 5: Conectar ClientProxy de API Gateway hacia Redis Broker...');
-    const client = ClientProxyFactory.create({
+    client = ClientProxyFactory.create({
       transport: Transport.REDIS,
       options: redisOptions,
     });
     await client.connect();
     console.log('   ✅ ClientProxy conectado autenticado al broker.');
 
-    // -------------------------------------------------------------------------
-    // Paso 6: Probar RPC sincrónico por Redis (@MessagePattern) con credencial Demo1234!
-    // -------------------------------------------------------------------------
     console.log('\n🔁 Paso 6: Ejecutar llamada RPC: client.send(AuthPatterns.LOGIN)...');
     const rpcResponse = await firstValueFrom(
       client.send(AuthPatterns.LOGIN, {
@@ -421,14 +604,15 @@ async function run() {
         password: 'Demo1234!',
       }),
     );
-    if (!rpcResponse || !rpcResponse.accessToken || rpcResponse.user.email !== 'admin@mybusiness.demo') {
+    if (
+      !rpcResponse ||
+      !rpcResponse.accessToken ||
+      rpcResponse.user.email !== 'admin@mybusiness.demo'
+    ) {
       throw new Error(`Respuesta RPC no válida: ${JSON.stringify(rpcResponse)}`);
     }
     console.log('   ✅ RPC por Redis (@MessagePattern) validado exitosamente con usuario demo.');
 
-    // -------------------------------------------------------------------------
-    // Paso 7: Probar Evento Asincrónico por Redis (@EventPattern) y asertar consumidor
-    // -------------------------------------------------------------------------
     console.log('\n📢 Paso 7: Emitir evento de dominio: client.emit(AuditEvents.LOG_EVENT)...');
     const eventPayload = {
       action: 'USER_LOGIN_SUCCESS',
@@ -442,28 +626,27 @@ async function run() {
 
     for (let i = 0; i < 25; i++) {
       if (capturedAuditEvent) break;
-      await new Promise((r) => setTimeout(r, 200));
+      await sleep(200);
     }
 
     if (!capturedAuditEvent || capturedAuditEvent.action !== 'USER_LOGIN_SUCCESS') {
       throw new Error(
-        `AuditService no recibió el evento emitido. Estado capturado: ${JSON.stringify(capturedAuditEvent)}`
+        `AuditService no recibió el evento emitido. Estado capturado: ${JSON.stringify(capturedAuditEvent)}`,
       );
     }
-    console.log('   ✅ Evento por Redis (@EventPattern) recibido y verificado por consumidor AuditService.');
+    console.log(
+      '   ✅ Evento por Redis (@EventPattern) recibido y verificado por consumidor AuditService.',
+    );
 
-    // -------------------------------------------------------------------------
-    // Paso 8: Probar BullMQ con infraestructura autenticada
-    // -------------------------------------------------------------------------
     console.log('\n🐂 Paso 8: Probar cola durable con BullMQ...');
     const bullmqConfig = getBullMQConnectionOptions();
     const queueName = `issue2-durable-queue-${Date.now()}`;
-    const testQueue = new Queue(queueName, { connection: bullmqConfig });
+    testQueue = new Queue(queueName, { connection: bullmqConfig });
 
     let workerProcessed = false;
     let processedData = null;
 
-    const worker = new Worker(
+    worker = new Worker(
       queueName,
       async (job) => {
         processedData = job.data;
@@ -482,7 +665,7 @@ async function run() {
 
     for (let i = 0; i < 25; i++) {
       if (workerProcessed) break;
-      await new Promise((r) => setTimeout(r, 200));
+      await sleep(200);
     }
 
     if (!workerProcessed || !processedData || processedData.transactionId !== 'tx-10001') {
@@ -490,17 +673,13 @@ async function run() {
     }
     console.log('   Job completado por BullMQ Worker:', processedData);
     console.log('   ✅ BullMQ validado con autenticación y procesamiento de cola durable.');
-
-    // Cleanup NestJS & BullMQ
-    await worker.close();
-    await testQueue.close();
-    await client.close();
-    await authApp.close();
-    await auditApp.close();
   } finally {
-    if (redisProc) {
-      redisProc.kill();
-    }
+    if (worker) await worker.close().catch(() => {});
+    if (testQueue) await testQueue.close().catch(() => {});
+    if (client) await client.close().catch(() => {});
+    if (authApp) await authApp.close().catch(() => {});
+    if (auditApp) await auditApp.close().catch(() => {});
+    if (redisProc) await stopChild(redisProc);
     if (tempAofDir) {
       try {
         fs.rmSync(tempAofDir, { recursive: true, force: true });

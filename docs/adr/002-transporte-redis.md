@@ -22,7 +22,7 @@ Adoptar **Redis 7** como bus de mensajería y broker unificado mediante `@nestjs
 
 1. **RPC síncrono (`@MessagePattern`)**: Gestionado vía canales Redis Pub/Sub con canales de respuesta efímeros correlacionados por ID de mensaje.
 2. **Eventos asíncronos (`@EventPattern`)**: Publicación fire-and-forget a través de Redis Pub/Sub hacia consumidores suscritos (ej. registro inmutable en `audit-service`).
-3. **Colas durables (BullMQ)**: Para tareas que exigen persistencia ante caídas, reintentos con backoff exponencial y dead-letter queues, se utiliza BullMQ aprovechando la misma infraestructura autenticada de Redis (`getBullMQConnectionOptions`).
+3. **Colas durables (BullMQ)**: BullMQ se usará para tareas que exigen persistencia ante caídas y reintentos. La infraestructura compartida expone la conexión autenticada mediante `getBullMQConnectionOptions`; las políticas de reintento, backoff y dead-letter queues se configurarán por cola cuando se implementen los primeros jobs de dominio.
    > _Nota:_ Redis Pub/Sub es volátil y at-most-once. No debe considerarse sustituto de colas durables.
 4. **Seguridad y Aislamiento de Red**:
    - Redis configurado con contraseña obligatoria (`--requirepass` y variable `REDISCLI_AUTH` para evitar contraseñas en procesos).

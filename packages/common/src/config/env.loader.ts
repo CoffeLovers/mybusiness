@@ -2,16 +2,19 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 /**
+ * Ruta absoluta del `.env` raíz. Se calcula desde el paquete common para que
+ * funcione tanto desde src/config como desde dist/config, sin depender del cwd.
+ */
+function getRootEnvPath(): string {
+  return path.resolve(__dirname, '../../../../.env');
+}
+
+/**
  * Carga de forma segura las variables del archivo .env raíz del monorepo si no han sido inyectadas en process.env.
  * Soporta la ejecución de microservicios donde el cwd es apps/<servicio>.
  */
 export function loadRootEnv(): void {
-  const candidatePaths = [
-    path.resolve(process.cwd(), '.env'),
-    path.resolve(process.cwd(), '../../.env'),
-    path.resolve(__dirname, '../../../.env'),
-    path.resolve(__dirname, '../../../../.env'),
-  ];
+  const candidatePaths = [getRootEnvPath(), path.resolve(process.cwd(), '.env')];
 
   for (const envPath of candidatePaths) {
     if (fs.existsSync(envPath)) {
@@ -46,9 +49,5 @@ export function loadRootEnv(): void {
  * Retorna las rutas candidatas del archivo .env para ConfigModule.forRoot({ envFilePath: getRootEnvFilePaths() })
  */
 export function getRootEnvFilePaths(): string[] {
-  return [
-    path.resolve(process.cwd(), '../../.env'),
-    path.resolve(process.cwd(), '.env'),
-    path.resolve(__dirname, '../../../.env'),
-  ];
+  return [getRootEnvPath(), path.resolve(process.cwd(), '.env')];
 }

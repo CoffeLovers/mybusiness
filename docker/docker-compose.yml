@@ -5,16 +5,16 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-mybusiness_admin}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_in_production_postgres_admin_pass}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: ${POSTGRES_DB:-auth_db}
       AUTH_DB_USER: ${AUTH_DB_USER:-auth_user}
-      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:-change_in_production_auth_pass}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:?AUTH_DB_PASSWORD is required}
       FINANCE_DB_USER: ${FINANCE_DB_USER:-finance_user}
-      FINANCE_DB_PASSWORD: ${FINANCE_DB_PASSWORD:-change_in_production_finance_pass}
+      FINANCE_DB_PASSWORD: ${FINANCE_DB_PASSWORD:?FINANCE_DB_PASSWORD is required}
       AGENT_DB_USER: ${AGENT_DB_USER:-agent_user}
-      AGENT_DB_PASSWORD: ${AGENT_DB_PASSWORD:-change_in_production_agent_pass}
+      AGENT_DB_PASSWORD: ${AGENT_DB_PASSWORD:?AGENT_DB_PASSWORD is required}
       AUDIT_DB_USER: ${AUDIT_DB_USER:-audit_user}
-      AUDIT_DB_PASSWORD: ${AUDIT_DB_PASSWORD:-change_in_production_audit_pass}
+      AUDIT_DB_PASSWORD: ${AUDIT_DB_PASSWORD:?AUDIT_DB_PASSWORD is required}
     ports:
       - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
     volumes:
@@ -31,10 +31,15 @@ services:
     image: redis:7-alpine
     container_name: mybusiness_redis
     restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD:-change_in_production_redis_secret} --appendonly yes
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      - --appendonly
+      - 'yes'
     environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-change_in_production_redis_secret}
-      REDISCLI_AUTH: ${REDIS_PASSWORD:-change_in_production_redis_secret}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     ports:
       - '127.0.0.1:${REDIS_PORT:-6379}:6379'
     volumes:
