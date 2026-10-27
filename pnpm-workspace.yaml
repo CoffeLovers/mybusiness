@@ -4,6 +4,5 @@ packages:
 
 allowBuilds:
   '@scarf/scarf': false
-  msgpackr-extract: false
   argon2: true
   esbuild: true

@@ -1,21 +1,21 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
-import { getMicroserviceRedisOptions } from '@mybusiness/common';
 import { AgentServiceModule } from './agent-service.module';
 
 async function bootstrap() {
   const logger = new Logger('AgentService');
-  const redisOptions = getMicroserviceRedisOptions();
+  const port = parseInt(process.env.AGENT_SERVICE_PORT || '3003', 10);
 
   const app = await NestFactory.createMicroservice<MicroserviceOptions>(AgentServiceModule, {
-    transport: Transport.REDIS,
-    options: redisOptions,
+    transport: Transport.TCP,
+    options: {
+      host: '0.0.0.0',
+      port,
+    },
   });
 
   await app.listen();
-  logger.log(
-    `🧠 Agent Memory Service (pgvector) conectado a Redis Broker en ${redisOptions.host}:${redisOptions.port}`,
-  );
+  logger.log(`🧠 Agent Memory Service (pgvector) corriendo en TCP puerto ${port}`);
 }
 bootstrap();
