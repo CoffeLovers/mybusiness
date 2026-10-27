@@ -25,6 +25,12 @@ export enum AccountType {
   INVESTMENT = 'INVESTMENT',
 }
 
+export enum SyncStatus {
+  SYNCED = 'SYNCED',
+  PENDING = 'PENDING',
+  ERROR = 'ERROR',
+}
+
 export enum TransactionType {
   INCOME = 'INCOME',
   EXPENSE = 'EXPENSE',

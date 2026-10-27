@@ -23,6 +23,7 @@
     "test": "pnpm -r --if-present run test",
     "pretest:infra": "pnpm build",
     "test:infra": "node scripts/verify-issue2.js",
+    "test:schemas": "node scripts/verify-issue4.js",
     "test:e2e": "pnpm -r --if-present run test:e2e",
     "test:cov": "pnpm -r --if-present run test:cov",
     "docker:up": "docker compose --env-file .env -f docker/docker-compose.yml up -d",
