@@ -131,9 +131,20 @@ describe('TenantGuard (Unit)', () => {
     expect(guard.canActivate(httpContext({ user: { tenantId: 'tenant-1' } }))).toBe(true);
   });
 
-  it('permite el fallback x-tenant-id cuando no hay usuario', () => {
+  it('rechaza el fallback x-tenant-id cuando no hay usuario autenticado', () => {
     const guard = new TenantGuard(reflectorWith({}));
-    expect(guard.canActivate(httpContext({ headers: { 'x-tenant-id': 'tenant-1' } }))).toBe(true);
+    expect(() =>
+      guard.canActivate(httpContext({ headers: { 'x-tenant-id': 'tenant-1' } })),
+    ).toThrow(UnauthorizedException);
+  });
+
+  it('ignora x-tenant-id aunque exista usuario sin tenantId', () => {
+    const guard = new TenantGuard(reflectorWith({}));
+    expect(() =>
+      guard.canActivate(
+        httpContext({ user: { role: UserRole.VIEWER }, headers: { 'x-tenant-id': 'tenant-1' } }),
+      ),
+    ).toThrow(UnauthorizedException);
   });
 
   it('lanza Unauthorized cuando falta el contexto de tenant', () => {

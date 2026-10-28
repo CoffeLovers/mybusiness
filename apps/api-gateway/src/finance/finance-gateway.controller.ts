@@ -32,10 +32,10 @@ export class FinanceGatewayController {
   @Post('accounts')
   createAccount(@CurrentUser() user: UserContext, @Body() dto: CreateBankAccountDto) {
     return rpcSend(this.financeClient, FinancePatterns.CREATE_ACCOUNT, {
+      ...dto,
       tenantId: user.tenantId,
       userId: user.userId,
       role: user.role,
-      ...dto,
     });
   }
 
@@ -52,10 +52,10 @@ export class FinanceGatewayController {
   @Post('transactions')
   createTransaction(@CurrentUser() user: UserContext, @Body() dto: CreateTransactionDto) {
     return rpcSend(this.financeClient, FinancePatterns.CREATE_TRANSACTION, {
+      ...dto,
       tenantId: user.tenantId,
       userId: user.userId,
       role: user.role,
-      ...dto,
     });
   }
 
@@ -72,10 +72,10 @@ export class FinanceGatewayController {
   @Post('invoices')
   createInvoice(@CurrentUser() user: UserContext, @Body() dto: CreateInvoiceDto) {
     return rpcSend(this.financeClient, FinancePatterns.CREATE_INVOICE, {
+      ...dto,
       tenantId: user.tenantId,
       userId: user.userId,
       role: user.role,
-      ...dto,
     });
   }
 }

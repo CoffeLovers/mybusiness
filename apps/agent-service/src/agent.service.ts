@@ -1,5 +1,9 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import type { RequestContext } from '@mybusiness/contracts';
+import type {
+  QueryAgentMemoryDto,
+  RequestContext,
+  StoreAgentMemoryDto,
+} from '@mybusiness/contracts';
 
 interface MemoryView {
   id: string;
@@ -18,11 +22,12 @@ export class AgentService {
   /** Memorias aisladas por tenant. En producción la consulta usa `eq(agentMemories.tenantId, tenantId)`. */
   private readonly memoriesByTenant = new Map<string, MemoryView[]>();
 
-  async storeMemory(ctx: RequestContext, dto: any) {
+  async storeMemory(ctx: RequestContext, dto: StoreAgentMemoryDto) {
     const tenantId = this.requireTenant(ctx);
     const memory: MemoryView = {
       id: 'mem-' + Math.random().toString(36).substring(2, 9),
       tenantId,
+      // El contexto del token siempre prevalece sobre cualquier campo del DTO.
       userId: ctx.userId,
       content: dto.content,
       contextType: dto.contextType,
@@ -39,7 +44,7 @@ export class AgentService {
     };
   }
 
-  async queryMemory(ctx: RequestContext, dto: any) {
+  async queryMemory(ctx: RequestContext, dto: QueryAgentMemoryDto) {
     const tenantId = this.requireTenant(ctx);
     const topK = typeof dto.topK === 'number' && dto.topK > 0 ? dto.topK : undefined;
     const memories = this.tenantMemories(tenantId);

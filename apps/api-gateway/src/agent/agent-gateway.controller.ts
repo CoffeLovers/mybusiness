@@ -22,10 +22,10 @@ export class AgentGatewayController {
   @Post('memory/store')
   storeMemory(@CurrentUser() user: UserContext, @Body() dto: StoreAgentMemoryDto) {
     return rpcSend(this.agentClient, AgentPatterns.STORE_MEMORY, {
+      ...dto,
       tenantId: user.tenantId,
       userId: user.userId,
       role: user.role,
-      ...dto,
     });
   }
 
@@ -33,10 +33,10 @@ export class AgentGatewayController {
   @Post('memory/query')
   queryMemory(@CurrentUser() user: UserContext, @Body() dto: QueryAgentMemoryDto) {
     return rpcSend(this.agentClient, AgentPatterns.QUERY_MEMORY, {
+      ...dto,
       tenantId: user.tenantId,
       userId: user.userId,
       role: user.role,
-      ...dto,
     });
   }
 }

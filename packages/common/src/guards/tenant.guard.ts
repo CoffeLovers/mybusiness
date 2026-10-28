@@ -16,7 +16,9 @@ export class TenantGuard implements CanActivate {
     }
 
     const req = context.switchToHttp().getRequest();
-    const tenantId = req?.user?.tenantId || req?.headers?.['x-tenant-id'];
+    // El tenant SIEMPRE proviene del token verificado (req.user). Nunca de cabeceras
+    // controladas por el cliente, para evitar spoofing entre tenants.
+    const tenantId = req?.user?.tenantId;
     if (!tenantId) {
       throw new UnauthorizedException('Tenant context is missing or invalid');
     }

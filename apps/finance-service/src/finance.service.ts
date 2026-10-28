@@ -4,6 +4,9 @@ import {
   InvoiceStatus,
   TransactionStatus,
   TransactionType,
+  type CreateBankAccountDto,
+  type CreateInvoiceDto,
+  type CreateTransactionDto,
   type RequestContext,
 } from '@mybusiness/contracts';
 
@@ -69,12 +72,16 @@ export class FinanceService {
     return this.tenantAccounts(tenantId).slice();
   }
 
-  async createAccount(ctx: RequestContext, dto: any): Promise<AccountView> {
+  async createAccount(ctx: RequestContext, dto: CreateBankAccountDto): Promise<AccountView> {
     const tenantId = this.requireTenant(ctx);
+    const initialBalanceMinor = dto.initialBalanceMinor ?? '0';
     const account: AccountView = {
       id: 'acc-' + Math.random().toString(36).substring(2, 9),
-      tenantId,
       ...dto,
+      // El contexto del token siempre prevalece sobre cualquier campo del DTO.
+      tenantId,
+      currentBalanceMinor: initialBalanceMinor,
+      availableBalanceMinor: initialBalanceMinor,
       createdBy: ctx.userId,
       createdAt: new Date().toISOString(),
     };
@@ -89,7 +96,10 @@ export class FinanceService {
     return this.tenantTransactions(tenantId).slice();
   }
 
-  async createTransaction(ctx: RequestContext, dto: any): Promise<TransactionView> {
+  async createTransaction(
+    ctx: RequestContext,
+    dto: CreateTransactionDto,
+  ): Promise<TransactionView> {
     const tenantId = this.requireTenant(ctx);
     const idempotencyKey = dto?.idempotencyKey;
 
@@ -110,8 +120,9 @@ export class FinanceService {
     const now = new Date().toISOString();
     const transaction: TransactionView = {
       id: 'tx-' + Math.random().toString(36).substring(2, 9),
-      tenantId,
       ...dto,
+      // El contexto del token siempre prevalece sobre cualquier campo del DTO.
+      tenantId,
       status: TransactionStatus.PENDING,
       createdBy: ctx.userId,
       bookingDate: now,
@@ -131,12 +142,13 @@ export class FinanceService {
     return this.tenantInvoices(tenantId).slice();
   }
 
-  async createInvoice(ctx: RequestContext, dto: any): Promise<InvoiceView> {
+  async createInvoice(ctx: RequestContext, dto: CreateInvoiceDto): Promise<InvoiceView> {
     const tenantId = this.requireTenant(ctx);
     const invoice: InvoiceView = {
       id: 'inv-' + Math.random().toString(36).substring(2, 9),
-      tenantId,
       ...dto,
+      // El contexto del token siempre prevalece sobre cualquier campo del DTO.
+      tenantId,
       status: InvoiceStatus.DRAFT,
       createdBy: ctx.userId,
       createdAt: new Date().toISOString(),
