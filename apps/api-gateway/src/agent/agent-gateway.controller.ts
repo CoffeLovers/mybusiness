@@ -1,10 +1,15 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, Inject, Post } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
-import { Inject } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
-import { AgentPatterns, QueryAgentMemoryDto, StoreAgentMemoryDto } from '@mybusiness/contracts';
-import { CurrentTenant, rpcSend } from '@mybusiness/common';
+import {
+  AgentPatterns,
+  QueryAgentMemoryDto,
+  StoreAgentMemoryDto,
+  UserRole,
+  type UserContext,
+} from '@mybusiness/contracts';
+import { CurrentUser, Roles, rpcSend } from '@mybusiness/common';
 
 @ApiTags('Agent')
 @SkipThrottle({ api: true, auth: true })
@@ -13,13 +18,25 @@ import { CurrentTenant, rpcSend } from '@mybusiness/common';
 export class AgentGatewayController {
   constructor(@Inject('AGENT_SERVICE') private readonly agentClient: ClientProxy) {}
 
+  @Roles(UserRole.ACCOUNTANT, UserRole.TENANT_ADMIN, UserRole.SUPER_ADMIN)
   @Post('memory/store')
-  storeMemory(@CurrentTenant() tenantId: string, @Body() dto: StoreAgentMemoryDto) {
-    return rpcSend(this.agentClient, AgentPatterns.STORE_MEMORY, { tenantId, ...dto });
+  storeMemory(@CurrentUser() user: UserContext, @Body() dto: StoreAgentMemoryDto) {
+    return rpcSend(this.agentClient, AgentPatterns.STORE_MEMORY, {
+      tenantId: user.tenantId,
+      userId: user.userId,
+      role: user.role,
+      ...dto,
+    });
   }
 
+  @HttpCode(200)
   @Post('memory/query')
-  queryMemory(@CurrentTenant() tenantId: string, @Body() dto: QueryAgentMemoryDto) {
-    return rpcSend(this.agentClient, AgentPatterns.QUERY_MEMORY, { tenantId, ...dto });
+  queryMemory(@CurrentUser() user: UserContext, @Body() dto: QueryAgentMemoryDto) {
+    return rpcSend(this.agentClient, AgentPatterns.QUERY_MEMORY, {
+      tenantId: user.tenantId,
+      userId: user.userId,
+      role: user.role,
+      ...dto,
+    });
   }
 }

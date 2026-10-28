@@ -8,6 +8,8 @@ import {
   getMicroserviceRedisOptions,
   getRedisConfig,
   getRootEnvFilePaths,
+  RolesGuard,
+  TenantGuard,
 } from '@mybusiness/common';
 import { HealthController } from './health/health.controller';
 import { AuthGatewayController } from './auth/auth-gateway.controller';
@@ -109,6 +111,14 @@ import { DistributedThrottlerGuard, ThrottlerStorageRedisService } from './throt
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: TenantGuard,
     },
     {
       provide: APP_GUARD,

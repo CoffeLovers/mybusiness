@@ -7,8 +7,10 @@ import {
   CreateInvoiceDto,
   CreateTransactionDto,
   FinancePatterns,
+  type UserContext,
+  UserRole,
 } from '@mybusiness/contracts';
-import { CurrentTenant, rpcSend } from '@mybusiness/common';
+import { CurrentUser, Roles, rpcSend } from '@mybusiness/common';
 
 @ApiTags('Finance')
 @SkipThrottle({ auth: true, heavy: true })
@@ -18,32 +20,62 @@ export class FinanceGatewayController {
   constructor(@Inject('FINANCE_SERVICE') private readonly financeClient: ClientProxy) {}
 
   @Get('accounts')
-  getAccounts(@CurrentTenant() tenantId: string) {
-    return rpcSend(this.financeClient, FinancePatterns.GET_ACCOUNTS, { tenantId });
+  getAccounts(@CurrentUser() user: UserContext) {
+    return rpcSend(this.financeClient, FinancePatterns.GET_ACCOUNTS, {
+      tenantId: user.tenantId,
+      userId: user.userId,
+      role: user.role,
+    });
   }
 
+  @Roles(UserRole.ACCOUNTANT, UserRole.TENANT_ADMIN, UserRole.SUPER_ADMIN)
   @Post('accounts')
-  createAccount(@CurrentTenant() tenantId: string, @Body() dto: CreateBankAccountDto) {
-    return rpcSend(this.financeClient, FinancePatterns.CREATE_ACCOUNT, { tenantId, ...dto });
+  createAccount(@CurrentUser() user: UserContext, @Body() dto: CreateBankAccountDto) {
+    return rpcSend(this.financeClient, FinancePatterns.CREATE_ACCOUNT, {
+      tenantId: user.tenantId,
+      userId: user.userId,
+      role: user.role,
+      ...dto,
+    });
   }
 
   @Get('transactions')
-  getTransactions(@CurrentTenant() tenantId: string) {
-    return rpcSend(this.financeClient, FinancePatterns.GET_TRANSACTIONS, { tenantId });
+  getTransactions(@CurrentUser() user: UserContext) {
+    return rpcSend(this.financeClient, FinancePatterns.GET_TRANSACTIONS, {
+      tenantId: user.tenantId,
+      userId: user.userId,
+      role: user.role,
+    });
   }
 
+  @Roles(UserRole.ACCOUNTANT, UserRole.TENANT_ADMIN, UserRole.SUPER_ADMIN)
   @Post('transactions')
-  createTransaction(@CurrentTenant() tenantId: string, @Body() dto: CreateTransactionDto) {
-    return rpcSend(this.financeClient, FinancePatterns.CREATE_TRANSACTION, { tenantId, ...dto });
+  createTransaction(@CurrentUser() user: UserContext, @Body() dto: CreateTransactionDto) {
+    return rpcSend(this.financeClient, FinancePatterns.CREATE_TRANSACTION, {
+      tenantId: user.tenantId,
+      userId: user.userId,
+      role: user.role,
+      ...dto,
+    });
   }
 
   @Get('invoices')
-  getInvoices(@CurrentTenant() tenantId: string) {
-    return rpcSend(this.financeClient, FinancePatterns.GET_INVOICES, { tenantId });
+  getInvoices(@CurrentUser() user: UserContext) {
+    return rpcSend(this.financeClient, FinancePatterns.GET_INVOICES, {
+      tenantId: user.tenantId,
+      userId: user.userId,
+      role: user.role,
+    });
   }
 
+  @Roles(UserRole.ACCOUNTANT, UserRole.TENANT_ADMIN, UserRole.SUPER_ADMIN)
   @Post('invoices')
-  createInvoice(@CurrentTenant() tenantId: string, @Body() dto: CreateInvoiceDto) {
-    return rpcSend(this.financeClient, FinancePatterns.CREATE_INVOICE, { tenantId, ...dto });
+  createInvoice(@CurrentUser() user: UserContext, @Body() dto: CreateInvoiceDto) {
+    return rpcSend(this.financeClient, FinancePatterns.CREATE_INVOICE, {
+      tenantId: user.tenantId,
+      userId: user.userId,
+      role: user.role,
+      ...dto,
+    });
   }
 }

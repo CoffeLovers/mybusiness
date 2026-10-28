@@ -1,6 +1,7 @@
 import { IsEnum, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { AccountType, TransactionType } from '../enums';
 import { CURRENCY_CODE_PATTERN, MAX_MONEY_MINOR_DIGITS, MONEY_MINOR_PATTERN } from '../money';
+import type { RequestContext, WithContext } from './context.dto';
 
 export class CreateBankAccountDto {
   @IsString()
@@ -95,3 +96,9 @@ export class CreateInvoiceDto {
   @IsNotEmpty()
   dueDate!: string;
 }
+
+/** Payloads RPC de Finance: siempre incluyen tenantId, userId y role. */
+export type FinanceTenantPayload = RequestContext;
+export type CreateBankAccountRpcPayload = WithContext<CreateBankAccountDto>;
+export type CreateTransactionRpcPayload = WithContext<CreateTransactionDto>;
+export type CreateInvoiceRpcPayload = WithContext<CreateInvoiceDto>;
