@@ -1,0 +1,44 @@
+{
+  "name": "@mybusiness/auth-service",
+  "version": "1.0.0",
+  "description": "Microservicio de Identidad, Tenants y Autenticación NestJS",
+  "scripts": {
+    "dev": "nest start --watch",
+    "build": "nest build",
+    "start": "node dist/main",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "tsx src/database/seed.ts",
+    "pretest": "pnpm --filter @mybusiness/contracts build && pnpm --filter @mybusiness/common build",
+    "test": "vitest run",
+    "test:cov": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@mybusiness/common": "workspace:*",
+    "@mybusiness/contracts": "workspace:*",
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/config": "^4.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/jwt": "^12.0.3",
+    "@nestjs/microservices": "^11.0.0",
+    "argon2": "^0.45.1",
+    "drizzle-orm": "^0.45.4",
+    "ioredis": "^6.0.0",
+    "pg": "^8.23.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.23.1",
+    "@vitest/coverage-v8": "^5.0.5",
+    "dotenv": "^18.0.9",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.23.15",
+    "typescript": "^5.7.2",
+    "vitest": "^5.0.5"
+  }
+}

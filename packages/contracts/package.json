@@ -1,0 +1,18 @@
+{
+  "name": "@mybusiness/contracts",
+  "version": "1.0.0",
+  "description": "Contratos, DTOs y Patrones de Mensajes compartidos para microservicios MyBusiness",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}
