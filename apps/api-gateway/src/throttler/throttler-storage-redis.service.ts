@@ -19,6 +19,12 @@ interface MemoryFallbackRecord {
 @Injectable()
 export class ThrottlerStorageRedisService implements ThrottlerStorage, OnModuleDestroy {
   private readonly logger = new Logger(ThrottlerStorageRedisService.name);
+
+  /**
+   * Límite de seguridad para el fallback en memoria: evita crecimiento ilimitado
+   * bajo ataques con IPs/tenants únicos cuando Redis está caído.
+   */
+  private static readonly MAX_MEMORY_FALLBACK_ENTRIES = 5000;
   private readonly redis: Redis;
   private readonly isCustomClient: boolean;
 
@@ -162,6 +168,7 @@ export class ThrottlerStorageRedisService implements ThrottlerStorage, OnModuleD
     }
 
     if (!record) {
+      this.evictMemoryFallback(now);
       record = {
         totalHits: 1,
         expiresAt: now + ttl,
@@ -205,6 +212,30 @@ export class ThrottlerStorageRedisService implements ThrottlerStorage, OnModuleD
       isBlocked: false,
       timeToBlockExpire: 0,
     };
+  }
+
+  /**
+   * Acota el fallback en memoria: primero elimina entradas expiradas;
+   * si aún se supera el límite, elimina las más antiguas (orden de inserción del Map).
+   */
+  private evictMemoryFallback(now: number): void {
+    if (this.memoryFallback.size < ThrottlerStorageRedisService.MAX_MEMORY_FALLBACK_ENTRIES) {
+      return;
+    }
+    for (const [k, v] of this.memoryFallback) {
+      if (v.expiresAt <= now && (!v.blockExpiresAt || v.blockExpiresAt <= now)) {
+        this.memoryFallback.delete(k);
+      }
+      if (this.memoryFallback.size < ThrottlerStorageRedisService.MAX_MEMORY_FALLBACK_ENTRIES) {
+        return;
+      }
+    }
+    // Si aún está lleno, eliminar las más antiguas
+    while (this.memoryFallback.size >= ThrottlerStorageRedisService.MAX_MEMORY_FALLBACK_ENTRIES) {
+      const oldest = this.memoryFallback.keys().next().value;
+      if (oldest === undefined) break;
+      this.memoryFallback.delete(oldest);
+    }
   }
 
   async onModuleDestroy(): Promise<void> {

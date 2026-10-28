@@ -244,8 +244,8 @@ describe('Security & Rate-Limiting E2E (API Gateway)', () => {
       });
 
       const payload = {
-        query: 'Balance consolidado del mes',
-        limit: 5,
+        queryText: 'Balance consolidado del mes',
+        topK: 5,
       };
 
       // Primeras 10 peticiones
@@ -255,7 +255,7 @@ describe('Security & Rate-Limiting E2E (API Gateway)', () => {
           .set('Authorization', `Bearer ${token}`)
           .send(payload);
 
-        expect(res.status).not.toBe(429);
+        expect(res.status).toBe(200);
       }
 
       // La 11va petición debe ser bloqueada con 429
