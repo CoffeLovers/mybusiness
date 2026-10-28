@@ -43,7 +43,7 @@ export class AuthGatewayController {
   ) {}
 
   @Public()
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Throttle({ auth: { limit: 5, ttl: 60000 } })
   @Post('register')
   async register(@Body() dto: RegisterDto, @Res({ passthrough: true }) res: Response) {
     const session = await this.call<AuthTokensResponse, RegisterDto>(AuthPatterns.REGISTER, dto);
@@ -52,7 +52,7 @@ export class AuthGatewayController {
   }
 
   @Public()
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Throttle({ auth: { limit: 5, ttl: 60000 } })
   @Post('login')
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
     const session = await this.call<AuthTokensResponse, LoginDto>(AuthPatterns.LOGIN, dto);

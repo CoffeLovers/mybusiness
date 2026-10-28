@@ -3,13 +3,18 @@ import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { ClientsModule, Transport } from '@nestjs/microservices';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
-import { getMicroserviceRedisOptions, getRootEnvFilePaths } from '@mybusiness/common';
+import { ThrottlerModule } from '@nestjs/throttler';
+import {
+  getMicroserviceRedisOptions,
+  getRedisConfig,
+  getRootEnvFilePaths,
+} from '@mybusiness/common';
 import { HealthController } from './health/health.controller';
 import { AuthGatewayController } from './auth/auth-gateway.controller';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { FinanceGatewayController } from './finance/finance-gateway.controller';
 import { AgentGatewayController } from './agent/agent-gateway.controller';
+import { DistributedThrottlerGuard, ThrottlerStorageRedisService } from './throttler';
 
 @Module({
   imports: [
@@ -31,12 +36,30 @@ import { AgentGatewayController } from './agent/agent-gateway.controller';
         };
       },
     }),
-    ThrottlerModule.forRoot([
-      {
-        ttl: 60000,
-        limit: 100,
-      },
-    ]),
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        throttlers: [
+          {
+            name: 'auth',
+            ttl: 60000,
+            limit: 5,
+          },
+          {
+            name: 'api',
+            ttl: 60000,
+            limit: 100,
+          },
+          {
+            name: 'heavy',
+            ttl: 60000,
+            limit: 10,
+          },
+        ],
+        storage: new ThrottlerStorageRedisService(getRedisConfig(config)),
+      }),
+    }),
     ClientsModule.registerAsync([
       {
         name: 'AUTH_SERVICE',
@@ -89,7 +112,7 @@ import { AgentGatewayController } from './agent/agent-gateway.controller';
     },
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: DistributedThrottlerGuard,
     },
   ],
 })
