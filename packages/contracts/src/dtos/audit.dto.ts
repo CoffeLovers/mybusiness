@@ -7,8 +7,8 @@ export interface CreateAuditLogEvent {
   action: string;
   entityName: string;
   entityId?: string;
-  oldValues?: Record<string, any>;
-  newValues?: Record<string, any>;
+  oldValues?: Record<string, unknown>;
+  newValues?: Record<string, unknown>;
   ipAddress?: string;
   userAgent?: string;
   timestamp: string;
