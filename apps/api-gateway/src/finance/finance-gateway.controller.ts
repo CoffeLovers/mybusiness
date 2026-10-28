@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Inject, Post } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
 import { ApiTags } from '@nestjs/swagger';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import {
   CreateBankAccountDto,
   CreateInvoiceDto,
@@ -10,6 +11,8 @@ import {
 import { CurrentTenant, rpcSend } from '@mybusiness/common';
 
 @ApiTags('Finance')
+@SkipThrottle({ auth: true, heavy: true })
+@Throttle({ api: { limit: 100, ttl: 60000 } })
 @Controller('finance')
 export class FinanceGatewayController {
   constructor(@Inject('FINANCE_SERVICE') private readonly financeClient: ClientProxy) {}

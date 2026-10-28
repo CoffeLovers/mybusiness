@@ -79,13 +79,13 @@ flowchart TD
 
 ## 🧩 Catálogo de Microservicios
 
-| Servicio              | Responsabilidad de Dominio                                                                                    | Comunicación                                                       | Almacenamiento                        |
-| --------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------- |
-| **`api-gateway`**     | Punto de entrada único, routing, rate-limiting, CORS, Helmet y verificación JWT.                              | HTTP REST (hacia clientes) / RPC (hacia microservicios)            | Redis (Broker) / Throttler en memoria |
-| **`auth-service`**    | Gestión de Tenants (empresas), usuarios, login, registro, rotación de Refresh Tokens con hash SHA-256 y RBAC. | RPC (Request-Response) + Eventos (UserRegistered, TenantCreated)   | PostgreSQL (`auth_db`)                |
-| **`finance-service`** | Cuentas bancarias, transacciones con deduplicación por clave de idempotencia, facturas e impuestos.           | RPC (Request-Response) + Eventos (TransactionCreated, InvoicePaid) | PostgreSQL (`finance_db`)             |
-| **`agent-service`**   | Memoria semántica del agente de IA, indexación vectorial con pgvector (HNSW) y recuperación contextual.       | RPC (Similarity Search, Store Memory)                              | PostgreSQL + `pgvector` (`agent_db`)  |
-| **`audit-service`**   | Registro inmutable de auditoría (append-only), trazabilidad de acciones y cambios de estado.                  | Asíncrona (EventPattern subscriber vía Redis)                      | PostgreSQL (`audit_db`)               |
+| Servicio              | Responsabilidad de Dominio                                                                                    | Comunicación                                                       | Almacenamiento                            |
+| --------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------- |
+| **`api-gateway`**     | Punto de entrada único, routing, rate-limiting distribuido, CORS, Helmet y verificación JWT.                  | HTTP REST (hacia clientes) / RPC (hacia microservicios)            | Redis (Broker, Rate-Limiting Distribuido) |
+| **`auth-service`**    | Gestión de Tenants (empresas), usuarios, login, registro, rotación de Refresh Tokens con hash SHA-256 y RBAC. | RPC (Request-Response) + Eventos (UserRegistered, TenantCreated)   | PostgreSQL (`auth_db`)                    |
+| **`finance-service`** | Cuentas bancarias, transacciones con deduplicación por clave de idempotencia, facturas e impuestos.           | RPC (Request-Response) + Eventos (TransactionCreated, InvoicePaid) | PostgreSQL (`finance_db`)                 |
+| **`agent-service`**   | Memoria semántica del agente de IA, indexación vectorial con pgvector (HNSW) y recuperación contextual.       | RPC (Similarity Search, Store Memory)                              | PostgreSQL + `pgvector` (`agent_db`)      |
+| **`audit-service`**   | Registro inmutable de auditoría (append-only), trazabilidad de acciones y cambios de estado.                  | Asíncrona (EventPattern subscriber vía Redis)                      | PostgreSQL (`audit_db`)                   |
 
 ---
 
@@ -101,7 +101,7 @@ flowchart TD
 | **Precisión Monetaria**     | `BIGINT` en unidades menores + `string` en JSON                                                                   | Importes exactos sin `float`; los DTOs usan `*Minor` y moneda ISO 4217. Decisión en [ADR 003](docs/adr/003-dinero.md).                                                            |
 | **Contratos Compartidos**   | `@mybusiness/contracts`                                                                                           | DTOs, enums, `MessagePatterns` y `EventPatterns` como fuente única de verdad. Decisión en [ADR 004](docs/adr/004-contratos.md).                                                   |
 | **Memoria Vectorial**       | [pgvector](https://github.com/pgvector/pgvector)                                                                  | Búsqueda por similitud semántica de embeddings para el agente de IA.                                                                                                              |
-| **Caché y Colas**           | [Redis 7](https://redis.io/) / [BullMQ](https://bullmq.io/)                                                       | Rate-limiting base en memoria (la distribución con Redis se completa en #7), colas de procesamiento en segundo plano y caché.                                                     |
+| **Caché y Colas**           | [Redis 7](https://redis.io/) / [BullMQ](https://bullmq.io/)                                                       | Rate-limiting distribuido atómico con Lua script sobre Redis 7, colas de procesamiento en segundo plano y caché. Decisión en [ADR 005](docs/adr/005-rate-limiting-fail-mode.md).  |
 | **Seguridad Criptográfica** | Argon2id, SHA-256 para Refresh Tokens y JWT                                                                       | Hashing de passwords, tokens opacos con hash de una sola vía y Access Tokens de corta duración.                                                                                   |
 | **Contenedores**            | [Docker](https://www.docker.com/) & Docker Compose                                                                | Orquestación reproducible de microservicios y dependencias locales.                                                                                                               |
 | **CI / CD**                 | [GitHub Actions](https://github.com/features/actions)                                                             | Pipelines automatizados de linting, typecheck, tests y builds paralelos de microservicios.                                                                                        |
@@ -157,7 +157,7 @@ Siguiendo el principio de **Database-per-Service** (con bases de datos o esquema
 
 - **Autenticación en Gateway**: El `api-gateway` valida el Access Token JWT emitido por `auth-service`, adjunta la identidad y el tenant al request y usa esos datos en las llamadas RPC a los microservicios internos. Los Refresh Tokens viajan en cookies `HttpOnly`, `SameSite=Strict` y `Secure` en producción.
 - **Aislamiento Multi-Tenant**: Cada microservicio aplica internamente el filtro obligatorio de `tenantId` en sus consultas, impidiendo accesos cruzados (prevención hermética de vulnerabilidades IDOR).
-- **Protección Perimetral y Rate-Limiting**: `@nestjs/throttler` aplica un límite global de 100 req/min y 5 req/min en `login`/`register`. El almacenamiento distribuido en Redis y el endurecimiento HTTP completo se completan en #7; por ahora el contador es por instancia del Gateway.
+- **Protección Perimetral y Rate-Limiting**: `@nestjs/throttler` con almacenamiento distribuido atómico en Redis vía script Lua coordina réplicas del Gateway. Políticas diferenciadas: `auth` (5 req/min por IP estricta con `trust proxy`), `api` (100 req/min por tenant o IP) y `heavy` (10 req/min por tenant para endpoints intensivos). Resiliencia híbrida documentada en [ADR 005](docs/adr/005-rate-limiting-fail-mode.md) (fallback local en memoria ante indisponibilidad de Redis sin degradar seguridad de auth). Endurecimiento perimetral con Helmet, CORS estricto y cabeceras estándar RFC `Retry-After` y `X-RateLimit-*`.
 - **Trazabilidad Asíncrona**: Cada operación crítica emite un evento al bus de Redis que es procesado de forma no bloqueante por el `audit-service`.
 
 ### Endpoints de Autenticación
@@ -193,7 +193,7 @@ El desarrollo del proyecto se encuentra estructurado en torno al diseño de micr
 
 - [x] [#5 — [Sprint 2][Security] Auth Service con JWT y Refresh Tokens opacos (hash SHA-256)](https://github.com/Umbrex47/mybusiness/issues/5)
 - [ ] [#6 — [Sprint 2][Security] RBAC y propagación de contexto Multi-Tenant entre microservicios](https://github.com/Umbrex47/mybusiness/issues/6)
-- [ ] [#7 — [Sprint 2][Security] Rate-Limiting distribuido en API Gateway con Redis y endurecimiento HTTP](https://github.com/Umbrex47/mybusiness/issues/7)
+- [x] [#7 — [Sprint 2][Security] Rate-Limiting distribuido en API Gateway con Redis y endurecimiento HTTP](https://github.com/Umbrex47/mybusiness/issues/7)
 - [ ] [#8 — [Sprint 2][DevOps] Pipelines de CI para Microservicios en GitHub Actions (Lint, Tests, Build)](https://github.com/Umbrex47/mybusiness/issues/8)
 - [ ] [#9 — [Sprint 2][DevOps] Análisis estático de seguridad (SAST) y escaneo de imágenes con SonarQube y Trivy](https://github.com/Umbrex47/mybusiness/issues/9)
 - [ ] [#13 — [Sprint 2][Finance] Lógica de dominio del finance-service: cuentas, transacciones idempotentes y facturación](https://github.com/Umbrex47/mybusiness/issues/13)
