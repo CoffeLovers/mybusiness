@@ -1,6 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { getRootEnvFilePaths } from '@mybusiness/common';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import {
+  RpcTenantContextInterceptor,
+  RpcTenantGuard,
+  getRootEnvFilePaths,
+} from '@mybusiness/common';
 import { FinanceController } from './finance.controller';
 import { FinanceService } from './finance.service';
 
@@ -12,6 +17,16 @@ import { FinanceService } from './finance.service';
     }),
   ],
   controllers: [FinanceController],
-  providers: [FinanceService],
+  providers: [
+    FinanceService,
+    {
+      provide: APP_GUARD,
+      useClass: RpcTenantGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: RpcTenantContextInterceptor,
+    },
+  ],
 })
 export class FinanceServiceModule {}

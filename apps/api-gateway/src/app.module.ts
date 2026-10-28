@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { ClientsModule, Transport } from '@nestjs/microservices';
@@ -8,6 +8,8 @@ import {
   getMicroserviceRedisOptions,
   getRedisConfig,
   getRootEnvFilePaths,
+  RolesGuard,
+  TenantGuard,
 } from '@mybusiness/common';
 import { HealthController } from './health/health.controller';
 import { AuthGatewayController } from './auth/auth-gateway.controller';
@@ -15,6 +17,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { FinanceGatewayController } from './finance/finance-gateway.controller';
 import { AgentGatewayController } from './agent/agent-gateway.controller';
 import { DistributedThrottlerGuard, ThrottlerStorageRedisService } from './throttler';
+import { SecurityAuditFilter } from './security-audit.filter';
 
 @Module({
   imports: [
@@ -112,7 +115,19 @@ import { DistributedThrottlerGuard, ThrottlerStorageRedisService } from './throt
     },
     {
       provide: APP_GUARD,
+      useClass: RolesGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: TenantGuard,
+    },
+    {
+      provide: APP_GUARD,
       useClass: DistributedThrottlerGuard,
+    },
+    {
+      provide: APP_FILTER,
+      useClass: SecurityAuditFilter,
     },
   ],
 })
