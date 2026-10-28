@@ -1,11 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
-import {
-  GlobalExceptionFilter,
-  LoggingInterceptor,
-  TransformInterceptor,
-} from '@mybusiness/common';
+import { LoggingInterceptor, TransformInterceptor } from '@mybusiness/common';
 
 /**
  * Configura los middlewares, cabeceras de seguridad OWASP, CORS dinámico,
@@ -72,13 +68,7 @@ export function setupGatewayApp(app: INestApplication): void {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'X-Requested-With',
-      'x-tenant-id',
-      'x-refresh-token',
-    ],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-refresh-token'],
     exposedHeaders: [
       'Retry-After',
       'X-RateLimit-Limit',
@@ -100,5 +90,6 @@ export function setupGatewayApp(app: INestApplication): void {
     }),
   );
   app.useGlobalInterceptors(new LoggingInterceptor(), new TransformInterceptor());
-  app.useGlobalFilters(new GlobalExceptionFilter());
+  // Los filtros globales (incluido SecurityAuditFilter) se registran vía APP_FILTER
+  // en AppModule para garantizar el orden de resolución y la inyección de dependencias.
 }

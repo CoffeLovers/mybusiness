@@ -1,5 +1,6 @@
 import { IsArray, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 import { ContextType } from '../enums';
+import type { RequestContext, WithContext } from './context.dto';
 
 export class StoreAgentMemoryDto {
   @IsString()
@@ -30,3 +31,8 @@ export class QueryAgentMemoryDto {
   @IsOptional()
   topK?: number;
 }
+
+/** Payloads RPC de Agent: siempre incluyen tenantId, userId y role. */
+export type AgentTenantPayload = RequestContext;
+export type StoreAgentMemoryRpcPayload = WithContext<StoreAgentMemoryDto>;
+export type QueryAgentMemoryRpcPayload = WithContext<QueryAgentMemoryDto>;
