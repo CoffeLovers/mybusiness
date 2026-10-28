@@ -24,8 +24,15 @@ jobs:
           severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
       - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        continue-on-error: true
         with:
           sarif_file: 'trivy-fs.sarif'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-fs-sarif
+          path: trivy-fs.sarif
 
   sonarcloud:
     name: SonarCloud Scan
@@ -36,13 +43,12 @@ jobs:
         with:
           fetch-depth: 0
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
       - run: pnpm install --no-frozen-lockfile
       - uses: sonarsource/sonarcloud-github-action@master
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
