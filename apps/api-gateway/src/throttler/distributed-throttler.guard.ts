@@ -1,72 +1,44 @@
 import { ExecutionContext, Injectable } from '@nestjs/common';
-import { ThrottlerGuard, ThrottlerLimitDetail, ThrottlerRequest } from '@nestjs/throttler';
+import { ThrottlerGuard, ThrottlerLimitDetail } from '@nestjs/throttler';
 
 @Injectable()
 export class DistributedThrottlerGuard extends ThrottlerGuard {
   /**
-   * Mapeo inteligente y discriminación de políticas por ruta y decorador.
-   * Evita que la política restrictiva de 'auth' (5 req/min) bloquee endpoints estándar de 'api' (100 req/min).
+   * Permite que @SkipThrottle() sin argumentos desactive todas las políticas nombradas (auth, api, heavy).
    */
-  protected async handleRequest(requestProps: ThrottlerRequest): Promise<boolean> {
-    const { throttler, context } = requestProps;
-    const req = context.switchToHttp().getRequest();
-    const url = req?.originalUrl || req?.url || '';
-
-    const isAuthRoute = url.includes('/auth/login') || url.includes('/auth/register');
-    const isHeavyRoute = url.includes('/agent') || url.includes('/reports');
-
-    // 1. Throttler 'auth': solo aplica a endpoints sensibles de autenticación
-    if (throttler.name === 'auth' && !isAuthRoute) {
+  protected async shouldSkip(context: ExecutionContext): Promise<boolean> {
+    const handler = context.getHandler();
+    const classRef = context.getClass();
+    const skipDefault = this.reflector.getAllAndOverride<boolean | Record<string, boolean>>(
+      'THROTTLER:SKIPdefault',
+      [handler, classRef],
+    );
+    if (skipDefault === true) {
       return true;
     }
-
-    // 2. Throttler 'heavy': solo aplica a agentes de IA y generación de reportes
-    if (throttler.name === 'heavy' && !isHeavyRoute) {
-      return true;
-    }
-
-    // 3. Throttler 'api': limitador por defecto para endpoints estándar (omite auth y heavy para no duplicar conteo)
-    if (throttler.name === 'api' && (isAuthRoute || isHeavyRoute)) {
-      return true;
-    }
-
-    return super.handleRequest(requestProps);
+    return super.shouldSkip(context);
   }
 
   /**
    * Resolución de la clave de seguimiento (tracker):
-   * - En 'auth': por IP estricta para mitigar ataques de fuerza bruta.
-   * - En 'api' y 'heavy': por Tenant / Usuario autenticado, aislando el consumo entre clientes.
+   * - En rutas públicas o de autenticación (login/register): Se usa estrictamente la IP real
+   *   resuelta por Express (`req.ip`) a través de 'trust proxy'. NUNCA se confía en cabeceras
+   *   arbitrarias como `x-tenant-id` ni `X-Forwarded-For` manipuladas por el cliente.
+   * - En rutas autenticadas (políticas 'api' y 'heavy'): Se rastrea por `tenantId` (y `userId`)
+   *   extraído exclusivamente del contexto criptográfico de `req.user` verificado por `JwtAuthGuard`.
    */
-  protected async getTracker(
-    req: Record<string, any>,
-    context?: ExecutionContext,
-  ): Promise<string> {
-    const tenantId = req.user?.tenantId || req.headers?.['x-tenant-id'];
-    const userId = req.user?.id || req.user?.userId || req.user?.sub;
-
-    // Si hay contexto de tenant/usuario en la petición, agrupamos por negocio
-    if (tenantId) {
-      return `tenant:${tenantId}${userId ? `:${userId}` : ''}`;
-    }
-    if (userId) {
-      return `user:${userId}`;
+  protected async getTracker(req: Record<string, any>): Promise<string> {
+    const user = req.user;
+    if (user && user.tenantId) {
+      return `tenant:${user.tenantId}${user.id || user.userId ? `:${user.id || user.userId}` : ''}`;
     }
 
-    // Fallback a IP del cliente respetando proxies perimetrales
-    const forwarded = req.headers?.['x-forwarded-for'];
-    if (forwarded) {
-      const clientIp = Array.isArray(forwarded) ? forwarded[0] : forwarded.split(',')[0].trim();
-      if (clientIp) {
-        return clientIp;
-      }
-    }
-
+    // Para rutas sin autenticar o auth público: IP real sin confiar en headers manuales
     return req.ip || req.connection?.remoteAddress || req.socket?.remoteAddress || '127.0.0.1';
   }
 
   /**
-   * Emisión estricta de cabeceras HTTP RFC (Retry-After, X-RateLimit-*) al alcanzar el umbral 429.
+   * Emisión estricta de cabeceras HTTP estándar RFC (Retry-After, X-RateLimit-*) al alcanzar el umbral 429.
    */
   protected async throwThrottlingException(
     context: ExecutionContext,

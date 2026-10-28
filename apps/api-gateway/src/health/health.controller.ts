@@ -7,7 +7,7 @@ import Redis from 'ioredis';
 
 @ApiTags('Health')
 @Public()
-@SkipThrottle()
+@SkipThrottle({ default: true, auth: true, api: true, heavy: true })
 @Controller('health')
 export class HealthController {
   private redisClient?: Redis;

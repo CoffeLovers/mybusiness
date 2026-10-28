@@ -7,7 +7,9 @@
     "build": "nest build",
     "start": "node dist/main",
     "pretest": "pnpm --filter @mybusiness/contracts build && pnpm --filter @mybusiness/common build",
-    "test": "vitest run"
+    "test": "vitest run test/throttler-storage-redis.spec.ts",
+    "test:e2e": "vitest run test/security-rate-limiting.e2e-spec.ts",
+    "test:all": "vitest run"
   },
   "dependencies": {
     "@mybusiness/common": "workspace:*",

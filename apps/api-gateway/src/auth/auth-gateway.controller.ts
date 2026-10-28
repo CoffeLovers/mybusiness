@@ -11,7 +11,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { ClientProxy } from '@nestjs/microservices';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import {
   AuthPatterns,
   LoginDto,
@@ -35,6 +35,7 @@ import {
 type PublicSession = Pick<AuthTokensResponse, 'accessToken' | 'user'>;
 
 @ApiTags('Auth')
+@SkipThrottle({ api: true, heavy: true })
 @Controller('auth')
 export class AuthGatewayController {
   constructor(
