@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 config({ path: resolve(__dirname, '../../../../.env') });
 config();
 
+import { and, eq } from 'drizzle-orm';
 import { createDatabase } from './client';
 import { auditLogs } from './schema';
 
@@ -22,6 +23,19 @@ async function seed(): Promise<void> {
   const { db, pool } = createDatabase();
 
   try {
+    // audit_logs es append-only (los triggers bloquean UPDATE y DELETE),
+    // así que la idempotencia se garantiza leyendo antes de insertar.
+    const [existingSeed] = await db
+      .select({ id: auditLogs.id })
+      .from(auditLogs)
+      .where(and(eq(auditLogs.tenantId, defaultTenantId), eq(auditLogs.entityId, 'seed')))
+      .limit(1);
+
+    if (existingSeed) {
+      console.log('Seed de audit-service ya aplicado para tenant:', defaultTenantId);
+      return;
+    }
+
     await db.insert(auditLogs).values([
       {
         tenantId: defaultTenantId,

@@ -6,6 +6,7 @@ config({ path: resolve(__dirname, '../../../../.env') });
 config();
 
 import { ContextType } from '@mybusiness/contracts';
+import { eq } from 'drizzle-orm';
 import { createDatabase } from './client';
 import { agentMemories } from './schema';
 
@@ -38,6 +39,17 @@ async function seed(): Promise<void> {
   const { db, pool } = createDatabase();
 
   try {
+    const [existingSeed] = await db
+      .select({ id: agentMemories.id })
+      .from(agentMemories)
+      .where(eq(agentMemories.tenantId, defaultTenantId))
+      .limit(1);
+
+    if (existingSeed) {
+      console.log('Seed de agent-service ya aplicado para tenant:', defaultTenantId);
+      return;
+    }
+
     const embedding1 = createNormalizedVector(1536, 0.42);
     const embedding2 = createNormalizedVector(1536, 0.84);
 
