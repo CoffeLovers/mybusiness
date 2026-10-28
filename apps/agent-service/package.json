@@ -1,0 +1,37 @@
+{
+  "name": "@mybusiness/agent-service",
+  "version": "1.0.0",
+  "description": "Microservicio de Memoria y Búsqueda Semántica con pgvector para el Agente IA",
+  "scripts": {
+    "dev": "nest start --watch",
+    "build": "nest build",
+    "start": "node dist/main",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "tsx src/database/seed.ts"
+  },
+  "dependencies": {
+    "@mybusiness/common": "workspace:*",
+    "@mybusiness/contracts": "workspace:*",
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/config": "^4.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/microservices": "^11.0.0",
+    "drizzle-orm": "^0.45.4",
+    "ioredis": "^6.0.0",
+    "pg": "^8.23.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.23.1",
+    "dotenv": "^18.0.9",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.23.15",
+    "typescript": "^5.7.2"
+  }
+}
