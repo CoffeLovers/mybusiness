@@ -15,7 +15,7 @@ export class StoreAgentMemoryDto {
   embedding?: number[];
 
   @IsOptional()
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export class QueryAgentMemoryDto {
