@@ -1,11 +1,13 @@
 import { Controller, Get, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { getRedisConfig, Public } from '@mybusiness/common';
 import Redis from 'ioredis';
 
 @ApiTags('Health')
 @Public()
+@SkipThrottle({ default: true, auth: true, api: true, heavy: true })
 @Controller('health')
 export class HealthController {
   private redisClient?: Redis;
