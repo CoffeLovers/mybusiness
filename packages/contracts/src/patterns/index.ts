@@ -25,7 +25,10 @@ export const AgentPatterns = {
 
 export const AuditEvents = {
   LOG_EVENT: 'audit.log_event',
+  LOG: 'audit.log_event',
 } as const;
+
+export const AUDIT_LOG_EVENT = AuditEvents.LOG_EVENT;
 
 /** Eventos de dominio emitidos por finance-service. */
 export const FinanceEvents = {
