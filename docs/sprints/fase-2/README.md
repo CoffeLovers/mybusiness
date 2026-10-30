@@ -147,6 +147,6 @@ Cada issue cumple el DoD del repositorio. A nivel de fase, además:
 - Commits: Conventional Commits en español, con el ID de la issue.
 - PRs a `develop`; `main` sólo recibe merges de release.
 - Labels nuevos requeridos: `phase-2`, `sprint-3`, `sprint-4`, `web`, `qa`.
-- Las issues de este documento no están creadas en GitHub: ver el anexo de [`ISSUES.md`](ISSUES.md).
+- Issues en GitHub: **#43–#54**; epic de seguimiento: **#55**.
 
 ---

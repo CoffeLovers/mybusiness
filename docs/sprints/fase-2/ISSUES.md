@@ -1,24 +1,24 @@
 # Issues — Fase 2 (Sprints 3 y 4)
 
-> Documento de planificación. Las issues **no** están creadas en GitHub. Este archivo es la fuente para crearlas cuando se apruebe el plan.
-> Convención de ID: `SF2-NN`. Al crearlas en GitHub recibirán la numeración correlativa del repositorio (desde #24).
+> Issues creadas en GitHub: **#43–#54** · Epic: **#55**. Este archivo sigue siendo la fuente de verdad del alcance.
+> Convención de ID: `SF2-NN`; el número de GitHub se conserva en la tabla de resumen.
 
 ## Resumen
 
-| ID     | Título                                       | Labels                      | Owner      | SP  | Sprint |
-| ------ | -------------------------------------------- | --------------------------- | ---------- | --- | ------ |
-| SF2-01 | Scaffold del portal web en Next.js           | `web`, `frontend`           | Frontend 1 | 5   | 3      |
-| SF2-02 | CI & CD del portal web                       | `web`, `devops`             | Frontend 1 | 5   | 3      |
-| SF2-03 | Sesión web BFF con cookies y CSRF            | `web`, `security`           | Frontend 2 | 8   | 3      |
-| SF2-04 | Open Banking: link, consentimiento y cuentas | `backend`, `security`       | Backend 1  | 8   | 3      |
-| SF2-05 | Webhooks bancarios firmados e idempotentes   | `backend`, `security`       | Backend 1  | 8   | 3      |
-| SF2-06 | BullMQ: colas, workers, backoff y DLQ        | `backend`, `infrastructure` | Backend 2  | 8   | 3      |
-| SF2-07 | OCR y embeddings de facturas                 | `backend`, `database`       | Backend 2  | 8   | 4      |
-| SF2-08 | Dashboard web de flujo de caja y burn rate   | `web`, `frontend`           | Frontend 1 | 8   | 4      |
-| SF2-09 | Libro mayor y conciliación masiva en web     | `web`, `frontend`           | Frontend 2 | 8   | 4      |
-| SF2-10 | Android: enlace bancario y biometría         | `mobile`, `security`        | Frontend 2 | 8   | 4      |
-| SF2-11 | Conciliación automática y cron nocturno      | `backend`, `database`       | Backend 2  | 8   | 4      |
-| SF2-12 | Contratos, E2E multi-canal y carga           | `qa`, `devops`              | Backend 1  | 5   | 4      |
+| ID     | Título                                       | Labels                      | Owner      | SP  | Sprint | GitHub |
+| ------ | -------------------------------------------- | --------------------------- | ---------- | --- | ------ | ------ |
+| SF2-01 | Scaffold del portal web en Next.js           | `web`, `frontend`           | Frontend 1 | 5   | 3      | #43    |
+| SF2-02 | CI & CD del portal web                       | `web`, `devops`             | Frontend 1 | 5   | 3      | #44    |
+| SF2-03 | Sesión web BFF con cookies y CSRF            | `web`, `security`           | Frontend 2 | 8   | 3      | #45    |
+| SF2-04 | Open Banking: link, consentimiento y cuentas | `backend`, `security`       | Backend 1  | 8   | 3      | #46    |
+| SF2-05 | Webhooks bancarios firmados e idempotentes   | `backend`, `security`       | Backend 1  | 8   | 3      | #47    |
+| SF2-06 | BullMQ: colas, workers, backoff y DLQ        | `backend`, `infrastructure` | Backend 2  | 8   | 3      | #48    |
+| SF2-07 | OCR y embeddings de facturas                 | `backend`, `database`       | Backend 2  | 8   | 4      | #49    |
+| SF2-08 | Dashboard web de flujo de caja y burn rate   | `web`, `frontend`           | Frontend 1 | 8   | 4      | #50    |
+| SF2-09 | Libro mayor y conciliación masiva en web     | `web`, `frontend`           | Frontend 2 | 8   | 4      | #51    |
+| SF2-10 | Android: enlace bancario y biometría         | `mobile`, `security`        | Frontend 2 | 8   | 4      | #52    |
+| SF2-11 | Conciliación automática y cron nocturno      | `backend`, `database`       | Backend 2  | 8   | 4      | #53    |
+| SF2-12 | Contratos, E2E multi-canal y carga           | `qa`, `devops`              | Backend 1  | 5   | 4      | #54    |
 
 Todas las issues llevan además los labels `phase-2` y el correspondiente `sprint-3` o `sprint-4`.
 
@@ -484,7 +484,7 @@ k6 run tests/load/ingest-50k.js
 
 ## Anexo — Creación en GitHub
 
-Cuando el plan se apruebe, crear los labels y las issues con `gh`. Estos comandos **no** se han ejecutado.
+Los labels y las issues se crearon el 2026-10-30 (ver tabla de resumen). Los comandos siguientes quedan como referencia reproducible.
 
 ```bash
 gh label create phase-2 --description "Fase 2: Canales y datos" --color 5319E7
