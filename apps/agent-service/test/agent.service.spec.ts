@@ -7,6 +7,7 @@ import {
   type RequestContext,
 } from '@mybusiness/contracts';
 import { AgentService } from '../src/agent.service';
+import type { AgentRepository } from '../src/agent.repository';
 import type {
   IAgentRepository,
   SearchSimilarParams,
@@ -14,6 +15,17 @@ import type {
 } from '../src/agent.repository.interface';
 import type { AgentMemory, NewAgentMemory } from '../src/database/schema';
 import { MockEmbeddingService } from '../src/embeddings/mock-embedding.service';
+
+/** Servicio de embeddings con vector de consulta fijo para pruebas deterministas. */
+class FixedEmbeddingService extends MockEmbeddingService {
+  constructor(private readonly vector: number[]) {
+    super();
+  }
+
+  override async generate(): Promise<number[]> {
+    return this.vector;
+  }
+}
 
 /**
  * Implementación fake en memoria de IAgentRepository para pruebas unitarias.
@@ -29,7 +41,7 @@ class FakeAgentRepository implements IAgentRepository {
       userId: data.userId ?? null,
       content: data.content,
       embedding: data.embedding,
-      contextType: (data.contextType as any) ?? 'CONVERSATION_SUMMARY',
+      contextType: data.contextType ?? 'CONVERSATION_SUMMARY',
       metadata: (data.metadata as Record<string, unknown>) ?? {},
       createdAt: new Date(),
     };
@@ -53,7 +65,13 @@ class FakeAgentRepository implements IAgentRepository {
       const sim = this.cosineSimilarity(m.embedding, embedding);
       const dist = Math.max(0, 1 - sim);
       return {
-        ...m,
+        id: m.id,
+        tenantId: m.tenantId,
+        userId: m.userId,
+        content: m.content,
+        contextType: m.contextType,
+        metadata: m.metadata,
+        createdAt: m.createdAt,
         similarityScore: Number(sim.toFixed(4)),
         distance: Number(dist.toFixed(4)),
       };
@@ -116,7 +134,7 @@ describe('AgentService — Memoria Vectorial y Similitud Coseno (#14)', () => {
   beforeEach(() => {
     fakeRepo = new FakeAgentRepository();
     embeddingService = new MockEmbeddingService();
-    service = new AgentService(fakeRepo as any, embeddingService);
+    service = new AgentService(fakeRepo as unknown as AgentRepository, embeddingService);
   });
 
   describe('Aislamiento Multi-Tenant', () => {
@@ -145,16 +163,15 @@ describe('AgentService — Memoria Vectorial y Similitud Coseno (#14)', () => {
       expect(resultB.results.some((m) => m.content.includes('Empresa A'))).toBe(false);
     });
 
-    it('falla si falta tenantId en contexto y DTO', async () => {
-      await expect(service.storeMemory({} as any, { content: 'Sin tenant' })).rejects.toThrow(
-        BadRequestException,
-      );
+    it('falla si falta tenantId en el contexto', async () => {
+      await expect(
+        service.storeMemory({} as RequestContext, { content: 'Sin tenant' }),
+      ).rejects.toThrow(BadRequestException);
     });
 
-    it('el userId del contexto prevalece sobre el spoofed en el DTO', async () => {
+    it('usa exclusivamente el userId del contexto autenticado', async () => {
       const stored = await service.storeMemory(tenantA, {
         content: 'Preferencia de facturación',
-        userId: 'spoofed-user-id',
       });
 
       expect(stored.tenantId).toBe(tenantA.tenantId);
@@ -178,19 +195,31 @@ describe('AgentService — Memoria Vectorial y Similitud Coseno (#14)', () => {
       distantVec[0] = 0.05;
       distantVec[1] = 0.99;
 
-      await service.storeMemory(tenantA, {
+      await fakeRepo.insert({
+        tenantId: tenantA.tenantId,
+        userId: null,
         content: 'Memoria semánticamente idéntica o muy cercana',
         embedding: closeVec,
+        contextType: ContextType.CONVERSATION_SUMMARY,
+        metadata: {},
       });
 
-      await service.storeMemory(tenantA, {
+      await fakeRepo.insert({
+        tenantId: tenantA.tenantId,
+        userId: null,
         content: 'Memoria no relacionada con la consulta',
         embedding: distantVec,
+        contextType: ContextType.CONVERSATION_SUMMARY,
+        metadata: {},
       });
 
-      const searchResult = await service.queryMemory(tenantA, {
+      const fixedService = new AgentService(
+        fakeRepo as unknown as AgentRepository,
+        new FixedEmbeddingService(queryVec),
+      );
+
+      const searchResult = await fixedService.queryMemory(tenantA, {
         queryText: 'búsqueda controlada',
-        queryEmbedding: queryVec,
         topK: 2,
       });
 
@@ -211,19 +240,31 @@ describe('AgentService — Memoria Vectorial y Similitud Coseno (#14)', () => {
       const lowSimVec = new Array<number>(1536).fill(0);
       lowSimVec[1] = 1; // Ortogonal -> similitud 0
 
-      await service.storeMemory(tenantA, {
+      await fakeRepo.insert({
+        tenantId: tenantA.tenantId,
+        userId: null,
         content: 'Alta similitud',
         embedding: highSimVec,
+        contextType: ContextType.CONVERSATION_SUMMARY,
+        metadata: {},
       });
 
-      await service.storeMemory(tenantA, {
+      await fakeRepo.insert({
+        tenantId: tenantA.tenantId,
+        userId: null,
         content: 'Baja similitud',
         embedding: lowSimVec,
+        contextType: ContextType.CONVERSATION_SUMMARY,
+        metadata: {},
       });
 
-      const filteredResult = await service.queryMemory(tenantA, {
+      const fixedService = new AgentService(
+        fakeRepo as unknown as AgentRepository,
+        new FixedEmbeddingService(queryVec),
+      );
+
+      const filteredResult = await fixedService.queryMemory(tenantA, {
         queryText: 'test',
-        queryEmbedding: queryVec,
         threshold: 0.8,
       });
 
@@ -307,7 +348,7 @@ describe('AgentService — Memoria Vectorial y Similitud Coseno (#14)', () => {
 
   describe('DoD de Seguridad: Nunca registrar contenido sensible ni embeddings en logs', () => {
     it('el contenido almacenado y los embeddings no aparecen en logs', async () => {
-      const logSpy = vi.spyOn((service as any).logger, 'log');
+      const logSpy = vi.spyOn(service['logger'], 'log');
 
       const sensitiveContent = 'CLAVE_SECRETA_API_EMPRESARIAL_98765';
       await service.storeMemory(tenantA, {

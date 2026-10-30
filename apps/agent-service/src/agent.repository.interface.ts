@@ -7,10 +7,10 @@ export interface SearchSimilarParams {
   embedding: number[];
   topK?: number;
   threshold?: number;
-  contextType?: ContextType | string;
+  contextType?: ContextType;
 }
 
-export interface SearchSimilarResult extends AgentMemory {
+export interface SearchSimilarResult extends Omit<AgentMemory, 'embedding'> {
   similarityScore: number;
   distance: number;
 }

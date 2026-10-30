@@ -1,16 +1,17 @@
-import { IsArray, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator';
 import { ContextType } from '../enums';
 import type { RequestContext, WithContext } from './context.dto';
 
 export class StoreAgentMemoryDto {
-  @IsString()
-  @IsOptional()
-  tenantId?: string;
-
-  @IsString()
-  @IsOptional()
-  userId?: string;
-
   @IsString()
   @IsNotEmpty()
   content!: string;
@@ -19,23 +20,11 @@ export class StoreAgentMemoryDto {
   @IsOptional()
   contextType?: ContextType;
 
-  @IsArray()
-  @IsOptional()
-  embedding?: number[];
-
   @IsOptional()
   metadata?: Record<string, unknown>;
 }
 
 export class QueryAgentMemoryDto {
-  @IsString()
-  @IsOptional()
-  tenantId?: string;
-
-  @IsString()
-  @IsOptional()
-  userId?: string;
-
   @IsString()
   @IsOptional()
   queryText?: string;
@@ -44,15 +33,15 @@ export class QueryAgentMemoryDto {
   @IsOptional()
   query?: string;
 
-  @IsArray()
-  @IsOptional()
-  queryEmbedding?: number[];
-
-  @IsNumber()
+  @IsInt()
+  @Min(1)
+  @Max(50)
   @IsOptional()
   topK?: number;
 
   @IsNumber()
+  @Min(0)
+  @Max(1)
   @IsOptional()
   threshold?: number;
 
@@ -64,10 +53,6 @@ export class QueryAgentMemoryDto {
 export class SearchAgentMemoryDto extends QueryAgentMemoryDto {}
 
 export class DeleteAgentMemoryDto {
-  @IsString()
-  @IsOptional()
-  tenantId?: string;
-
   @IsString()
   @IsNotEmpty()
   id!: string;

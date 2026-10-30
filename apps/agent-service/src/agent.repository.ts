@@ -33,7 +33,7 @@ export class AgentRepository implements IAgentRepository {
       conditions.push(eq(agentMemories.userId, userId));
     }
     if (contextType) {
-      conditions.push(eq(agentMemories.contextType, contextType as any));
+      conditions.push(eq(agentMemories.contextType, contextType));
     }
     if (threshold !== undefined && threshold !== null) {
       conditions.push(sql`1 - (${distance}) >= ${threshold}`);
@@ -45,7 +45,6 @@ export class AgentRepository implements IAgentRepository {
         tenantId: agentMemories.tenantId,
         userId: agentMemories.userId,
         content: agentMemories.content,
-        embedding: agentMemories.embedding,
         contextType: agentMemories.contextType,
         metadata: agentMemories.metadata,
         createdAt: agentMemories.createdAt,

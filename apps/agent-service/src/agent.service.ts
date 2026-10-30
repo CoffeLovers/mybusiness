@@ -23,29 +23,21 @@ export class AgentService {
 
   /**
    * Almacena una nueva memoria semántica generando su embedding vectorial de 1536d.
-   * El tenantId proviene del contexto seguro (o DTO validado) garantizando aislamiento multi-tenant.
+   * El tenantId y el userId provienen exclusivamente del contexto seguro.
    */
   async storeMemory(
     ctx: RequestContext,
     dto: StoreAgentMemoryDto,
   ): Promise<StoreAgentMemoryResponse> {
-    const tenantId = this.requireTenant(ctx, dto);
-    // El contexto autenticado del token siempre prevalece sobre cualquier intento de spoofing
-    const userId = ctx?.userId || dto.userId || null;
+    const tenantId = this.requireTenant(ctx);
+    const userId = ctx.userId ?? null;
 
     if (!dto.content || !dto.content.trim()) {
       throw new BadRequestException('El contenido de la memoria no puede estar vacío.');
     }
 
     const contextType = dto.contextType || ContextType.CONVERSATION_SUMMARY;
-
-    // Generar embedding (o reutilizar vector de 1536d provisto)
-    let embedding: number[];
-    if (Array.isArray(dto.embedding) && dto.embedding.length === 1536) {
-      embedding = dto.embedding;
-    } else {
-      embedding = await this.embeddingService.generate(dto.content);
-    }
+    const embedding = await this.embeddingService.generate(dto.content);
 
     const record = await this.repository.insert({
       tenantId,
@@ -81,30 +73,32 @@ export class AgentService {
     ctx: RequestContext,
     dto: QueryAgentMemoryDto | SearchAgentMemoryDto,
   ): Promise<SearchAgentMemoryResponse> {
-    const tenantId = this.requireTenant(ctx, dto);
-    const queryText = dto.query || dto.queryText;
+    const tenantId = this.requireTenant(ctx);
+    const queryText = dto.query ?? dto.queryText;
 
     if (!queryText || !queryText.trim()) {
       throw new BadRequestException('El texto de consulta (query / queryText) es requerido.');
     }
 
-    const topK = typeof dto.topK === 'number' && dto.topK > 0 ? Math.min(dto.topK, 50) : 5;
-    const threshold = typeof dto.threshold === 'number' ? dto.threshold : undefined;
-
-    // Generar embedding vectorial para la búsqueda
-    let queryEmbedding: number[];
-    if (Array.isArray(dto.queryEmbedding) && dto.queryEmbedding.length === 1536) {
-      queryEmbedding = dto.queryEmbedding;
-    } else {
-      queryEmbedding = await this.embeddingService.generate(queryText);
+    const topK = dto.topK ?? 5;
+    if (!Number.isInteger(topK) || topK < 1 || topK > 50) {
+      throw new BadRequestException('topK debe ser un entero entre 1 y 50.');
     }
+
+    if (
+      dto.threshold !== undefined &&
+      (!Number.isFinite(dto.threshold) || dto.threshold < 0 || dto.threshold > 1)
+    ) {
+      throw new BadRequestException('threshold debe ser un número entre 0 y 1.');
+    }
+
+    const queryEmbedding = await this.embeddingService.generate(queryText);
 
     const records = await this.repository.searchSimilar({
       tenantId,
-      userId: dto.userId,
       embedding: queryEmbedding,
       topK,
-      threshold,
+      threshold: dto.threshold,
       contextType: dto.contextType,
     });
 
@@ -144,7 +138,7 @@ export class AgentService {
     ctx: RequestContext,
     dto: DeleteAgentMemoryDto | { id: string },
   ): Promise<{ success: boolean; id: string }> {
-    const tenantId = this.requireTenant(ctx, dto as any);
+    const tenantId = this.requireTenant(ctx);
     const id = dto.id;
 
     if (!id) {
@@ -160,8 +154,8 @@ export class AgentService {
     return { success: true, id };
   }
 
-  private requireTenant(ctx: RequestContext, dto?: { tenantId?: string }): string {
-    const tenantId = ctx?.tenantId || dto?.tenantId;
+  private requireTenant(ctx: RequestContext): string {
+    const tenantId = ctx?.tenantId;
     if (!tenantId) {
       throw new BadRequestException('tenantId es requerido en el contexto RPC.');
     }
