@@ -172,6 +172,20 @@ Siguiendo el principio de **Database-per-Service** (con bases de datos o esquema
 
 `login`, `register` y `refresh` establecen las cookies `HttpOnly` `mybusiness_access_token` y `mybusiness_refresh_token`; el Gateway no devuelve el Refresh Token en el cuerpo. `GET /me` acepta el Access Token en la cookie o como `Authorization: Bearer <token>`. El límite de intentos es de 5 req/min para `login` y `register`.
 
+### Endpoints de Finance
+
+| Método | Ruta                           | Acceso    | Descripción                                      |
+| ------ | ------------------------------ | --------- | ------------------------------------------------ |
+| GET    | `/api/v1/finance/accounts`     | JWT       | Lista las cuentas del tenant.                    |
+| POST   | `/api/v1/finance/accounts`     | JWT + rol | Crea una cuenta bancaria.                        |
+| GET    | `/api/v1/finance/transactions` | JWT       | Lista los movimientos del tenant.                |
+| POST   | `/api/v1/finance/transactions` | JWT + rol | Crea una transacción idempotente.                |
+| GET    | `/api/v1/finance/invoices`     | JWT       | Lista las facturas del tenant.                   |
+| POST   | `/api/v1/finance/invoices`     | JWT + rol | Crea una factura.                                |
+| POST   | `/api/v1/finance/invoices/pay` | JWT + rol | Marca una factura como pagada y emite el evento. |
+
+Los roles habilitados para escritura son `ACCOUNTANT`, `TENANT_ADMIN` y `SUPER_ADMIN`. El detalle de invariantes y eventos está en [docs/finance-domain.md](docs/finance-domain.md).
+
 ---
 
 ## 🚀 Estado del Proyecto — Fase 1 (Sprints 1 y 2)

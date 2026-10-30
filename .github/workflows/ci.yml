@@ -77,9 +77,23 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: finance_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: finance_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U finance_user -d finance_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       REDIS_HOST: localhost
       REDIS_PORT: 6379
+      FINANCE_DATABASE_URL: postgresql://finance_user:test_password@localhost:5432/finance_db
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -89,4 +103,5 @@ jobs:
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - run: pnpm --filter @mybusiness/finance-service db:migrate
       - run: pnpm test:e2e
