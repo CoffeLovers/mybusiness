@@ -102,3 +102,41 @@ export type FinanceTenantPayload = RequestContext;
 export type CreateBankAccountRpcPayload = WithContext<CreateBankAccountDto>;
 export type CreateTransactionRpcPayload = WithContext<CreateTransactionDto>;
 export type CreateInvoiceRpcPayload = WithContext<CreateInvoiceDto>;
+
+export class PayInvoiceDto {
+  @IsString()
+  @IsNotEmpty()
+  invoiceId!: string;
+
+  @IsString()
+  @IsOptional()
+  transactionId?: string;
+}
+
+export type PayInvoiceRpcPayload = WithContext<PayInvoiceDto>;
+
+/** Evento: se creó una transacción (incluye reintentos idempotentes sólo la primera vez). */
+export interface TransactionCreatedEvent {
+  eventId: string;
+  tenantId: string;
+  userId?: string;
+  transactionId: string;
+  bankAccountId: string;
+  amountMinor: string;
+  currency: string;
+  type: TransactionType;
+  occurredAt: string;
+}
+
+/** Evento: una factura pasó a estado PAID. */
+export interface InvoicePaidEvent {
+  eventId: string;
+  tenantId: string;
+  userId?: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  totalAmountMinor: string;
+  currency: string;
+  transactionId?: string;
+  occurredAt: string;
+}

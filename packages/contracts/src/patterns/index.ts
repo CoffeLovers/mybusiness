@@ -14,6 +14,7 @@ export const FinancePatterns = {
   CREATE_TRANSACTION: 'finance.transactions.create',
   GET_INVOICES: 'finance.invoices.get',
   CREATE_INVOICE: 'finance.invoices.create',
+  PAY_INVOICE: 'finance.invoices.pay',
 } as const;
 
 export const AgentPatterns = {
@@ -31,4 +32,10 @@ export const AGENT_DELETE_MEMORY = AgentPatterns.DELETE_MEMORY;
 
 export const AuditEvents = {
   LOG_EVENT: 'audit.log_event',
+} as const;
+
+/** Eventos de dominio emitidos por finance-service. */
+export const FinanceEvents = {
+  TRANSACTION_CREATED: 'finance.transaction.created',
+  INVOICE_PAID: 'finance.invoice.paid',
 } as const;

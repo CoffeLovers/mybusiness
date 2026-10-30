@@ -7,6 +7,7 @@ import {
   CreateInvoiceDto,
   CreateTransactionDto,
   FinancePatterns,
+  PayInvoiceDto,
   type UserContext,
   UserRole,
 } from '@mybusiness/contracts';
@@ -72,6 +73,17 @@ export class FinanceGatewayController {
   @Post('invoices')
   createInvoice(@CurrentUser() user: UserContext, @Body() dto: CreateInvoiceDto) {
     return rpcSend(this.financeClient, FinancePatterns.CREATE_INVOICE, {
+      ...dto,
+      tenantId: user.tenantId,
+      userId: user.userId,
+      role: user.role,
+    });
+  }
+
+  @Roles(UserRole.ACCOUNTANT, UserRole.TENANT_ADMIN, UserRole.SUPER_ADMIN)
+  @Post('invoices/pay')
+  payInvoice(@CurrentUser() user: UserContext, @Body() dto: PayInvoiceDto) {
+    return rpcSend(this.financeClient, FinancePatterns.PAY_INVOICE, {
       ...dto,
       tenantId: user.tenantId,
       userId: user.userId,

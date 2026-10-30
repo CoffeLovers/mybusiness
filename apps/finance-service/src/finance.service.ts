@@ -1,14 +1,28 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import {
   AccountType,
+  FinanceEvents,
   InvoiceStatus,
   TransactionStatus,
   TransactionType,
   type CreateBankAccountDto,
   type CreateInvoiceDto,
   type CreateTransactionDto,
+  type InvoicePaidEvent,
+  type PayInvoiceDto,
   type RequestContext,
+  type TransactionCreatedEvent,
 } from '@mybusiness/contracts';
+import type { BankAccount, Invoice, Transaction } from './database/schema';
+import { DomainEventPublisher } from './events/domain-event.publisher';
+import { DuplicateInvoiceNumberError, FinanceRepository } from './finance.repository';
 
 export interface AccountView {
   id: string;
@@ -19,8 +33,7 @@ export interface AccountView {
   currency: string;
   currentBalanceMinor: string;
   availableBalanceMinor: string;
-  createdBy?: string;
-  createdAt?: string;
+  createdAt: string;
 }
 
 export interface TransactionView {
@@ -34,7 +47,6 @@ export interface TransactionView {
   description: string;
   category?: string;
   idempotencyKey: string;
-  createdBy?: string;
   bookingDate: string;
   createdAt: string;
 }
@@ -51,7 +63,6 @@ export interface InvoiceView {
   currency: string;
   dueDate: string;
   status: InvoiceStatus;
-  createdBy?: string;
   createdAt: string;
 }
 
@@ -59,41 +70,40 @@ export interface InvoiceView {
 export class FinanceService {
   private readonly logger = new Logger(FinanceService.name);
 
-  /** Datos aislados por tenant. En producción estas consultas van a PostgreSQL con `eq(table.tenantId, tenantId)`. */
-  private readonly accountsByTenant = new Map<string, AccountView[]>();
-  private readonly transactionsByTenant = new Map<string, TransactionView[]>();
-  private readonly invoicesByTenant = new Map<string, InvoiceView[]>();
-  /** Índice de idempotencia: `${tenantId}:${idempotencyKey}` -> transacción. */
-  private readonly transactionsByIdempotencyKey = new Map<string, TransactionView>();
+  constructor(
+    private readonly repository: FinanceRepository,
+    private readonly events: DomainEventPublisher,
+  ) {}
 
   async getAccounts(ctx: RequestContext): Promise<AccountView[]> {
     const tenantId = this.requireTenant(ctx);
-    this.logger.log(`Obteniendo cuentas para tenant: ${tenantId}`);
-    return this.tenantAccounts(tenantId).slice();
+    const accounts = await this.repository.listAccounts(tenantId);
+    return accounts.map((account) => this.toAccountView(account));
   }
 
   async createAccount(ctx: RequestContext, dto: CreateBankAccountDto): Promise<AccountView> {
     const tenantId = this.requireTenant(ctx);
-    const initialBalanceMinor = dto.initialBalanceMinor ?? '0';
-    const account: AccountView = {
-      id: 'acc-' + Math.random().toString(36).substring(2, 9),
-      ...dto,
-      // El contexto del token siempre prevalece sobre cualquier campo del DTO.
-      tenantId,
-      currentBalanceMinor: initialBalanceMinor,
-      availableBalanceMinor: initialBalanceMinor,
-      createdBy: ctx.userId,
-      createdAt: new Date().toISOString(),
-    };
+    const initialBalanceMinor = this.parseMinor(
+      dto.initialBalanceMinor ?? '0',
+      'initialBalanceMinor',
+    );
 
-    this.tenantAccounts(tenantId).push(account);
-    return account;
+    const account = await this.repository.createAccount({
+      tenantId,
+      institutionName: dto.institutionName,
+      accountType: dto.accountType,
+      accountNumberMasked: dto.accountNumberMasked,
+      currency: dto.currency,
+      initialBalanceMinor,
+    });
+
+    return this.toAccountView(account);
   }
 
   async getTransactions(ctx: RequestContext): Promise<TransactionView[]> {
     const tenantId = this.requireTenant(ctx);
-    this.logger.log(`Obteniendo transacciones para tenant: ${tenantId}`);
-    return this.tenantTransactions(tenantId).slice();
+    const transactions = await this.repository.listTransactions(tenantId);
+    return transactions.map((transaction) => this.toTransactionView(transaction));
   }
 
   async createTransaction(
@@ -103,59 +113,146 @@ export class FinanceService {
     const tenantId = this.requireTenant(ctx);
     const idempotencyKey = dto?.idempotencyKey;
 
-    if (typeof idempotencyKey !== 'string' || idempotencyKey.length === 0) {
+    if (typeof idempotencyKey !== 'string' || idempotencyKey.trim().length === 0) {
       throw new BadRequestException('idempotencyKey es requerido para crear transacciones.');
     }
 
-    const idempotencyIndex = `${tenantId}:${idempotencyKey}`;
-    const existing = this.transactionsByIdempotencyKey.get(idempotencyIndex);
-
-    if (existing) {
-      this.logger.log(
-        `Transacción idempotente reutilizada para tenant ${tenantId} e idempotencyKey ${idempotencyKey}`,
-      );
-      return existing;
+    const account = await this.repository.findAccountById(tenantId, dto.bankAccountId);
+    if (!account) {
+      throw new NotFoundException('Cuenta bancaria no encontrada para el tenant.');
     }
 
-    const now = new Date().toISOString();
-    const transaction: TransactionView = {
-      id: 'tx-' + Math.random().toString(36).substring(2, 9),
-      ...dto,
-      // El contexto del token siempre prevalece sobre cualquier campo del DTO.
+    if (account.currency !== dto.currency) {
+      throw new BadRequestException('La moneda de la transacción no coincide con la de la cuenta.');
+    }
+
+    const result = await this.repository.createTransactionIdempotent({
       tenantId,
-      status: TransactionStatus.PENDING,
-      createdBy: ctx.userId,
-      bookingDate: now,
-      createdAt: now,
-    };
+      bankAccountId: dto.bankAccountId,
+      amountMinor: this.parseMinor(dto.amountMinor, 'amountMinor'),
+      currency: dto.currency,
+      type: dto.type,
+      description: dto.description,
+      ...(dto.category ? { category: dto.category } : {}),
+      idempotencyKey,
+    });
 
-    this.transactionsByIdempotencyKey.set(idempotencyIndex, transaction);
-    this.tenantTransactions(tenantId).push(transaction);
+    if (result.created) {
+      const event: TransactionCreatedEvent = {
+        eventId: randomUUID(),
+        tenantId,
+        ...(ctx.userId ? { userId: ctx.userId } : {}),
+        transactionId: result.transaction.id,
+        bankAccountId: result.transaction.bankAccountId,
+        amountMinor: result.transaction.amountMinor.toString(),
+        currency: result.transaction.currency,
+        type: result.transaction.type as TransactionType,
+        occurredAt: result.transaction.createdAt.toISOString(),
+      };
+      await this.events.publish(FinanceEvents.TRANSACTION_CREATED, event);
+    }
 
-    this.logger.log(`Transacción creada con idempotencyKey: ${idempotencyKey}`);
-    return transaction;
+    return this.toTransactionView(result.transaction);
   }
 
   async getInvoices(ctx: RequestContext): Promise<InvoiceView[]> {
     const tenantId = this.requireTenant(ctx);
-    this.logger.log(`Obteniendo facturas para tenant: ${tenantId}`);
-    return this.tenantInvoices(tenantId).slice();
+    const invoices = await this.repository.listInvoices(tenantId);
+    return invoices.map((invoice) => this.toInvoiceView(invoice));
   }
 
   async createInvoice(ctx: RequestContext, dto: CreateInvoiceDto): Promise<InvoiceView> {
     const tenantId = this.requireTenant(ctx);
-    const invoice: InvoiceView = {
-      id: 'inv-' + Math.random().toString(36).substring(2, 9),
-      ...dto,
-      // El contexto del token siempre prevalece sobre cualquier campo del DTO.
-      tenantId,
-      status: InvoiceStatus.DRAFT,
-      createdBy: ctx.userId,
-      createdAt: new Date().toISOString(),
-    };
+    const subtotalMinor = this.parseMinor(dto.subtotalMinor, 'subtotalMinor');
+    const taxAmountMinor = this.parseMinor(dto.taxAmountMinor, 'taxAmountMinor');
+    const totalAmountMinor = this.parseMinor(dto.totalAmountMinor, 'totalAmountMinor');
 
-    this.tenantInvoices(tenantId).push(invoice);
-    return invoice;
+    if (subtotalMinor + taxAmountMinor !== totalAmountMinor) {
+      throw new BadRequestException('El total de la factura debe ser subtotal + impuestos.');
+    }
+
+    const dueDate = new Date(dto.dueDate);
+    if (Number.isNaN(dueDate.getTime())) {
+      throw new BadRequestException('dueDate debe ser una fecha válida.');
+    }
+
+    try {
+      const invoice = await this.repository.createInvoice({
+        tenantId,
+        invoiceNumber: dto.invoiceNumber,
+        counterpartyName: dto.counterpartyName,
+        counterpartyTaxId: dto.counterpartyTaxId,
+        subtotalMinor,
+        taxAmountMinor,
+        totalAmountMinor,
+        currency: dto.currency,
+        dueDate,
+      });
+      return this.toInvoiceView(invoice);
+    } catch (error) {
+      if (error instanceof DuplicateInvoiceNumberError) {
+        throw new ConflictException('Ya existe una factura con ese número para el tenant.');
+      }
+      throw error;
+    }
+  }
+
+  async payInvoice(ctx: RequestContext, dto: PayInvoiceDto): Promise<InvoiceView> {
+    const tenantId = this.requireTenant(ctx);
+    const invoice = await this.repository.findInvoiceById(tenantId, dto.invoiceId);
+
+    if (!invoice) {
+      throw new NotFoundException('Factura no encontrada para el tenant.');
+    }
+
+    if (invoice.status === InvoiceStatus.PAID) {
+      return this.toInvoiceView(invoice);
+    }
+
+    if (invoice.status === InvoiceStatus.CANCELLED) {
+      throw new ConflictException('No se puede pagar una factura cancelada.');
+    }
+
+    if (dto.transactionId) {
+      const transaction = await this.repository.findTransactionById(tenantId, dto.transactionId);
+      if (!transaction) {
+        throw new NotFoundException('Transacción no encontrada para el tenant.');
+      }
+    }
+
+    const updated = await this.repository.markInvoicePaid(
+      tenantId,
+      dto.invoiceId,
+      dto.transactionId,
+    );
+
+    if (!updated) {
+      const current = await this.repository.findInvoiceById(tenantId, dto.invoiceId);
+      if (current?.status === InvoiceStatus.PAID) {
+        return this.toInvoiceView(current);
+      }
+      if (current?.status === InvoiceStatus.CANCELLED) {
+        throw new ConflictException('No se puede pagar una factura cancelada.');
+      }
+      throw new NotFoundException('Factura no encontrada para el tenant.');
+    }
+
+    const event: InvoicePaidEvent = {
+      eventId: randomUUID(),
+      tenantId,
+      ...(ctx.userId ? { userId: ctx.userId } : {}),
+      invoiceId: updated.id,
+      invoiceNumber: updated.invoiceNumber,
+      totalAmountMinor: updated.totalAmountMinor.toString(),
+      currency: updated.currency,
+      ...(updated.associatedTransactionId
+        ? { transactionId: updated.associatedTransactionId }
+        : {}),
+      occurredAt: new Date().toISOString(),
+    };
+    await this.events.publish(FinanceEvents.INVOICE_PAID, event);
+
+    return this.toInvoiceView(updated);
   }
 
   private requireTenant(ctx: RequestContext): string {
@@ -165,55 +262,58 @@ export class FinanceService {
     return ctx.tenantId;
   }
 
-  private tenantAccounts(tenantId: string): AccountView[] {
-    let accounts = this.accountsByTenant.get(tenantId);
-    if (!accounts) {
-      accounts = [
-        {
-          id: 'acc-1',
-          tenantId,
-          institutionName: 'Bancolombia',
-          accountType: AccountType.CHECKING,
-          accountNumberMasked: '****4589',
-          currency: 'COP',
-          currentBalanceMinor: '15420000',
-          availableBalanceMinor: '15420000',
-        },
-      ];
-      this.accountsByTenant.set(tenantId, accounts);
+  private parseMinor(value: string, field: string): bigint {
+    if (typeof value !== 'string' || !/^\d+$/.test(value)) {
+      throw new BadRequestException(`${field} debe ser un entero no negativo en unidades menores.`);
     }
-    return accounts;
+    return BigInt(value);
   }
 
-  private tenantTransactions(tenantId: string): TransactionView[] {
-    let transactions = this.transactionsByTenant.get(tenantId);
-    if (!transactions) {
-      transactions = [
-        {
-          id: 'tx-1',
-          tenantId,
-          bankAccountId: 'acc-1',
-          amountMinor: '250000',
-          currency: 'COP',
-          type: TransactionType.EXPENSE,
-          status: TransactionStatus.SETTLED,
-          description: 'Servicio Cloud AWS',
-          idempotencyKey: 'seed-tx-1',
-          bookingDate: new Date().toISOString(),
-          createdAt: new Date().toISOString(),
-        },
-      ];
-      this.transactionsByTenant.set(tenantId, transactions);
-    }
-    return transactions;
+  private toAccountView(account: BankAccount): AccountView {
+    return {
+      id: account.id,
+      tenantId: account.tenantId,
+      institutionName: account.institutionName,
+      accountType: account.accountType as AccountType,
+      accountNumberMasked: account.accountNumberMasked,
+      currency: account.currency,
+      currentBalanceMinor: account.currentBalanceMinor.toString(),
+      availableBalanceMinor: account.availableBalanceMinor.toString(),
+      createdAt: account.createdAt.toISOString(),
+    };
   }
 
-  private tenantInvoices(tenantId: string): InvoiceView[] {
-    let invoices = this.invoicesByTenant.get(tenantId);
-    if (!invoices) {
-      invoices = [];
-      this.invoicesByTenant.set(tenantId, invoices);
-    }
-    return invoices;
+  private toTransactionView(transaction: Transaction): TransactionView {
+    return {
+      id: transaction.id,
+      tenantId: transaction.tenantId,
+      bankAccountId: transaction.bankAccountId,
+      amountMinor: transaction.amountMinor.toString(),
+      currency: transaction.currency,
+      type: transaction.type as TransactionType,
+      status: transaction.status as TransactionStatus,
+      description: transaction.description,
+      ...(transaction.category ? { category: transaction.category } : {}),
+      idempotencyKey: transaction.idempotencyKey,
+      bookingDate: transaction.bookingDate.toISOString(),
+      createdAt: transaction.createdAt.toISOString(),
+    };
+  }
+
+  private toInvoiceView(invoice: Invoice): InvoiceView {
+    return {
+      id: invoice.id,
+      tenantId: invoice.tenantId,
+      invoiceNumber: invoice.invoiceNumber,
+      counterpartyName: invoice.counterpartyName,
+      counterpartyTaxId: invoice.counterpartyTaxId,
+      subtotalMinor: invoice.subtotalMinor.toString(),
+      taxAmountMinor: invoice.taxAmountMinor.toString(),
+      totalAmountMinor: invoice.totalAmountMinor.toString(),
+      currency: invoice.currency,
+      dueDate: invoice.dueDate.toISOString(),
+      status: invoice.status as InvoiceStatus,
+      createdAt: invoice.createdAt.toISOString(),
+    };
   }
 }
