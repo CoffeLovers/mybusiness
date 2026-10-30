@@ -13,6 +13,7 @@
 3. **Aislamiento por tenant.** Toda consulta filtra por `tenantId`; el mismo `eventId` puede existir en tenants distintos.
 4. **Contrato estricto.** `eventId` es obligatorio en `CreateAuditLogEvent`; el gateway lo genera con `randomUUID()`.
 5. **Tolerancia a fallos.** El consumidor reintenta 3 veces con backoff lineal (50 ms × intento); si persiste, escribe en `audit_dead_letters` y no propaga el error al broker.
+6. **Eventos sin identidad.** Los 401/403 previos al login usan el tenant centinela `00000000-0000-0000-0000-000000000000`, un UUID válido que permite persistir y auditar el intento sin inventar una empresa.
 
 ## Eventos consumidos
 

@@ -8,6 +8,7 @@ import { loadRootEnv } from '@mybusiness/common';
 import { UserRole } from '@mybusiness/contracts';
 import { AppModule } from '../src/app.module';
 import { setupGatewayApp } from '../src/setup';
+import { UNAUTHENTICATED_TENANT_ID } from '../src/security-audit.filter';
 
 loadRootEnv();
 
@@ -180,6 +181,6 @@ describe('RBAC Multi-Tenant E2E (API Gateway)', () => {
       .find((event) => event.service === 'AUDIT_SERVICE' && event.pattern === 'audit.log_event');
     expect(securityAudit).toBeDefined();
     expect(securityAudit?.data.action).toContain('SECURITY_401');
-    expect(securityAudit?.data.tenantId).toBe('unauthenticated');
+    expect(securityAudit?.data.tenantId).toBe(UNAUTHENTICATED_TENANT_ID);
   });
 });
