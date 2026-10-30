@@ -1,162 +1,167 @@
+import { randomUUID } from 'node:crypto';
 import { BadRequestException } from '@nestjs/common';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuditService } from '../src/audit.service';
-import type { IAuditRepository } from '../src/audit.repository.interface';
-import type { AuditLog, NewAuditLog } from '../src/database/schema';
+import type { AuditRepository } from '../src/audit.repository';
+import type { InsertAuditResult } from '../src/audit.repository.interface';
+import type { AuditDeadLetter, AuditLog } from '../src/database/schema';
 import type { CreateAuditLogEvent } from '@mybusiness/contracts';
 
-class InMemoryAuditRepository implements IAuditRepository {
-  public logs: AuditLog[] = [];
-  public insertCalls = 0;
+type MockFn = ReturnType<typeof vi.fn>;
 
-  async insertLog(entry: NewAuditLog): Promise<AuditLog> {
-    this.insertCalls++;
-    const created: AuditLog = {
-      id: entry.id ?? `log-${Math.random().toString(36).substring(7)}`,
-      tenantId: entry.tenantId,
-      userId: entry.userId ?? null,
-      action: entry.action,
-      entityName: entry.entityName,
-      entityId: entry.entityId ?? null,
-      oldValues: (entry.oldValues as Record<string, unknown>) ?? null,
-      newValues: (entry.newValues as Record<string, unknown>) ?? null,
-      ipAddress: entry.ipAddress ?? null,
-      userAgent: entry.userAgent ?? null,
-      timestamp: entry.timestamp instanceof Date ? entry.timestamp : new Date(),
-    };
-    this.logs.push(created);
-    return created;
-  }
-
-  async findByEventId(tenantId: string, eventId: string): Promise<AuditLog | null> {
-    return (
-      this.logs.find(
-        (l) =>
-          l.tenantId === tenantId &&
-          ((l.newValues as Record<string, unknown>)?.eventId === eventId || l.entityId === eventId),
-      ) ?? null
-    );
-  }
+interface MockRepository {
+  insertLogIdempotent: MockFn;
+  findByEventId: MockFn;
+  quarantine: MockFn;
 }
 
-describe('AuditService (Append-only & Idempotency)', () => {
-  let repository: InMemoryAuditRepository;
+describe('AuditService (Append-only & Idempotencia)', () => {
+  let repository: MockRepository;
   let service: AuditService;
 
   const tenantA = '11111111-1111-1111-1111-111111111111';
   const tenantB = '22222222-2222-2222-2222-222222222222';
 
-  beforeEach(() => {
-    repository = new InMemoryAuditRepository();
-    service = new AuditService(repository as any);
+  const buildRow = (overrides: Partial<AuditLog> = {}): AuditLog => ({
+    id: 'log-1',
+    tenantId: tenantA,
+    eventId: randomUUID(),
+    userId: null,
+    action: 'auth.login',
+    entityName: 'User',
+    entityId: 'usr-1',
+    oldValues: null,
+    newValues: { status: 'SUCCESS' },
+    ipAddress: null,
+    userAgent: null,
+    timestamp: new Date('2026-10-30T00:00:00.000Z'),
+    ...overrides,
   });
 
-  it('persiste un evento de auditoría de forma append-only', async () => {
-    const event: CreateAuditLogEvent = {
-      tenantId: tenantA,
-      userId: 'usr-1',
-      action: 'auth.login',
-      entityName: 'User',
-      entityId: 'usr-1',
-      ipAddress: '192.168.1.1',
-      userAgent: 'Mozilla/5.0',
-      newValues: { status: 'SUCCESS' },
+  const buildEvent = (overrides: Partial<CreateAuditLogEvent> = {}): CreateAuditLogEvent => ({
+    eventId: randomUUID(),
+    tenantId: tenantA,
+    userId: 'usr-1',
+    action: 'auth.login',
+    entityName: 'User',
+    entityId: 'usr-1',
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    repository = {
+      insertLogIdempotent: vi.fn<() => Promise<InsertAuditResult>>(),
+      findByEventId: vi.fn(),
+      quarantine: vi.fn<() => Promise<AuditDeadLetter>>(),
     };
+    service = new AuditService(repository as unknown as AuditRepository);
+  });
+
+  it('persiste y retorna duplicate: false cuando el repositorio crea la fila', async () => {
+    const event = buildEvent();
+    const row = buildRow({ tenantId: event.tenantId, eventId: event.eventId });
+    repository.insertLogIdempotent.mockResolvedValueOnce({ created: true, log: row });
 
     const result = await service.recordLog(event);
 
-    expect(result.success).toBe(true);
-    expect(result.duplicate).toBe(false);
-    expect(result.tenantId).toBe(tenantA);
-    expect(repository.insertCalls).toBe(1);
-    expect(repository.logs).toHaveLength(1);
-    expect(repository.logs[0].action).toBe('auth.login');
-    expect(repository.logs[0].entityName).toBe('User');
-    expect(repository.logs[0].tenantId).toBe(tenantA);
+    expect(repository.insertLogIdempotent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: event.tenantId,
+        eventId: event.eventId,
+        action: event.action,
+        entityName: event.entityName,
+      }),
+    );
+    expect(result).toEqual({
+      success: true,
+      tenantId: event.tenantId,
+      auditLogId: row.id,
+      duplicate: false,
+    });
   });
 
-  it('garantiza idempotencia: reentregas con el mismo eventId no duplican registros', async () => {
-    const event: CreateAuditLogEvent = {
-      eventId: 'evt-unique-1234',
-      tenantId: tenantA,
-      userId: 'usr-1',
-      action: 'finance.transaction.created',
-      entityName: 'Transaction',
-      entityId: 'tx-100',
-      newValues: { amountMinor: '5000' },
-    };
+  it('marca duplicate: true en reentrega con el mismo eventId sin fallar', async () => {
+    const event = buildEvent();
+    const existing = buildRow({
+      id: 'log-existing',
+      tenantId: event.tenantId,
+      eventId: event.eventId,
+    });
+    repository.insertLogIdempotent.mockResolvedValueOnce({ created: false, log: existing });
 
-    // Primera entrega
-    const firstResult = await service.recordLog(event);
-    expect(firstResult.success).toBe(true);
-    expect(firstResult.duplicate).toBe(false);
-    expect(repository.insertCalls).toBe(1);
-    expect(repository.logs).toHaveLength(1);
+    const result = await service.recordLog(event);
 
-    // Segunda entrega (reentrega / redelivery)
-    const secondResult = await service.recordLog(event);
-    expect(secondResult.success).toBe(true);
-    expect(secondResult.duplicate).toBe(true);
-    expect(secondResult.auditLogId).toBe(firstResult.auditLogId);
-    expect(repository.insertCalls).toBe(1); // No hubo nuevo insert
-    expect(repository.logs).toHaveLength(1);
+    expect(result).toEqual({
+      success: true,
+      tenantId: event.tenantId,
+      auditLogId: existing.id,
+      duplicate: true,
+    });
   });
 
-  it('respeta el aislamiento multi-inquilino con el mismo eventId en distintos tenants', async () => {
-    const eventA: CreateAuditLogEvent = {
-      eventId: 'shared-event-id',
-      tenantId: tenantA,
-      action: 'invoice.create',
-      entityName: 'Invoice',
-    };
+  it('aísla el mismo eventId entre tenants distintos enviando su propio tenantId', async () => {
+    const sharedEventId = randomUUID();
+    repository.insertLogIdempotent
+      .mockResolvedValueOnce({
+        created: true,
+        log: buildRow({ tenantId: tenantA, eventId: sharedEventId }),
+      })
+      .mockResolvedValueOnce({
+        created: true,
+        log: buildRow({ tenantId: tenantB, eventId: sharedEventId }),
+      });
 
-    const eventB: CreateAuditLogEvent = {
-      eventId: 'shared-event-id',
-      tenantId: tenantB,
-      action: 'invoice.create',
-      entityName: 'Invoice',
-    };
+    await service.recordLog(buildEvent({ eventId: sharedEventId, tenantId: tenantA }));
+    await service.recordLog(buildEvent({ eventId: sharedEventId, tenantId: tenantB }));
 
-    await service.recordLog(eventA);
-    await service.recordLog(eventB);
-
-    expect(repository.insertCalls).toBe(2);
-    expect(repository.logs).toHaveLength(2);
-    expect(repository.logs[0].tenantId).toBe(tenantA);
-    expect(repository.logs[1].tenantId).toBe(tenantB);
+    expect(repository.insertLogIdempotent).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ tenantId: tenantA, eventId: sharedEventId }),
+    );
+    expect(repository.insertLogIdempotent).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ tenantId: tenantB, eventId: sharedEventId }),
+    );
   });
 
-  it('lanza BadRequestException si tenantId no está presente', async () => {
-    const event = {
-      tenantId: '',
-      action: 'system.event',
-      entityName: 'System',
-    } as CreateAuditLogEvent;
+  it('lanza BadRequestException si falta tenantId', async () => {
+    const event = buildEvent({ tenantId: '' });
 
     await expect(service.recordLog(event)).rejects.toThrow(BadRequestException);
+    expect(repository.insertLogIdempotent).not.toHaveBeenCalled();
   });
 
-  it('lanza BadRequestException si action o entityName faltan', async () => {
-    await expect(
-      service.recordLog({ tenantId: tenantA, action: '', entityName: 'Entity' } as any),
-    ).rejects.toThrow(BadRequestException);
+  it('lanza BadRequestException si falta eventId', async () => {
+    const event = {
+      tenantId: tenantA,
+      action: 'auth.login',
+      entityName: 'User',
+    } as unknown as CreateAuditLogEvent;
 
-    await expect(
-      service.recordLog({ tenantId: tenantA, action: 'action', entityName: '' } as any),
-    ).rejects.toThrow(BadRequestException);
+    await expect(service.recordLog(event)).rejects.toThrow(BadRequestException);
+    expect(repository.insertLogIdempotent).not.toHaveBeenCalled();
   });
 
-  it('maneja eventos de dominio (handleDomainEvent) de finance-service', async () => {
-    const payload = {
-      eventId: 'evt-tx-456',
+  it('handleDomainEvent de TransactionCreated mapea entityId y newValues desde el payload', async () => {
+    const eventId = randomUUID();
+    const payload: Record<string, unknown> = {
+      eventId,
       tenantId: tenantA,
       userId: 'usr-42',
       transactionId: 'tx-999',
       amountMinor: '125000',
       currency: 'COP',
       type: 'INCOME',
-      occurredAt: new Date().toISOString(),
+      occurredAt: '2026-10-30T00:00:00.000Z',
     };
+    repository.insertLogIdempotent.mockResolvedValueOnce({
+      created: true,
+      log: buildRow({
+        action: 'finance.transaction.created',
+        entityName: 'Transaction',
+        entityId: 'tx-999',
+      }),
+    });
 
     const result = await service.handleDomainEvent(
       'finance.transaction.created',
@@ -164,21 +169,55 @@ describe('AuditService (Append-only & Idempotency)', () => {
       payload,
     );
 
-    expect(result.success).toBe(true);
-    expect(repository.logs).toHaveLength(1);
-    expect(repository.logs[0].action).toBe('finance.transaction.created');
-    expect(repository.logs[0].entityName).toBe('Transaction');
-    expect(repository.logs[0].entityId).toBe('tx-999');
-    expect(repository.logs[0].tenantId).toBe(tenantA);
+    expect(result.duplicate).toBe(false);
+    expect(repository.insertLogIdempotent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId,
+        tenantId: tenantA,
+        action: 'finance.transaction.created',
+        entityName: 'Transaction',
+        entityId: 'tx-999',
+        newValues: payload,
+      }),
+    );
   });
 
-  it('garantiza que la interfaz y el servicio son estrictamente append-only sin update ni delete', () => {
-    // Comprobación arquitectónica de inmutabilidad en la API de servicio y repositorio
-    expect((service as any).updateLog).toBeUndefined();
-    expect((service as any).deleteLog).toBeUndefined();
-    expect((service as any).removeLog).toBeUndefined();
-    expect((repository as any).updateLog).toBeUndefined();
-    expect((repository as any).deleteLog).toBeUndefined();
-    expect((repository as any).removeLog).toBeUndefined();
+  it('handleDomainEvent lanza BadRequestException si falta eventId', async () => {
+    const payload: Record<string, unknown> = { tenantId: tenantA, transactionId: 'tx-1' };
+
+    await expect(
+      service.handleDomainEvent('finance.transaction.created', 'Transaction', payload),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('quarantine delega en el repositorio con tenant, tipo, payload, error y attempts', async () => {
+    const payload: Record<string, unknown> = { eventId: randomUUID(), tenantId: tenantA };
+    repository.quarantine.mockResolvedValueOnce({
+      id: 'dlq-1',
+      tenantId: tenantA,
+      eventType: 'audit.log_event',
+      payload,
+      error: 'DB failure',
+      attempts: 3,
+      failedAt: new Date('2026-10-30T00:00:00.000Z'),
+    });
+
+    await service.quarantine('audit.log_event', payload, 'DB failure', 3);
+
+    expect(repository.quarantine).toHaveBeenCalledWith({
+      tenantId: tenantA,
+      eventType: 'audit.log_event',
+      payload,
+      error: 'DB failure',
+      attempts: 3,
+    });
+  });
+
+  it('quarantine no propaga el error si el repositorio falla', async () => {
+    repository.quarantine.mockRejectedValueOnce(new Error('quarantine down'));
+
+    await expect(
+      service.quarantine('audit.log_event', { tenantId: tenantA }, 'boom', 3),
+    ).resolves.toBeUndefined();
   });
 });

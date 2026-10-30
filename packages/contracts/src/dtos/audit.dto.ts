@@ -1,7 +1,7 @@
 import { UserRole } from '../enums';
 
 export interface CreateAuditLogEvent {
-  eventId?: string;
+  eventId: string;
   tenantId: string;
   userId?: string;
   role?: UserRole;

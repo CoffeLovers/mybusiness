@@ -1,8 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import type { CreateAuditLogEvent } from '@mybusiness/contracts';
-import { extractRpcContext } from '@mybusiness/common';
 import { AuditRepository } from './audit.repository';
-import type { AuditLog } from './database/schema';
 
 export interface AuditResult {
   success: boolean;
@@ -30,72 +28,60 @@ export class AuditService {
    * Registra un evento de auditoría de forma append-only e idempotente.
    */
   async recordLog(event: CreateAuditLogEvent): Promise<AuditResult> {
-    const ctx = extractRpcContext(event);
-    const tenantId = ctx.tenantId || event.tenantId;
-
+    const tenantId = event.tenantId;
     if (!tenantId) {
       this.logger.error('Evento de auditoría descartado: tenantId ausente.');
       throw new BadRequestException('tenantId es requerido en el evento de auditoría.');
     }
 
-    if (!event.action) {
+    const eventId = event.eventId;
+    if (!eventId) {
+      this.logger.error('Evento de auditoría descartado: eventId ausente.');
+      throw new BadRequestException('eventId es requerido en el evento de auditoría.');
+    }
+
+    const action = event.action;
+    if (!action) {
       this.logger.error('Evento de auditoría descartado: action ausente.');
       throw new BadRequestException('action es requerido en el evento de auditoría.');
     }
 
-    if (!event.entityName) {
+    const entityName = event.entityName;
+    if (!entityName) {
       this.logger.error('Evento de auditoría descartado: entityName ausente.');
       throw new BadRequestException('entityName es requerido en el evento de auditoría.');
     }
 
-    const userId = ctx.userId || event.userId;
-    const eventId = event.eventId;
-
-    // Validación de idempotencia: si se provee eventId y ya fue procesado, no duplicar
-    if (eventId) {
-      const existing = await this.repository.findByEventId(tenantId, eventId);
-      if (existing) {
-        this.logger.warn(
-          `[AUDIT IDEMPOTENCY] Evento duplicado detectado para tenant=${tenantId}, eventId=${eventId}. Omitiendo inserción.`,
-        );
-        return {
-          success: true,
-          tenantId,
-          auditLogId: existing.id,
-          duplicate: true,
-        };
-      }
+    const userId = event.userId ?? null;
+    const timestamp = event.timestamp ? new Date(event.timestamp) : new Date();
+    if (Number.isNaN(timestamp.getTime())) {
+      this.logger.error('Evento de auditoría descartado: timestamp inválido.');
+      throw new BadRequestException('timestamp inválido en el evento de auditoría.');
     }
 
-    // Persistir nuevo registro inmutable
-    const newValuesPayload = {
-      ...(event.newValues ?? {}),
-      ...(eventId ? { eventId } : {}),
-      ...(ctx.role || event.role ? { role: ctx.role || event.role } : {}),
-    };
-
-    const inserted: AuditLog = await this.repository.insertLog({
+    const { log, created } = await this.repository.insertLogIdempotent({
       tenantId,
-      userId: userId || null,
-      action: event.action,
-      entityName: event.entityName,
-      entityId: event.entityId || (eventId ? `evt-${eventId}` : null),
-      oldValues: event.oldValues || null,
-      newValues: newValuesPayload,
-      ipAddress: event.ipAddress || null,
-      userAgent: event.userAgent || null,
-      timestamp: event.timestamp ? new Date(event.timestamp) : new Date(),
+      eventId,
+      userId,
+      action,
+      entityName,
+      entityId: event.entityId ?? null,
+      oldValues: event.oldValues ?? null,
+      newValues: event.newValues ?? null,
+      ipAddress: event.ipAddress ?? null,
+      userAgent: event.userAgent ?? null,
+      timestamp,
     });
 
     this.logger.log(
-      `[AUDIT APPEND-ONLY] id=${inserted.id} tenant=${tenantId} user=${userId ?? 'system'} acción=${event.action} entidad=${event.entityName}`,
+      `[AUDIT APPEND-ONLY] id=${log.id} tenant=${tenantId} user=${userId ?? 'system'} acción=${action} entidad=${entityName}`,
     );
 
     return {
       success: true,
       tenantId,
-      auditLogId: inserted.id,
-      duplicate: false,
+      auditLogId: log.id,
+      duplicate: !created,
     };
   }
 
@@ -108,16 +94,22 @@ export class AuditService {
     payload: Record<string, unknown>,
   ): Promise<AuditResult> {
     const tenantId = (payload.tenantId as string) || '';
-    const userId = (payload.userId as string) || undefined;
-    const eventId = (payload.eventId as string) || undefined;
-    const timestamp =
-      (payload.occurredAt as string) || (payload.timestamp as string) || new Date().toISOString();
+    if (!tenantId) {
+      throw new BadRequestException('tenantId es requerido en el evento de dominio.');
+    }
 
+    const eventId = (payload.eventId as string) || '';
+    if (!eventId) {
+      throw new BadRequestException('eventId es requerido en el evento de dominio.');
+    }
+
+    const userId = (payload.userId as string) || undefined;
     const entityId =
       (payload.transactionId as string) ||
       (payload.invoiceId as string) ||
       (payload.id as string) ||
-      eventId;
+      null;
+    const timestamp = (payload.occurredAt as string) || (payload.timestamp as string) || undefined;
 
     return this.recordLog({
       eventId,
@@ -125,9 +117,33 @@ export class AuditService {
       userId,
       action,
       entityName,
-      entityId,
+      entityId: entityId ?? undefined,
       newValues: payload,
       timestamp,
     });
+  }
+
+  /**
+   * Persiste un evento irrecuperable en la tabla de cuarentena sin filtrar su payload.
+   */
+  async quarantine(
+    eventType: string,
+    payload: Record<string, unknown>,
+    error: string,
+    attempts: number,
+  ): Promise<void> {
+    try {
+      await this.repository.quarantine({
+        tenantId: (payload.tenantId as string) || null,
+        eventType,
+        payload,
+        error,
+        attempts,
+      });
+    } catch (quarantineError) {
+      const name =
+        quarantineError instanceof Error ? quarantineError.name : String(quarantineError);
+      this.logger.error(`No se pudo registrar el evento en cuarentena: ${name}`);
+    }
   }
 }

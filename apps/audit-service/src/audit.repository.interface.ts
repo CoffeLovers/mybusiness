@@ -1,14 +1,13 @@
-import type { AuditLog, NewAuditLog } from './database/schema';
+import type { AuditDeadLetter, AuditLog, NewAuditDeadLetter, NewAuditLog } from './database/schema';
+
+export interface InsertAuditResult {
+  log: AuditLog;
+  created: boolean;
+}
 
 export interface IAuditRepository {
-  /**
-   * Inserta un nuevo registro de auditoría en la tabla inmutable audit_logs.
-   * OPERACIÓN ESTRICTAMENTE APPEND-ONLY: no se permiten métodos update ni delete.
-   */
-  insertLog(entry: NewAuditLog): Promise<AuditLog>;
-
-  /**
-   * Consulta si ya existe un evento registrado para garantizar idempotencia en reentregas.
-   */
+  /** Inserta de forma atómica; si (tenantId,eventId) ya existe devuelve el registro previo. */
+  insertLogIdempotent(entry: NewAuditLog & { eventId: string }): Promise<InsertAuditResult>;
   findByEventId(tenantId: string, eventId: string): Promise<AuditLog | null>;
+  quarantine(entry: NewAuditDeadLetter): Promise<AuditDeadLetter>;
 }

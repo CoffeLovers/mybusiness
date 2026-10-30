@@ -1,127 +1,172 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuditRepository } from '../src/audit.repository';
 import type { AuditDatabaseService } from '../src/database/database.service';
-import type { AuditLog, NewAuditLog } from '../src/database/schema';
+import type { AuditDeadLetter, AuditLog, NewAuditLog } from '../src/database/schema';
 
-function createMockDatabase() {
-  const db: Record<string, unknown> = {};
-  const passthrough = () => vi.fn<(...args: unknown[]) => Record<string, unknown>>(() => db);
-  const limit = vi.fn<(...args: unknown[]) => Promise<unknown[]>>();
-  const returning = vi.fn<(...args: unknown[]) => Promise<unknown[]>>();
+type MockFn = ReturnType<typeof vi.fn>;
 
-  const select = passthrough();
-  const from = passthrough();
-  const where = passthrough();
-  const insert = passthrough();
-  const values = passthrough();
-
-  Object.assign(db, {
-    select,
-    from,
-    where,
-    limit,
-    insert,
-    values,
-    returning,
-  });
-
-  return {
-    db,
-    select,
-    from,
-    where,
-    limit,
-    insert,
-    values,
-    returning,
-  };
+interface MockDatabase {
+  insert: MockFn;
+  values: MockFn;
+  onConflictDoNothing: MockFn;
+  returning: MockFn;
+  select: MockFn;
+  from: MockFn;
+  where: MockFn;
+  limit: MockFn;
 }
 
-describe('AuditRepository (Append-Only Persistencia)', () => {
-  let builder: ReturnType<typeof createMockDatabase>;
+/**
+ * Mock encadenable de Drizzle que soporta:
+ * - insert().values().onConflictDoNothing().returning()
+ * - insert().values().returning()
+ * - select().from().where().limit()
+ */
+function createMockDatabase(): MockDatabase {
+  const db = {
+    insert: vi.fn(),
+    values: vi.fn(),
+    onConflictDoNothing: vi.fn(),
+    returning: vi.fn<() => Promise<unknown[]>>(),
+    select: vi.fn(),
+    from: vi.fn(),
+    where: vi.fn(),
+    limit: vi.fn<() => Promise<unknown[]>>(),
+  };
+
+  const chainable = [db.insert, db.values, db.onConflictDoNothing, db.select, db.from, db.where];
+  for (const fn of chainable) {
+    fn.mockReturnValue(db);
+  }
+
+  return db;
+}
+
+describe('AuditRepository (Append-Only & Idempotencia)', () => {
+  let db: MockDatabase;
   let repository: AuditRepository;
 
   const tenantId = '11111111-1111-1111-1111-111111111111';
 
+  const buildRow = (overrides: Partial<AuditLog> = {}): AuditLog => ({
+    id: 'log-1',
+    tenantId,
+    eventId: 'evt-1',
+    userId: null,
+    action: 'auth.login',
+    entityName: 'User',
+    entityId: 'usr-1',
+    oldValues: null,
+    newValues: { status: 'SUCCESS' },
+    ipAddress: null,
+    userAgent: null,
+    timestamp: new Date('2026-10-30T00:00:00.000Z'),
+    ...overrides,
+  });
+
+  const buildEntry = (overrides: Partial<NewAuditLog> = {}): NewAuditLog & { eventId: string } => ({
+    tenantId,
+    eventId: 'evt-1',
+    action: 'auth.login',
+    entityName: 'User',
+    entityId: 'usr-1',
+    newValues: { status: 'SUCCESS' },
+    ...overrides,
+  });
+
   beforeEach(() => {
-    builder = createMockDatabase();
-    const dbService = { db: builder.db } as unknown as AuditDatabaseService;
-    repository = new AuditRepository(dbService);
+    db = createMockDatabase();
+    repository = new AuditRepository({ db } as unknown as AuditDatabaseService);
   });
 
-  it('insertLog ejecuta INSERT y retorna el registro creado', async () => {
-    const entry: NewAuditLog = {
-      tenantId,
-      action: 'auth.login',
-      entityName: 'User',
-      entityId: 'usr-1',
-      oldValues: null,
-      newValues: { status: 'SUCCESS' },
-    };
+  it('insertLogIdempotent retorna { created: true, log } cuando la fila se inserta', async () => {
+    const row = buildRow();
+    const entry = buildEntry();
+    db.returning.mockResolvedValueOnce([row]);
 
-    const mockRow: AuditLog = {
-      id: 'log-1',
-      tenantId,
-      userId: null,
-      action: 'auth.login',
-      entityName: 'User',
-      entityId: 'usr-1',
-      oldValues: null,
-      newValues: { status: 'SUCCESS' },
-      ipAddress: null,
-      userAgent: null,
-      timestamp: new Date(),
-    };
+    const result = await repository.insertLogIdempotent(entry);
 
-    builder.returning.mockResolvedValueOnce([mockRow]);
-
-    const result = await repository.insertLog(entry);
-
-    expect(builder.insert).toHaveBeenCalledTimes(1);
-    expect(builder.values).toHaveBeenCalledWith(entry);
-    expect(builder.returning).toHaveBeenCalledTimes(1);
-    expect(result).toEqual(mockRow);
+    expect(db.insert).toHaveBeenCalledTimes(1);
+    expect(db.values).toHaveBeenCalledWith(entry);
+    expect(db.onConflictDoNothing).toHaveBeenCalledTimes(1);
+    expect(db.returning).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ created: true, log: row });
+    expect(db.limit).not.toHaveBeenCalled();
   });
 
-  it('findByEventId consulta el registro por tenant y eventId con limit 1', async () => {
-    const mockRow: AuditLog = {
-      id: 'log-2',
-      tenantId,
-      userId: null,
-      action: 'finance.transaction.created',
-      entityName: 'Transaction',
-      entityId: 'tx-1',
-      oldValues: null,
-      newValues: { eventId: 'evt-1' },
-      ipAddress: null,
-      userAgent: null,
-      timestamp: new Date(),
-    };
+  it('insertLogIdempotent retorna { created: false, log } con el registro existente en reentrega', async () => {
+    const existing = buildRow({ id: 'log-existing' });
+    db.returning.mockResolvedValueOnce([]);
+    db.limit.mockResolvedValueOnce([existing]);
 
-    builder.limit.mockResolvedValueOnce([mockRow]);
+    const result = await repository.insertLogIdempotent(buildEntry());
 
-    const result = await repository.findByEventId(tenantId, 'evt-1');
-
-    expect(builder.select).toHaveBeenCalledTimes(1);
-    expect(builder.from).toHaveBeenCalledTimes(1);
-    expect(builder.where).toHaveBeenCalledTimes(1);
-    expect(builder.limit).toHaveBeenCalledWith(1);
-    expect(result).toEqual(mockRow);
+    expect(db.select).toHaveBeenCalledTimes(1);
+    expect(db.where).toHaveBeenCalledTimes(1);
+    expect(db.limit).toHaveBeenCalledWith(1);
+    expect(result).toEqual({ created: false, log: existing });
   });
 
-  it('findByEventId retorna null cuando no encuentra ningún registro', async () => {
-    builder.limit.mockResolvedValueOnce([]);
+  it('insertLogIdempotent lanza Error si no inserta y tampoco encuentra el registro previo', async () => {
+    db.returning.mockResolvedValueOnce([]);
+    db.limit.mockResolvedValueOnce([]);
 
-    const result = await repository.findByEventId(tenantId, 'evt-non-existent');
+    await expect(repository.insertLogIdempotent(buildEntry())).rejects.toThrow(Error);
+  });
+
+  it('findByEventId retorna la fila encontrada', async () => {
+    const row = buildRow({ eventId: 'evt-found' });
+    db.limit.mockResolvedValueOnce([row]);
+
+    const result = await repository.findByEventId(tenantId, 'evt-found');
+
+    expect(db.select).toHaveBeenCalledTimes(1);
+    expect(db.from).toHaveBeenCalledTimes(1);
+    expect(db.where).toHaveBeenCalledTimes(1);
+    expect(db.limit).toHaveBeenCalledWith(1);
+    expect(result).toEqual(row);
+  });
+
+  it('findByEventId retorna null cuando no existe el registro', async () => {
+    db.limit.mockResolvedValueOnce([]);
+
+    const result = await repository.findByEventId(tenantId, 'evt-missing');
 
     expect(result).toBeNull();
   });
 
-  it('cumple política estricta de append-only: no existen métodos update o delete', () => {
-    expect((repository as any).update).toBeUndefined();
-    expect((repository as any).updateLog).toBeUndefined();
-    expect((repository as any).delete).toBeUndefined();
-    expect((repository as any).deleteLog).toBeUndefined();
-    expect((repository as any).remove).toBeUndefined();
+  it('quarantine inserta en audit_dead_letters y retorna la fila persistida', async () => {
+    const deadLetter: AuditDeadLetter = {
+      id: 'dlq-1',
+      tenantId,
+      eventType: 'audit.log_event',
+      payload: { eventId: 'evt-1' },
+      error: 'DB failure',
+      attempts: 3,
+      failedAt: new Date('2026-10-30T00:00:00.000Z'),
+    };
+    const entry = {
+      tenantId,
+      eventType: 'audit.log_event',
+      payload: { eventId: 'evt-1' },
+      error: 'DB failure',
+      attempts: 3,
+    };
+    db.returning.mockResolvedValueOnce([deadLetter]);
+
+    const result = await repository.quarantine(entry);
+
+    expect(db.insert).toHaveBeenCalledTimes(1);
+    expect(db.values).toHaveBeenCalledWith(entry);
+    expect(result).toEqual(deadLetter);
+  });
+
+  it('no expone métodos update ni delete (append-only estricto)', () => {
+    const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(repository));
+    expect(methods).not.toContain('update');
+    expect(methods).not.toContain('delete');
+    expect(methods).not.toContain('updateLog');
+    expect(methods).not.toContain('deleteLog');
+    expect(methods).not.toContain('remove');
   });
 });

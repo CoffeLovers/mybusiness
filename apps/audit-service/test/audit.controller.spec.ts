@@ -1,4 +1,5 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { randomUUID } from 'node:crypto';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuditController } from '../src/audit.controller';
 import type { AuditService } from '../src/audit.service';
 import type {
@@ -7,43 +8,54 @@ import type {
   InvoicePaidEvent,
 } from '@mybusiness/contracts';
 
-describe('AuditController (EventPattern & MessagePattern)', () => {
+type MockFn = ReturnType<typeof vi.fn>;
+
+interface MockAuditService {
+  recordLog: MockFn;
+  handleDomainEvent: MockFn;
+  quarantine: MockFn;
+}
+
+describe('AuditController (EventPattern, reintentos y cuarentena)', () => {
   let controller: AuditController;
-  let mockAuditService: {
-    recordLog: ReturnType<typeof vi.fn>;
-    handleDomainEvent: ReturnType<typeof vi.fn>;
-  };
+  let mockAuditService: MockAuditService;
+
+  const tenantId = '11111111-1111-1111-1111-111111111111';
+
+  const buildEvent = (overrides: Partial<CreateAuditLogEvent> = {}): CreateAuditLogEvent => ({
+    eventId: randomUUID(),
+    tenantId,
+    userId: 'usr-1',
+    action: 'auth.login',
+    entityName: 'User',
+    ...overrides,
+  });
 
   beforeEach(() => {
     mockAuditService = {
       recordLog: vi.fn(),
       handleDomainEvent: vi.fn(),
+      quarantine: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
     };
     controller = new AuditController(mockAuditService as unknown as AuditService);
   });
 
-  it('procesa el evento audit.log_event asíncronamente con recordLog', async () => {
-    const event: CreateAuditLogEvent = {
-      tenantId: 'tenant-1',
-      action: 'auth.login',
-      entityName: 'User',
-    };
-    mockAuditService.recordLog.mockResolvedValueOnce({
-      success: true,
-      tenantId: 'tenant-1',
-      duplicate: false,
-    });
+  it('handleAuditLogEvent procesa el evento y devuelve el resultado', async () => {
+    const event = buildEvent();
+    const expected = { success: true, tenantId, duplicate: false };
+    mockAuditService.recordLog.mockResolvedValueOnce(expected);
 
     const result = await controller.handleAuditLogEvent(event);
 
     expect(mockAuditService.recordLog).toHaveBeenCalledWith(event);
-    expect(result).toEqual({ success: true, tenantId: 'tenant-1', duplicate: false });
+    expect(result).toEqual(expected);
   });
 
-  it('procesa el evento finance.transaction.created con handleDomainEvent', async () => {
+  it('handleTransactionCreated delega en handleDomainEvent', async () => {
     const event: TransactionCreatedEvent = {
-      eventId: 'evt-1',
-      tenantId: 'tenant-1',
+      eventId: randomUUID(),
+      tenantId,
+      userId: 'usr-1',
       transactionId: 'tx-1',
       bankAccountId: 'ba-1',
       amountMinor: '1000',
@@ -51,11 +63,8 @@ describe('AuditController (EventPattern & MessagePattern)', () => {
       type: 'INCOME',
       occurredAt: '2026-10-30T00:00:00.000Z',
     };
-    mockAuditService.handleDomainEvent.mockResolvedValueOnce({
-      success: true,
-      tenantId: 'tenant-1',
-      duplicate: false,
-    });
+    const expected = { success: true, tenantId, duplicate: false };
+    mockAuditService.handleDomainEvent.mockResolvedValueOnce(expected);
 
     const result = await controller.handleTransactionCreated(event);
 
@@ -64,24 +73,22 @@ describe('AuditController (EventPattern & MessagePattern)', () => {
       'Transaction',
       event,
     );
-    expect(result).toEqual({ success: true, tenantId: 'tenant-1', duplicate: false });
+    expect(result).toEqual(expected);
   });
 
-  it('procesa el evento finance.invoice.paid con handleDomainEvent', async () => {
+  it('handleInvoicePaid delega en handleDomainEvent', async () => {
     const event: InvoicePaidEvent = {
-      eventId: 'evt-inv-1',
-      tenantId: 'tenant-1',
+      eventId: randomUUID(),
+      tenantId,
+      userId: 'usr-1',
       invoiceId: 'inv-1',
       invoiceNumber: 'INV-001',
       totalAmountMinor: '50000',
       currency: 'COP',
       occurredAt: '2026-10-30T00:00:00.000Z',
     };
-    mockAuditService.handleDomainEvent.mockResolvedValueOnce({
-      success: true,
-      tenantId: 'tenant-1',
-      duplicate: false,
-    });
+    const expected = { success: true, tenantId, duplicate: false };
+    mockAuditService.handleDomainEvent.mockResolvedValueOnce(expected);
 
     const result = await controller.handleInvoicePaid(event);
 
@@ -90,41 +97,45 @@ describe('AuditController (EventPattern & MessagePattern)', () => {
       'Invoice',
       event,
     );
-    expect(result).toEqual({ success: true, tenantId: 'tenant-1', duplicate: false });
+    expect(result).toEqual(expected);
   });
 
-  it('no arroja error hacia el broker si ocurre un fallo en el procesamiento de eventos (fire-and-forget)', async () => {
-    const event: CreateAuditLogEvent = {
-      tenantId: 'tenant-1',
-      action: 'bad.event',
-      entityName: 'Bad',
-    };
-    mockAuditService.recordLog.mockRejectedValueOnce(new Error('DB failure'));
+  it('reintenta un fallo transitorio y no llama a quarantine si el tercer intento tiene éxito', async () => {
+    const event = buildEvent({ action: 'transient.event' });
+    const expected = { success: true, tenantId, duplicate: false };
+    mockAuditService.recordLog
+      .mockRejectedValueOnce(new Error('fallo 1'))
+      .mockRejectedValueOnce(new Error('fallo 2'))
+      .mockResolvedValueOnce(expected);
+
+    const result = await controller.handleAuditLogEvent(event);
+
+    expect(mockAuditService.recordLog).toHaveBeenCalledTimes(3);
+    expect(result).toEqual(expected);
+    expect(mockAuditService.quarantine).not.toHaveBeenCalled();
+  });
+
+  it('envía a cuarentena con attempts: 3 ante un fallo persistente y no propaga el error', async () => {
+    const event = buildEvent({ action: 'persistent.event' });
+    mockAuditService.recordLog.mockRejectedValue(new Error('DB caída'));
 
     await expect(controller.handleAuditLogEvent(event)).resolves.toBeUndefined();
+
+    expect(mockAuditService.recordLog).toHaveBeenCalledTimes(3);
+    expect(mockAuditService.quarantine).toHaveBeenCalledTimes(1);
+    expect(mockAuditService.quarantine).toHaveBeenCalledWith(
+      'audit.log_event',
+      event,
+      'DB caída',
+      3,
+    );
   });
 
-  it('atiende peticiones RPC síncronas vía handleAuditLogRpc', async () => {
-    const event: CreateAuditLogEvent = {
-      tenantId: 'tenant-1',
-      action: 'rpc.log',
-      entityName: 'System',
-    };
-    mockAuditService.recordLog.mockResolvedValueOnce({
-      success: true,
-      tenantId: 'tenant-1',
-      auditLogId: 'log-123',
-      duplicate: false,
-    });
+  it('handleAuditLogRpc propaga el error sin pasar por cuarentena', async () => {
+    const event = buildEvent({ action: 'rpc.log' });
+    mockAuditService.recordLog.mockRejectedValueOnce(new Error('RPC failure'));
 
-    const result = await controller.handleAuditLogRpc(event);
-
-    expect(mockAuditService.recordLog).toHaveBeenCalledWith(event);
-    expect(result).toEqual({
-      success: true,
-      tenantId: 'tenant-1',
-      auditLogId: 'log-123',
-      duplicate: false,
-    });
+    await expect(controller.handleAuditLogRpc(event)).rejects.toThrow('RPC failure');
+    expect(mockAuditService.quarantine).not.toHaveBeenCalled();
   });
 });

@@ -23,18 +23,38 @@ export class AuditController {
 
   constructor(private readonly auditService: AuditService) {}
 
+  private async processWithRetry(
+    eventType: string,
+    payload: Record<string, unknown>,
+    handler: () => Promise<AuditResult>,
+  ): Promise<AuditResult | void> {
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        return await handler();
+      } catch (error) {
+        lastError = error;
+        if (attempt < 3) {
+          await new Promise((resolve) => setTimeout(resolve, 50 * attempt));
+        }
+      }
+    }
+    const message = lastError instanceof Error ? lastError.message : String(lastError);
+    this.logger.error(`Evento ${eventType} falló tras 3 intentos: ${message}`);
+    await this.auditService.quarantine(eventType, payload, message, 3);
+    return undefined;
+  }
+
   /**
    * Consumo asíncrono del evento genérico de auditoría audit.log_event.
    */
   @EventPattern(AuditEvents.LOG_EVENT)
   async handleAuditLogEvent(@Payload() event: CreateAuditLogEvent): Promise<AuditResult | void> {
-    try {
-      return await this.auditService.recordLog(event);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Error procesando audit.log_event: ${msg}`);
-      return undefined;
-    }
+    return this.processWithRetry(
+      AuditEvents.LOG_EVENT,
+      event as unknown as Record<string, unknown>,
+      () => this.auditService.recordLog(event),
+    );
   }
 
   /**
@@ -44,17 +64,10 @@ export class AuditController {
   async handleTransactionCreated(
     @Payload() event: TransactionCreatedEvent,
   ): Promise<AuditResult | void> {
-    try {
-      return await this.auditService.handleDomainEvent(
-        'finance.transaction.created',
-        'Transaction',
-        event as unknown as Record<string, unknown>,
-      );
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Error procesando finance.transaction.created: ${msg}`);
-      return undefined;
-    }
+    const payload = event as unknown as Record<string, unknown>;
+    return this.processWithRetry(FinanceEvents.TRANSACTION_CREATED, payload, () =>
+      this.auditService.handleDomainEvent('finance.transaction.created', 'Transaction', payload),
+    );
   }
 
   /**
@@ -62,17 +75,10 @@ export class AuditController {
    */
   @EventPattern(FinanceEvents.INVOICE_PAID)
   async handleInvoicePaid(@Payload() event: InvoicePaidEvent): Promise<AuditResult | void> {
-    try {
-      return await this.auditService.handleDomainEvent(
-        'finance.invoice.paid',
-        'Invoice',
-        event as unknown as Record<string, unknown>,
-      );
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Error procesando finance.invoice.paid: ${msg}`);
-      return undefined;
-    }
+    const payload = event as unknown as Record<string, unknown>;
+    return this.processWithRetry(FinanceEvents.INVOICE_PAID, payload, () =>
+      this.auditService.handleDomainEvent('finance.invoice.paid', 'Invoice', payload),
+    );
   }
 
   /**
