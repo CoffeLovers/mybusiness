@@ -18,6 +18,7 @@ El sistema adopta el patrón **API Gateway + Microservicios de Dominio** con com
 ```mermaid
 flowchart TD
     subgraph Clients ["Capa de Clientes"]
+        WebClient["Portal Web (Next.js + React)"]
         MobileClient["App Móvil Android (Kotlin + Jetpack Compose)"]
         ExternalClient["Integraciones Externas / APIs"]
     end
@@ -95,7 +96,8 @@ flowchart TD
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Backend Framework**       | [NestJS](https://nestjs.com/) (Microservices Module)                                                              | Framework modular con soporte nativo para microservicios (`@MessagePattern`, `@EventPattern`).                                                                                    |
 | **Transport Layer**         | [Redis 7](https://redis.io/) (Pub/Sub para RPC/Eventos + BullMQ para colas durables)                              | Bus de transporte para mensajes RPC (`@MessagePattern`), eventos desacoplados (`@EventPattern`) y colas durables BullMQ. Decisión en [ADR 002](docs/adr/002-transporte-redis.md). |
-| **Cliente Móvil**           | [Kotlin](https://kotlinlang.org/) + [Jetpack Compose](https://developer.android.com/jetpack/compose) (Material 3) | App Android nativa; consume exclusivamente el API Gateway (sin frontend web).                                                                                                     |
+| **Cliente Móvil**           | [Kotlin](https://kotlinlang.org/) + [Jetpack Compose](https://developer.android.com/jetpack/compose) (Material 3) | App Android nativa; consume exclusivamente el API Gateway mediante JWT.                                                                                                           |
+| **Cliente Web**             | [Next.js](https://nextjs.org/) + React + TypeScript                                                               | Portal BFF para análisis de escritorio, tablas densas y conciliación masiva. Decisión en [ADR 006](docs/adr/006-portal-web-nextjs.md).                                            |
 | **Base de Datos**           | [PostgreSQL 16](https://www.postgresql.org/)                                                                      | Persistencia ACID estructurada bajo patrón Database-per-Service (o esquemas aislados).                                                                                            |
 | **ORM y Migraciones**       | [Drizzle ORM](https://orm.drizzle.team/) + `drizzle-kit`                                                          | Esquemas tipados y migraciones aisladas por microservicio (un `schema.ts` y un historial `drizzle/` por servicio). Decisión en [ADR 001](docs/adr/001-orm-drizzle.md).            |
 | **Precisión Monetaria**     | `BIGINT` en unidades menores + `string` en JSON                                                                   | Importes exactos sin `float`; los DTOs usan `*Minor` y moneda ISO 4217. Decisión en [ADR 003](docs/adr/003-dinero.md).                                                            |
@@ -119,6 +121,7 @@ mybusiness/
 │   ├── finance-service/      # Microservicio Financiero (Bancos, Transacciones, Facturas)
 │   ├── agent-service/        # Microservicio de Memoria de IA (pgvector)
 │   ├── audit-service/        # Microservicio de Auditoría inmutable (Consumidor asíncrono)
+│   ├── web/                  # Portal web (Next.js + React + TypeScript)
 │   └── mobile-android/       # App móvil Android (Kotlin + Jetpack Compose)
 ├── packages/
 │   ├── common/               # Decoradores, filtros globales, guards compartidos
@@ -193,6 +196,8 @@ Los roles habilitados para escritura son `ACCOUNTANT`, `TENANT_ADMIN` y `SUPER_A
 El desarrollo del proyecto se encuentra estructurado en torno al diseño de microservicios:
 
 📍 **Master Epic de Seguimiento**: [#10 — Fase 1: Cimientos de Infraestructura, Seguridad y Modelado de Datos](https://github.com/Umbrex47/mybusiness/issues/10)
+📘 **Plan Integral v2**: [docs/PLAN-INTEGRAL-DESARROLLO.md](docs/PLAN-INTEGRAL-DESARROLLO.md)
+🗺️ **Fase 2 (Sprints 3–4)**: [docs/sprints/fase-2/README.md](docs/sprints/fase-2/README.md) · [Issues](docs/sprints/fase-2/ISSUES.md)
 
 ### Sprint 1: Arquitectura de Microservicios, Infraestructura y Datos
 
