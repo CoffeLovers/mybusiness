@@ -20,7 +20,14 @@ export const AgentPatterns = {
   QUERY_MEMORY: 'agent.memory.query',
   STORE_MEMORY: 'agent.memory.store',
   DELETE_MEMORY: 'agent.memory.delete',
+  SEARCH_SIMILAR: 'agent.memory.search',
+  SEARCH_MEMORY: 'agent.memory.search',
 } as const;
+
+export const AGENT_STORE_MEMORY = AgentPatterns.STORE_MEMORY;
+export const AGENT_SEARCH_SIMILAR = AgentPatterns.SEARCH_SIMILAR;
+export const AGENT_QUERY_MEMORY = AgentPatterns.QUERY_MEMORY;
+export const AGENT_DELETE_MEMORY = AgentPatterns.DELETE_MEMORY;
 
 export const AuditEvents = {
   LOG_EVENT: 'audit.log_event',

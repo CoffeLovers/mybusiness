@@ -2,7 +2,9 @@ import { Controller } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import {
   AgentPatterns,
+  type DeleteAgentMemoryRpcPayload,
   type QueryAgentMemoryRpcPayload,
+  type SearchAgentMemoryRpcPayload,
   type StoreAgentMemoryRpcPayload,
 } from '@mybusiness/contracts';
 import { extractRpcContext, stripRpcContext } from '@mybusiness/common';
@@ -22,5 +24,17 @@ export class AgentController {
   queryMemory(@Payload() data: QueryAgentMemoryRpcPayload) {
     const ctx = extractRpcContext(data);
     return this.agentService.queryMemory(ctx, stripRpcContext(data));
+  }
+
+  @MessagePattern(AgentPatterns.SEARCH_SIMILAR)
+  searchSimilar(@Payload() data: SearchAgentMemoryRpcPayload) {
+    const ctx = extractRpcContext(data);
+    return this.agentService.searchSimilar(ctx, stripRpcContext(data));
+  }
+
+  @MessagePattern(AgentPatterns.DELETE_MEMORY)
+  deleteMemory(@Payload() data: DeleteAgentMemoryRpcPayload) {
+    const ctx = extractRpcContext(data);
+    return this.agentService.deleteMemory(ctx, stripRpcContext(data));
   }
 }
