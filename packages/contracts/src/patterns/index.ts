@@ -32,7 +32,10 @@ export const AGENT_DELETE_MEMORY = AgentPatterns.DELETE_MEMORY;
 
 export const AuditEvents = {
   LOG_EVENT: 'audit.log_event',
+  LOG: 'audit.log_event',
 } as const;
+
+export const AUDIT_LOG_EVENT = AuditEvents.LOG_EVENT;
 
 /** Eventos de dominio emitidos por finance-service. */
 export const FinanceEvents = {
