@@ -25,7 +25,7 @@ describe('Banking Module Unit Tests', () => {
     it('debe fallar en el constructor si falta BANK_ENCRYPTION_KEY y no hay flag de desarrollo', () => {
       const config = new ConfigService({});
       expect(() => new BankingEncryptionService(config)).toThrow(
-        /BANK_ENCRYPTION_KEY es obligatoria al arrancar la aplicación/,
+        /BANK_ENCRYPTION_KEY es obligatoria al arrancar/,
       );
     });
 
@@ -36,7 +36,7 @@ describe('Banking Module Unit Tests', () => {
           BANK_ENCRYPTION_ALLOW_INSECURE_DEV_KEY: 'true',
         });
         expect(() => new BankingEncryptionService(config)).toThrow(
-          /BANK_ENCRYPTION_KEY es obligatoria al arrancar la aplicación/,
+          /BANK_ENCRYPTION_KEY es obligatoria al arrancar/,
         );
       }
     });

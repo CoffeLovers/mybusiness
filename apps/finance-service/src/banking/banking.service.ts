@@ -173,8 +173,8 @@ export class BankingService {
   }
 
   /**
-   * Obtiene todas las conexiones bancarias del usuario autenticado.
-   * Filtra estrictamente por tenant y usuario (tenantId + userId).
+   * Obtiene todas las conexiones bancarias filtrando estrictamente por tenant y usuario (tenantId + userId).
+   * Solo incluye registros activos (deletedAt IS NULL).
    */
   async getConnections(ctx: RequestContext): Promise<BankConnectionResponse[]> {
     const list = await this.db
