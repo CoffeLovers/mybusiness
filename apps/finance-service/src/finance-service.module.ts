@@ -14,6 +14,7 @@ import { FinanceController } from './finance.controller';
 import { FinanceRepository } from './finance.repository';
 import { FinanceService } from './finance.service';
 import { BankingModule } from './banking/banking.module';
+import { DocumentsModule } from './documents/documents.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { BankingModule } from './banking/banking.module';
     }),
     FinanceDatabaseModule,
     BankingModule,
+    DocumentsModule,
   ],
   controllers: [FinanceController],
   providers: [

@@ -2,13 +2,14 @@ import { index, jsonb, pgEnum, pgTable, text, timestamp, uuid, vector } from 'dr
 
 /**
  * Los valores de este enum se mantienen alineados con `@mybusiness/contracts` (ContextType):
- * FINANCIAL_RULE, USER_PREFERENCE, CONVERSATION_SUMMARY, TRANSACTION_NOTE
+ * FINANCIAL_RULE, USER_PREFERENCE, CONVERSATION_SUMMARY, TRANSACTION_NOTE, DOCUMENT
  */
 export const contextTypeEnum = pgEnum('context_type', [
   'FINANCIAL_RULE',
   'USER_PREFERENCE',
   'CONVERSATION_SUMMARY',
   'TRANSACTION_NOTE',
+  'DOCUMENT',
 ]);
 
 /**

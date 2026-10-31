@@ -1,0 +1,1 @@
+ALTER TYPE "public"."context_type" ADD VALUE IF NOT EXISTS 'DOCUMENT';
