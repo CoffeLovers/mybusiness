@@ -43,3 +43,9 @@ docker-data/
 
 # Artefactos de compilación sueltos
 *.js.map
+
+# App web (Next.js / Playwright)
+apps/web/playwright-report/
+apps/web/test-results/
+apps/web/.next/
+apps/web/next-env.d.ts
