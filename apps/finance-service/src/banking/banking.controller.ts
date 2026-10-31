@@ -66,6 +66,11 @@ export class BankingController {
 
   @MessagePattern(BankingPatterns.HANDLE_WEBHOOK)
   handleWebhook(@Payload() data: BankWebhookRpcPayload) {
-    return this.webhookService.handleIncomingWebhook(data.provider, data.payload, data.headers);
+    return this.webhookService.handleIncomingWebhook(
+      data.provider,
+      data.payload,
+      data.headers,
+      data.rawBody,
+    );
   }
 }

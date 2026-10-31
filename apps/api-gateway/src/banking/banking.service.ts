@@ -49,12 +49,17 @@ export class BankingService {
   }
 
   syncConnection(user: UserContext, connectionId: string) {
-    return rpcSend(this.financeClient, BankingPatterns.SYNC_CONNECTION, {
-      connectionId,
-      userId: user.userId,
-      tenantId: user.tenantId,
-      role: user.role,
-    });
+    return rpcSend(
+      this.financeClient,
+      BankingPatterns.SYNC_CONNECTION,
+      {
+        connectionId,
+        userId: user.userId,
+        tenantId: user.tenantId,
+        role: user.role,
+      },
+      15000,
+    );
   }
 
   disconnectConnection(user: UserContext, connectionId: string) {
@@ -70,11 +75,13 @@ export class BankingService {
     provider: BankProvider,
     payload: Record<string, unknown>,
     headers?: Record<string, string>,
+    rawBody?: string,
   ) {
     return rpcSend(this.financeClient, BankingPatterns.HANDLE_WEBHOOK, {
       provider,
       payload,
       headers,
+      rawBody,
     });
   }
 }

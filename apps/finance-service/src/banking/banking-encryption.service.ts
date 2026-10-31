@@ -1,36 +1,60 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 
 @Injectable()
 export class BankingEncryptionService {
+  private readonly logger = new Logger(BankingEncryptionService.name);
   private readonly algorithm = 'aes-256-gcm';
   private readonly defaultKeyVersion = 'v1';
+  private readonly key: Buffer;
+  private readonly keyVersion: string;
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(private readonly configService: ConfigService) {
+    this.key = this.resolveAndValidateKey();
+    this.keyVersion = this.configService.get<string>(
+      'BANK_ENCRYPTION_KEY_VERSION',
+      this.defaultKeyVersion,
+    );
+  }
 
-  private getEncryptionKey(): Buffer {
+  private resolveAndValidateKey(): Buffer {
     const rawKey = this.configService.get<string>('BANK_ENCRYPTION_KEY');
+    const allowInsecureDevKey =
+      this.configService.get<string>('BANK_ENCRYPTION_ALLOW_INSECURE_DEV_KEY') === 'true';
+    const nodeEnv = (this.configService.get<string>('NODE_ENV') || 'development').toLowerCase();
+    const forbiddenEnvs = ['production', 'staging', 'prod', 'preprod'];
+
     if (!rawKey) {
-      // En desarrollo / sandbox si no está configurada, derivamos una clave reproducible local
-      const isProd = this.configService.get<string>('NODE_ENV') === 'production';
-      if (isProd) {
-        throw new InternalServerErrorException(
-          'BANK_ENCRYPTION_KEY es obligatoria en entornos productivos.',
+      if (allowInsecureDevKey && !forbiddenEnvs.includes(nodeEnv)) {
+        this.logger.warn(
+          '⚠️ ALERTA DE SEGURIDAD: BANK_ENCRYPTION_KEY no configurada. Usando clave de desarrollo insegura porque BANK_ENCRYPTION_ALLOW_INSECURE_DEV_KEY=true en entorno no productivo.',
+        );
+        return Buffer.from(
+          '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+          'hex',
         );
       }
-      return createHash('sha256').update('mybusiness_dev_banking_encryption_fallback_key').digest();
+
+      throw new Error(
+        'BANK_ENCRYPTION_KEY es obligatoria al arrancar la aplicación. Configure una clave de 32 bytes (64 caracteres hex con "openssl rand -hex 32").',
+      );
     }
 
-    if (rawKey.length === 64 && /^[0-9a-fA-F]+$/.test(rawKey)) {
+    if (rawKey.length === 64 && /^[0-9a-fA-F]{64}$/.test(rawKey)) {
       return Buffer.from(rawKey, 'hex');
     }
 
-    return createHash('sha256').update(rawKey, 'utf8').digest();
-  }
+    if (/^[A-Za-z0-9+/=_-]{43,44}$/.test(rawKey)) {
+      const b64Buf = Buffer.from(rawKey, 'base64');
+      if (b64Buf.length === 32) {
+        return b64Buf;
+      }
+    }
 
-  private getKeyVersion(): string {
-    return this.configService.get<string>('BANK_ENCRYPTION_KEY_VERSION', this.defaultKeyVersion);
+    throw new Error(
+      'BANK_ENCRYPTION_KEY inválida: debe ser exactamente de 32 bytes (64 caracteres hexadecimales o base64 de 32 bytes). Derivación por hash o claves de longitud incorrecta no están permitidas.',
+    );
   }
 
   /**
@@ -40,17 +64,15 @@ export class BankingEncryptionService {
    */
   async encrypt(plaintext: string): Promise<{ ciphertext: string; keyVersion: string }> {
     try {
-      const key = this.getEncryptionKey();
       const iv = randomBytes(12);
-      const cipher = createCipheriv(this.algorithm, key, iv);
+      const cipher = createCipheriv(this.algorithm, this.key, iv);
 
       const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
       const authTag = cipher.getAuthTag();
 
       const ciphertext = `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
-      const keyVersion = this.getKeyVersion();
 
-      return { ciphertext, keyVersion };
+      return { ciphertext, keyVersion: this.keyVersion };
     } catch {
       throw new InternalServerErrorException('Error al cifrar el secreto bancario.');
     }
@@ -69,12 +91,11 @@ export class BankingEncryptionService {
       }
 
       const [ivHex, authTagHex, encryptedHex] = parts;
-      const key = this.getEncryptionKey();
       const iv = Buffer.from(ivHex, 'hex');
       const authTag = Buffer.from(authTagHex, 'hex');
       const encrypted = Buffer.from(encryptedHex, 'hex');
 
-      const decipher = createDecipheriv(this.algorithm, key, iv);
+      const decipher = createDecipheriv(this.algorithm, this.key, iv);
       decipher.setAuthTag(authTag);
 
       const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);

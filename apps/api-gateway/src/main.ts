@@ -6,7 +6,7 @@ import { setupGatewayApp } from './setup';
 
 async function bootstrap() {
   const logger = new Logger('APIGateway');
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
 
   // Aplicar configuración unificada de middlewares, seguridad, CORS y filtros
   setupGatewayApp(app);

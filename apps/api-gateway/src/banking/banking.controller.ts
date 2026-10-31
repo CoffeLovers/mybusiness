@@ -1,4 +1,6 @@
-import { Body, Controller, Delete, Get, Headers, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Param, Post, Req } from '@nestjs/common';
+import type { RawBodyRequest } from '@nestjs/common';
+import type { Request } from 'express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   BankProvider,
@@ -61,8 +63,14 @@ export class BankingWebhooksController {
   handlePlaidWebhook(
     @Body() payload: Record<string, unknown>,
     @Headers() headers: Record<string, string>,
+    @Req() req: RawBodyRequest<Request>,
   ) {
-    return this.bankingService.handleWebhook(BankProvider.PLAID, payload, headers);
+    return this.bankingService.handleWebhook(
+      BankProvider.PLAID,
+      payload,
+      headers,
+      req.rawBody?.toString('utf8'),
+    );
   }
 
   @Public()
@@ -70,7 +78,13 @@ export class BankingWebhooksController {
   handleBelvoWebhook(
     @Body() payload: Record<string, unknown>,
     @Headers() headers: Record<string, string>,
+    @Req() req: RawBodyRequest<Request>,
   ) {
-    return this.bankingService.handleWebhook(BankProvider.BELVO, payload, headers);
+    return this.bankingService.handleWebhook(
+      BankProvider.BELVO,
+      payload,
+      headers,
+      req.rawBody?.toString('utf8'),
+    );
   }
 }

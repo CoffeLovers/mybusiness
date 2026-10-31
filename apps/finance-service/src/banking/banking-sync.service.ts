@@ -217,6 +217,8 @@ export class BankingSyncService {
 
       // 5. Actualizar bank_transaction_sync_state
       const nextCursor = syncResult.nextCursor !== undefined ? syncResult.nextCursor : null;
+      const initialComplete = !syncResult.hasMore;
+
       await tx
         .insert(bankTransactionSyncState)
         .values({
@@ -224,7 +226,7 @@ export class BankingSyncService {
           cursor: nextCursor,
           lastSyncedAt: new Date(),
           lastSyncCompletedAt: new Date(),
-          initialSyncComplete: true,
+          initialSyncComplete: initialComplete,
         })
         .onConflictDoUpdate({
           target: [bankTransactionSyncState.connectionId],
@@ -232,19 +234,21 @@ export class BankingSyncService {
             cursor: nextCursor,
             lastSyncedAt: new Date(),
             lastSyncCompletedAt: new Date(),
-            initialSyncComplete: true,
+            ...(initialComplete ? { initialSyncComplete: true } : {}),
             updatedAt: new Date(),
           },
         });
 
-      // 6. Actualizar timestamp de última sincronización en la conexión
-      await tx
-        .update(bankConnections)
-        .set({
-          lastSuccessfulSyncAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(bankConnections.id, connection.id));
+      // 6. Actualizar timestamp de última sincronización en la conexión SÓLO si completó todas las páginas
+      if (!syncResult.hasMore) {
+        await tx
+          .update(bankConnections)
+          .set({
+            lastSuccessfulSyncAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(bankConnections.id, connection.id));
+      }
 
       return {
         added: syncResult.added.length,

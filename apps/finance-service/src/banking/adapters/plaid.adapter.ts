@@ -1,4 +1,11 @@
-import { BadGatewayException, BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { createHash, createPublicKey, createVerify, timingSafeEqual } from 'node:crypto';
+import {
+  BadGatewayException,
+  BadRequestException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BankProvider } from '@mybusiness/contracts';
 import {
@@ -314,17 +321,103 @@ export class PlaidAdapter implements IBankAdapter {
     }
   }
 
+  private readonly verificationKeys = new Map<
+    string,
+    { key: Record<string, unknown>; expiresAt: number | null }
+  >();
+
+  private async verifyPlaidWebhook(
+    headers: Record<string, string> | undefined,
+    rawBody: string | undefined,
+  ): Promise<void> {
+    if (!rawBody) {
+      throw new UnauthorizedException('Falta el cuerpo crudo del webhook.');
+    }
+
+    const normalized = Object.fromEntries(
+      Object.entries(headers ?? {}).map(([k, v]) => [k.toLowerCase(), v]),
+    );
+    const jwt = normalized['plaid-verification'];
+    if (!jwt || typeof jwt !== 'string') {
+      throw new UnauthorizedException('Falta Plaid-Verification.');
+    }
+
+    const [encodedHeader, encodedPayload, encodedSignature] = jwt.split('.');
+    if (!encodedHeader || !encodedPayload || !encodedSignature) {
+      throw new UnauthorizedException('JWT de webhook malformado.');
+    }
+
+    let header: { alg?: string; kid?: string };
+    let claims: { iat?: number; request_body_sha256?: string };
+    try {
+      header = JSON.parse(Buffer.from(encodedHeader, 'base64url').toString('utf8'));
+      claims = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8'));
+    } catch {
+      throw new UnauthorizedException('JWT de webhook malformado.');
+    }
+
+    if (header.alg !== 'ES256' || !header.kid) {
+      throw new UnauthorizedException('Algoritmo o kid no válido.');
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    if (!claims.iat || Math.abs(now - claims.iat) > 300) {
+      throw new UnauthorizedException('Webhook expirado.');
+    }
+
+    let cached = this.verificationKeys.get(header.kid);
+    if (!cached || (cached.expiresAt !== null && cached.expiresAt <= now)) {
+      const response = await this.request<{
+        key: Record<string, unknown> & { expired_at?: number | null };
+      }>('/webhook_verification_key/get', { key_id: header.kid });
+
+      if (!response.key || (response.key.expired_at != null && response.key.expired_at <= now)) {
+        throw new UnauthorizedException('Clave de verificación expirada.');
+      }
+      cached = { key: response.key, expiresAt: response.key.expired_at ?? null };
+      this.verificationKeys.set(header.kid, cached);
+    }
+
+    const publicKey = createPublicKey({ key: cached.key as any, format: 'jwk' });
+    const verifier = createVerify('sha256');
+    verifier.update(`${encodedHeader}.${encodedPayload}`);
+    verifier.end();
+    const signatureOk = verifier.verify(
+      { key: publicKey, dsaEncoding: 'ieee-p1363' },
+      Buffer.from(encodedSignature, 'base64url'),
+    );
+    if (!signatureOk) {
+      throw new UnauthorizedException('Firma de webhook inválida.');
+    }
+
+    const expected = createHash('sha256').update(rawBody, 'utf8').digest();
+    const received = Buffer.from(claims.request_body_sha256 ?? '', 'hex');
+    if (received.length !== expected.length || !timingSafeEqual(received, expected)) {
+      throw new UnauthorizedException('El cuerpo no coincide con la firma.');
+    }
+  }
+
   async handleWebhook(
     payload: Record<string, unknown>,
-    _headers?: Record<string, string>,
+    headers?: Record<string, string>,
+    rawBody?: string,
   ): Promise<WebhookResult> {
-    const webhookType = String(payload.webhook_type || 'UNKNOWN');
-    const webhookCode = payload.webhook_code ? String(payload.webhook_code) : undefined;
-    const providerItemId = payload.item_id ? String(payload.item_id) : undefined;
-    const eventKey = `${webhookType}_${providerItemId || 'no_item'}_${webhookCode || 'no_code'}_${Date.now()}`;
+    await this.verifyPlaidWebhook(headers, rawBody);
+
+    const webhookType = typeof payload.webhook_type === 'string' ? payload.webhook_type : null;
+    if (!webhookType) {
+      throw new BadRequestException('webhook_type es requerido.');
+    }
+
+    const webhookCode = typeof payload.webhook_code === 'string' ? payload.webhook_code : undefined;
+    const providerItemId = typeof payload.item_id === 'string' ? payload.item_id : undefined;
+
+    // Clave determinista: mismo body => mismo evento. El UNIQUE(provider, provider_event_key)
+    // garantiza idempotencia y los reintentos de Plaid no crean filas nuevas.
+    const providerEventKey = createHash('sha256').update(rawBody!, 'utf8').digest('hex');
 
     return {
-      providerEventKey: eventKey,
+      providerEventKey,
       webhookType,
       webhookCode,
       providerItemId,

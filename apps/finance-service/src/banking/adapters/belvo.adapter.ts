@@ -1,4 +1,4 @@
-import { Injectable, NotImplementedException } from '@nestjs/common';
+import { Injectable, NotImplementedException, UnauthorizedException } from '@nestjs/common';
 import { BankProvider } from '@mybusiness/contracts';
 import {
   DisconnectParams,
@@ -43,7 +43,11 @@ export class BelvoAdapter implements IBankAdapter {
   async handleWebhook(
     _payload: Record<string, unknown>,
     _headers?: Record<string, string>,
+    _rawBody?: string,
   ): Promise<WebhookResult> {
-    throw new NotImplementedException('Belvo adapter not implemented yet');
+    // Fail-closed: rechazar cualquier webhook entrante hasta que la verificación
+    // criptográfica de autenticidad e integridad (e.g. HMAC-SHA256) esté implementada.
+    // TODO: Implementar verificación de firma/HMAC de Belvo cuando el adapter esté completo.
+    throw new UnauthorizedException('Verificación de webhooks Belvo no implementada.');
   }
 }

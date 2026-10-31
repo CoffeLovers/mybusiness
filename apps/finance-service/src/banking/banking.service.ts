@@ -149,13 +149,19 @@ export class BankingService {
 
   /**
    * Obtiene todas las conexiones bancarias del usuario autenticado.
-   * Filtra estrictamente por userId.
+   * Filtra estrictamente por tenant y usuario (tenantId + userId).
    */
   async getConnections(ctx: RequestContext): Promise<BankConnectionResponse[]> {
     const list = await this.db
       .select()
       .from(bankConnections)
-      .where(and(eq(bankConnections.userId, ctx.userId), isNull(bankConnections.deletedAt)))
+      .where(
+        and(
+          eq(bankConnections.userId, ctx.userId),
+          eq(bankConnections.tenantId, ctx.tenantId),
+          isNull(bankConnections.deletedAt),
+        ),
+      )
       .orderBy(desc(bankConnections.createdAt));
 
     return list.map((c) => this.mapConnectionResponse(c));
@@ -163,13 +169,13 @@ export class BankingService {
 
   /**
    * Obtiene las cuentas vinculadas a una conexión específica,
-   * validando estrictamente que pertenezca al usuario autenticado (ownership).
+   * validando estrictamente que pertenezca al tenant y usuario autenticado (ownership).
    */
   async getConnectionAccounts(
     ctx: RequestContext,
     connectionId: string,
   ): Promise<BankAccountResponse[]> {
-    const connection = await this.findOwnedConnection(ctx.userId, connectionId);
+    const connection = await this.findOwnedConnection(ctx, connectionId);
 
     const accounts = await this.db
       .select()
@@ -184,7 +190,7 @@ export class BankingService {
    * Sincroniza movimientos de una conexión validando ownership y cursor incremental.
    */
   async syncConnection(ctx: RequestContext, connectionId: string): Promise<SyncConnectionResponse> {
-    const connection = await this.findOwnedConnection(ctx.userId, connectionId);
+    const connection = await this.findOwnedConnection(ctx, connectionId);
     return this.executeConnectionSync(connection);
   }
 
@@ -230,22 +236,49 @@ export class BankingService {
       })
       .where(eq(bankTransactionSyncState.connectionId, connection.id));
 
-    // Llamar /transactions/sync
-    const syncResult = await adapter.syncTransactions({
-      accessToken,
-      cursor: syncState?.cursor,
-    });
+    let cursor = syncState?.cursor ?? null;
+    let hasMore = true;
+    let pages = 0;
+    const totals = { added: 0, modified: 0, removed: 0 };
+    const maxPages = Number(this.configService.get('BANKING_SYNC_MAX_PAGES') ?? 50);
+    const maxDurationMs = Number(this.configService.get('BANKING_SYNC_MAX_DURATION_MS') ?? 4000);
+    const startedAt = Date.now();
 
-    // Aplicar cambios en base de datos
-    const counts = await this.syncService.applyTransactionsSync(connection, syncResult);
+    while (hasMore && pages < maxPages) {
+      if (Date.now() - startedAt > maxDurationMs) {
+        this.logger.warn(
+          `Presupuesto de tiempo agotado para sync en conexión ${connection.id} (${Date.now() - startedAt}ms). Se devolverá hasMore=true para reanudar.`,
+        );
+        break;
+      }
+
+      const page = await adapter.syncTransactions({
+        accessToken,
+        cursor,
+        count: 100,
+      });
+
+      const counts = await this.syncService.applyTransactionsSync(connection, page);
+
+      totals.added += counts.added;
+      totals.modified += counts.modified;
+      totals.removed += counts.removed;
+      pages++;
+
+      if (page.hasMore && page.nextCursor && page.nextCursor === cursor) {
+        this.logger.error(`Cursor repetido en conexión ${connection.id}; se detiene el sync.`);
+        break;
+      }
+
+      cursor = page.nextCursor ?? null;
+      hasMore = page.hasMore;
+    }
 
     return {
       connectionId: connection.id,
-      added: counts.added,
-      modified: counts.modified,
-      removed: counts.removed,
-      hasMore: syncResult.hasMore,
-      nextCursor: syncResult.nextCursor,
+      ...totals,
+      hasMore,
+      nextCursor: cursor,
     };
   }
 
@@ -256,7 +289,7 @@ export class BankingService {
     ctx: RequestContext,
     connectionId: string,
   ): Promise<{ success: boolean }> {
-    const connection = await this.findOwnedConnection(ctx.userId, connectionId);
+    const connection = await this.findOwnedConnection(ctx, connectionId);
     const adapter = this.aggregatorService.getAdapter(connection.provider as BankProvider);
 
     try {
@@ -286,14 +319,18 @@ export class BankingService {
     return { success: true };
   }
 
-  private async findOwnedConnection(userId: string, connectionId: string): Promise<BankConnection> {
+  private async findOwnedConnection(
+    ctx: RequestContext,
+    connectionId: string,
+  ): Promise<BankConnection> {
     const [connection] = await this.db
       .select()
       .from(bankConnections)
       .where(
         and(
           eq(bankConnections.id, connectionId),
-          eq(bankConnections.userId, userId),
+          eq(bankConnections.userId, ctx.userId),
+          eq(bankConnections.tenantId, ctx.tenantId),
           isNull(bankConnections.deletedAt),
         ),
       )

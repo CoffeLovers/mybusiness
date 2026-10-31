@@ -110,5 +110,6 @@ export interface IBankAdapter {
   handleWebhook?(
     payload: Record<string, unknown>,
     headers?: Record<string, string>,
+    rawBody?: string,
   ): Promise<WebhookResult>;
 }

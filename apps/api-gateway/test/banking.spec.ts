@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { of } from 'rxjs';
+import { firstValueFrom, of, throwError } from 'rxjs';
 import {
   BankingPatterns,
   BankProvider,
@@ -118,11 +118,13 @@ describe('Banking Gateway Unit Tests', () => {
   });
 
   describe('BankingWebhooksController', () => {
-    it('handlePlaidWebhook debe enviar evento con provider PLAID y payload raw', async () => {
+    it('handlePlaidWebhook debe reenviar rawBody y headers al RPC de finance-service', async () => {
       const payload = { webhook_type: 'TRANSACTIONS', item_id: 'item-123' };
-      const headers = { 'plaid-verification': 'sig_xyz' };
+      const rawBodyStr = JSON.stringify(payload);
+      const headers = { 'plaid-verification': 'jwt.signature.here' };
+      const req = { rawBody: Buffer.from(rawBodyStr) } as any;
 
-      await webhooksController.handlePlaidWebhook(payload, headers);
+      await webhooksController.handlePlaidWebhook(payload, headers, req);
 
       expect(mockClientProxy.send).toHaveBeenCalledWith(
         BankingPatterns.HANDLE_WEBHOOK,
@@ -130,22 +132,64 @@ describe('Banking Gateway Unit Tests', () => {
           provider: BankProvider.PLAID,
           payload,
           headers,
+          rawBody: rawBodyStr,
         }),
       );
     });
 
-    it('handleBelvoWebhook debe enviar evento con provider BELVO', async () => {
-      const payload = { event: 'link_created', link_id: 'link-456' };
+    it('handlePlaidWebhook debe propagar UnauthorizedException (HTTP 401) si la firma es inválida', async () => {
+      const payload = { webhook_type: 'TRANSACTIONS' };
+      const req = { rawBody: Buffer.from('{"tampered":true}') } as any;
+      mockClientProxy.send = vi.fn().mockReturnValue(
+        throwError(() => ({
+          status: 401,
+          message: 'Firma de webhook inválida.',
+          name: 'UnauthorizedException',
+        })),
+      );
 
-      await webhooksController.handleBelvoWebhook(payload, {});
+      await expect(
+        firstValueFrom(
+          webhooksController.handlePlaidWebhook(payload, { 'plaid-verification': 'bad' }, req),
+        ),
+      ).rejects.toMatchObject({
+        status: 401,
+      });
+    });
+
+    it('handleBelvoWebhook debe reenviar rawBody y headers al RPC de finance-service', async () => {
+      const payload = { event: 'link_created', link_id: 'link-456' };
+      const rawBodyStr = JSON.stringify(payload);
+      const req = { rawBody: Buffer.from(rawBodyStr) } as any;
+
+      await webhooksController.handleBelvoWebhook(payload, {}, req);
 
       expect(mockClientProxy.send).toHaveBeenCalledWith(
         BankingPatterns.HANDLE_WEBHOOK,
         expect.objectContaining({
           provider: BankProvider.BELVO,
           payload,
+          rawBody: rawBodyStr,
         }),
       );
+    });
+
+    it('handleBelvoWebhook debe responder 401 Unauthorized al estar en modo fail-closed', async () => {
+      mockClientProxy.send = vi.fn().mockReturnValue(
+        throwError(() => ({
+          status: 401,
+          message: 'Verificación de webhooks Belvo no implementada.',
+          name: 'UnauthorizedException',
+        })),
+      );
+
+      await expect(
+        firstValueFrom(
+          webhooksController.handleBelvoWebhook({}, {}, { rawBody: Buffer.from('{}') } as any),
+        ),
+      ).rejects.toMatchObject({
+        status: 401,
+      });
     });
   });
 });

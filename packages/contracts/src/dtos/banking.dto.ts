@@ -111,4 +111,5 @@ export interface BankWebhookRpcPayload {
   provider: BankProvider;
   payload: Record<string, unknown>;
   headers?: Record<string, string>;
+  rawBody?: string;
 }

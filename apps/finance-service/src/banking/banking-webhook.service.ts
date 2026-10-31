@@ -1,4 +1,11 @@
-import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  forwardRef,
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import { BankProvider } from '@mybusiness/contracts';
 import { FinanceDatabaseService } from '../database/database.service';
@@ -22,39 +29,29 @@ export class BankingWebhookService {
   }
 
   /**
-   * Recibe, deduplica e indexa eventos webhook de proveedores bancarios.
+   * Recibe, valida, deduplica e indexa eventos webhook de proveedores bancarios.
+   * Fail-closed: si la autenticación o verificación falla, propaga 4xx sin insertar nada en DB.
    * Garantiza idempotencia mediante UNIQUE(provider, provider_event_key).
    */
   async handleIncomingWebhook(
     provider: BankProvider,
     payload: Record<string, unknown>,
     headers?: Record<string, string>,
+    rawBody?: string,
   ): Promise<{ status: string; eventId?: string }> {
     const adapter = this.aggregatorService.getAdapter(provider);
+    if (typeof adapter.handleWebhook !== 'function') {
+      throw new BadRequestException(`El proveedor ${provider} no soporta webhooks.`);
+    }
 
-    let parsedEvent = {
-      providerEventKey: `${provider}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-      webhookType: 'GENERIC',
-      webhookCode: undefined as string | undefined,
-      providerItemId: undefined as string | undefined,
-    };
+    // Cualquier excepción (401/400) del adapter se propaga sin persistir nada en DB
+    const parsedEvent = await adapter.handleWebhook(payload, headers, rawBody);
 
-    if (adapter.handleWebhook) {
-      try {
-        const result = await adapter.handleWebhook(payload, headers);
-        parsedEvent = {
-          providerEventKey: result.providerEventKey,
-          webhookType: result.webhookType,
-          webhookCode: result.webhookCode,
-          providerItemId: result.providerItemId,
-        };
-      } catch (err: unknown) {
-        this.logger.warn(
-          `No fue posible parsear el webhook con el adapter ${provider}: ${
-            err instanceof Error ? err.message : 'Error desconocido'
-          }`,
-        );
-      }
+    if (!parsedEvent.providerEventKey || parsedEvent.providerEventKey.length > 255) {
+      throw new BadRequestException('providerEventKey inválida.');
+    }
+    if (!parsedEvent.webhookType) {
+      throw new BadRequestException('webhookType es requerido.');
     }
 
     // 1. Deduplicación por (provider, provider_event_key)
@@ -95,7 +92,7 @@ export class BankingWebhookService {
       }
     }
 
-    // 3. Registrar en bank_webhook_events
+    // 3. Registrar en bank_webhook_events con onConflictDoNothing para cubrir condiciones de carrera
     const [eventRecord] = await this.db
       .insert(bankWebhookEvents)
       .values({
@@ -107,7 +104,14 @@ export class BankingWebhookService {
         payload,
         processingStatus: 'pending',
       })
+      .onConflictDoNothing({
+        target: [bankWebhookEvents.provider, bankWebhookEvents.providerEventKey],
+      })
       .returning();
+
+    if (!eventRecord) {
+      return { status: 'already_processed' };
+    }
 
     // 4. Procesamiento asíncrono / enrutamiento según tipo de evento
     try {
@@ -152,7 +156,9 @@ export class BankingWebhookService {
         })
         .where(eq(bankWebhookEvents.id, eventRecord.id));
 
-      return { status: 'failed', eventId: eventRecord.id };
+      throw new InternalServerErrorException(
+        `Fallo al procesar evento de webhook ${eventRecord.id}: ${errorMessage}`,
+      );
     }
   }
 }
