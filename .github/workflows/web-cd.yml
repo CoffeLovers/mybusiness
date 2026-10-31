@@ -78,18 +78,20 @@ jobs:
       url: ${{ vars.STAGING_URL }}
     env:
       IMAGE: ghcr.io/${{ github.repository_owner }}/mybusiness-web:${{ needs.build.outputs.sha }}
+      # `secrets` no está disponible en los `if` de los steps: se expone vía env.
+      STAGING_HOST: ${{ secrets.STAGING_HOST }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup SSH key
-        if: secrets.STAGING_HOST != ''
+        if: env.STAGING_HOST != ''
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.STAGING_SSH_KEY }}
 
       - name: Deploy over SSH
-        if: secrets.STAGING_HOST != ''
+        if: env.STAGING_HOST != ''
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.STAGING_HOST }}
@@ -128,13 +130,13 @@ jobs:
             fi
 
       - name: External smoke
-        if: secrets.STAGING_HOST != ''
+        if: env.STAGING_HOST != ''
         run: |
           curl -fsS "${{ vars.STAGING_URL }}/healthz"
           curl -fsS -o /dev/null -w "%{http_code}" "${{ vars.STAGING_URL }}/login" | grep -q 200
 
       - name: Deployment skipped
-        if: secrets.STAGING_HOST == ''
+        if: env.STAGING_HOST == ''
         run: |
           echo "::notice title=Web CD::Despliegue a staging omitido (falta STAGING_HOST)."
 
@@ -151,18 +153,20 @@ jobs:
       url: ${{ vars.PRODUCTION_URL }}
     env:
       IMAGE: ghcr.io/${{ github.repository_owner }}/mybusiness-web:${{ needs.build.outputs.sha }}
+      # `secrets` no está disponible en los `if` de los steps: se expone vía env.
+      PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup SSH key
-        if: secrets.PRODUCTION_HOST != ''
+        if: env.PRODUCTION_HOST != ''
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.PRODUCTION_SSH_KEY }}
 
       - name: Deploy over SSH
-        if: secrets.PRODUCTION_HOST != ''
+        if: env.PRODUCTION_HOST != ''
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.PRODUCTION_HOST }}
@@ -200,12 +204,12 @@ jobs:
             fi
 
       - name: External smoke
-        if: secrets.PRODUCTION_HOST != ''
+        if: env.PRODUCTION_HOST != ''
         run: |
           curl -fsS "${{ vars.PRODUCTION_URL }}/healthz"
           curl -fsS -o /dev/null -w "%{http_code}" "${{ vars.PRODUCTION_URL }}/login" | grep -q 200
 
       - name: Deployment skipped
-        if: secrets.PRODUCTION_HOST == ''
+        if: env.PRODUCTION_HOST == ''
         run: |
           echo "::notice title=Web CD::Despliegue a production omitido (falta PRODUCTION_HOST)."
