@@ -1,0 +1,43 @@
+import { expect, test } from '@playwright/test';
+
+test.describe('smoke del portal', () => {
+  test('/healthz responde con estado ok', async ({ request }) => {
+    const response = await request.get('/healthz');
+
+    expect(response.status()).toBe(200);
+    expect(response.headers()['content-type']).toContain('application/json');
+
+    const body: unknown = await response.json();
+    expect(body).toMatchObject({ status: 'ok', service: 'web' });
+  });
+
+  test('la portada carga el resumen y el enlace de salto', async ({ page }) => {
+    await page.goto('/');
+
+    await expect(page.getByRole('heading', { level: 1, name: 'Resumen' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Saltar al contenido' })).toBeAttached();
+  });
+
+  test('el login muestra sus campos y el botón habilitado', async ({ page }) => {
+    await page.goto('/login');
+
+    await expect(page.getByRole('heading', { level: 2, name: 'Iniciar sesión' })).toBeVisible();
+    await expect(page.getByLabel('Correo electrónico')).toBeVisible();
+    await expect(page.getByLabel('Contraseña')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Entrar' })).toBeEnabled();
+  });
+
+  test('el botón de tema activa la clase dark en html', async ({ page }) => {
+    await page.goto('/');
+
+    await page.getByRole('button', { name: /tema/i }).click();
+
+    await expect(page.locator('html')).toHaveClass(/dark/);
+  });
+
+  test('una ruta inexistente muestra la página 404', async ({ page }) => {
+    await page.goto('/ruta-inexistente');
+
+    await expect(page.getByRole('heading', { level: 1, name: '404' })).toBeVisible();
+  });
+});
