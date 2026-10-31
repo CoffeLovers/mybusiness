@@ -7,7 +7,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { BankProvider } from '@mybusiness/contracts';
+import { BankProvider, TransactionType } from '@mybusiness/contracts';
 import {
   DisconnectParams,
   ExchangeParams,
@@ -278,13 +278,22 @@ export class PlaidAdapter implements IBankAdapter {
 
     const mapTransaction = (tx: PlaidTransaction): NormalizedBankTransaction => {
       const currency = tx.iso_currency_code || tx.unofficial_currency_code || 'USD';
-      // Conforme a ADR-003, importes en unidades menores (cents / BIGINT)
-      const amountMinor = BigInt(Math.round(tx.amount * 100));
+      // Conforme a ADR-003, importes en unidades menores (cents / BIGINT) y signo semántico.
+      // Plaid usa amount > 0 para egresos y < 0 para ingresos.
+      const absolute = Math.abs(tx.amount);
+      const amountMinor = BigInt(Math.round(absolute * 100));
+      const transactionType =
+        tx.amount > 0
+          ? TransactionType.EXPENSE
+          : tx.amount < 0
+            ? TransactionType.INCOME
+            : TransactionType.TRANSFER;
 
       return {
         providerTransactionId: tx.transaction_id,
         providerAccountId: tx.account_id,
         amountMinor,
+        transactionType,
         isoCurrencyCode: currency,
         date: tx.date,
         authorizedDate: tx.authorized_date,

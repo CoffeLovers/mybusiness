@@ -1,5 +1,5 @@
 import { IsEnum, IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator';
-import { BankConnectionStatus, BankProvider } from '../enums';
+import { BankConnectionStatus, BankProvider, TransactionType } from '../enums';
 import type { RequestContext, WithContext } from './context.dto';
 
 export class StartBankConnectionDto {
@@ -67,6 +67,7 @@ export interface BankTransactionResponse {
   accountId: string;
   providerTransactionId: string;
   amountMinor: string;
+  transactionType: TransactionType;
   isoCurrencyCode: string;
   date: string;
   authorizedDate?: string | null;

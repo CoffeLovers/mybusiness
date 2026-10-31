@@ -143,7 +143,8 @@ export class BankingSyncService {
             accountId,
             connectionId: connection.id,
             providerTransactionId: item.providerTransactionId,
-            amount: item.amountMinor,
+            amountMinor: item.amountMinor,
+            transactionType: item.transactionType,
             isoCurrencyCode: item.isoCurrencyCode,
             date: item.date,
             authorizedDate: item.authorizedDate,
@@ -156,7 +157,8 @@ export class BankingSyncService {
           .onConflictDoUpdate({
             target: [bankTransactions.accountId, bankTransactions.providerTransactionId],
             set: {
-              amount: item.amountMinor,
+              amountMinor: item.amountMinor,
+              transactionType: item.transactionType,
               isoCurrencyCode: item.isoCurrencyCode,
               date: item.date,
               authorizedDate: item.authorizedDate,
@@ -180,7 +182,8 @@ export class BankingSyncService {
         await tx
           .update(bankTransactions)
           .set({
-            amount: item.amountMinor,
+            amountMinor: item.amountMinor,
+            transactionType: item.transactionType,
             isoCurrencyCode: item.isoCurrencyCode,
             date: item.date,
             authorizedDate: item.authorizedDate,

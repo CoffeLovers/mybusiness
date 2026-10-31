@@ -9,7 +9,7 @@ import {
   NotImplementedException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { BankProvider } from '@mybusiness/contracts';
+import { BankProvider, TransactionType } from '@mybusiness/contracts';
 import { BankingEncryptionService } from '../src/banking/banking-encryption.service';
 import { BankingAggregatorService } from '../src/banking/banking-aggregator.service';
 import { BelvoAdapter } from '../src/banking/adapters/belvo.adapter';
@@ -204,6 +204,72 @@ describe('Banking Module Unit Tests', () => {
       const aggregator = new BankingAggregatorService(plaid, belvo);
 
       expect(() => aggregator.getAdapter('unknown' as BankProvider)).toThrow(BadRequestException);
+    });
+  });
+
+  describe('PlaidAdapter Transaction Mapping', () => {
+    it('debe normalizar el signo de Plaid a amountMinor y transactionType (ADR-003)', async () => {
+      const baseTransaction = {
+        account_id: 'acc_1',
+        iso_currency_code: 'USD',
+        unofficial_currency_code: null,
+        date: '2026-01-15',
+        authorized_date: null,
+        name: 'Movimiento',
+        merchant_name: null,
+        category: null,
+        pending: false,
+      };
+
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          added: [
+            { ...baseTransaction, transaction_id: 'tx_expense', amount: 25.5 },
+            { ...baseTransaction, transaction_id: 'tx_income', amount: -10 },
+            { ...baseTransaction, transaction_id: 'tx_transfer', amount: 0 },
+          ],
+          modified: [],
+          removed: [],
+          next_cursor: 'cursor-1',
+          has_more: false,
+        }),
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      try {
+        const plaid = new PlaidAdapter(
+          new ConfigService({ PLAID_CLIENT_ID: 'id', PLAID_SECRET: 'secret' }),
+        );
+
+        const result = await plaid.syncTransactions({ accessToken: 'tok' });
+
+        expect(
+          result.added.map((t) => ({
+            id: t.providerTransactionId,
+            amountMinor: t.amountMinor,
+            transactionType: t.transactionType,
+          })),
+        ).toEqual([
+          {
+            id: 'tx_expense',
+            amountMinor: 2550n,
+            transactionType: TransactionType.EXPENSE,
+          },
+          {
+            id: 'tx_income',
+            amountMinor: 1000n,
+            transactionType: TransactionType.INCOME,
+          },
+          {
+            id: 'tx_transfer',
+            amountMinor: 0n,
+            transactionType: TransactionType.TRANSFER,
+          },
+        ]);
+      } finally {
+        vi.unstubAllGlobals();
+      }
     });
   });
 

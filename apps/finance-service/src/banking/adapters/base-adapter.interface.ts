@@ -1,4 +1,4 @@
-import { BankProvider } from '@mybusiness/contracts';
+import { BankProvider, TransactionType } from '@mybusiness/contracts';
 
 export interface AdapterContext {
   userId: string;
@@ -50,6 +50,7 @@ export interface NormalizedBankTransaction {
   providerTransactionId: string;
   providerAccountId: string;
   amountMinor: bigint;
+  transactionType: TransactionType;
   isoCurrencyCode: string;
   date: string;
   authorizedDate?: string | null;
