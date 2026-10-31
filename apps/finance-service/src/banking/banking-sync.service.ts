@@ -28,7 +28,8 @@ export class BankingSyncService {
     connection: BankConnection,
     normalizedAccounts: NormalizedBankAccount[],
   ): Promise<BankAccount[]> {
-    const tenantId = connection.tenantId;
+    // Fallback defensivo para conexiones legadas sin tenantId asignado.
+    const tenantId = connection.tenantId ?? connection.userId;
     const syncedAccounts: BankAccount[] = [];
 
     for (const acc of normalizedAccounts) {
@@ -127,6 +128,10 @@ export class BankingSyncService {
         }
       }
 
+      let added = 0;
+      let modified = 0;
+      let removed = 0;
+
       // 2. Procesar transacciones añadidas
       for (const item of syncResult.added) {
         const accountId = accountMap.get(item.providerAccountId);
@@ -170,6 +175,7 @@ export class BankingSyncService {
               updatedAt: new Date(),
             },
           });
+        added++;
       }
 
       // 3. Procesar transacciones modificadas
@@ -200,6 +206,7 @@ export class BankingSyncService {
               eq(bankTransactions.providerTransactionId, item.providerTransactionId),
             ),
           );
+        modified++;
       }
 
       // 4. Procesar transacciones removidas
@@ -216,6 +223,7 @@ export class BankingSyncService {
               eq(bankTransactions.providerTransactionId, item.providerTransactionId),
             ),
           );
+        removed++;
       }
 
       // 5. Actualizar bank_transaction_sync_state
@@ -253,11 +261,7 @@ export class BankingSyncService {
           .where(eq(bankConnections.id, connection.id));
       }
 
-      return {
-        added: syncResult.added.length,
-        modified: syncResult.modified.length,
-        removed: syncResult.removed.length,
-      };
+      return { added, modified, removed };
     });
   }
 }

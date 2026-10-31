@@ -10,7 +10,9 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { BankProvider, TransactionType } from '@mybusiness/contracts';
+import type { RequestContext } from '@mybusiness/contracts';
 import { BankingEncryptionService } from '../src/banking/banking-encryption.service';
+import type { FinanceDatabaseService } from '../src/database/database.service';
 import { BankingAggregatorService } from '../src/banking/banking-aggregator.service';
 import { BelvoAdapter } from '../src/banking/adapters/belvo.adapter';
 import { PlaidAdapter } from '../src/banking/adapters/plaid.adapter';
@@ -1217,6 +1219,413 @@ describe('Banking Module Unit Tests', () => {
       expect(insertedSyncState.initialSyncComplete).toBe(true);
       expect(updatedConnection).toBeDefined();
       expect(updatedConnection.lastSuccessfulSyncAt).toBeDefined();
+    });
+  });
+
+  describe('PlaidAdapter getAccounts', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    function stubFetch(body: unknown, status = 200) {
+      const fetchMock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => ({
+        ok: status >= 200 && status < 300,
+        status,
+        json: async () => body,
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+      return fetchMock;
+    }
+
+    it('mapea saldos a centavos en BigInt e incluye rawMetadata', async () => {
+      stubFetch({
+        accounts: [
+          {
+            account_id: 'acc_plaid_1',
+            name: 'Plaid Checking',
+            official_name: 'Plaid Gold Checking',
+            type: 'depository',
+            subtype: 'checking',
+            mask: '0000',
+            balances: {
+              available: 110.5,
+              current: 120.25,
+              iso_currency_code: 'USD',
+              unofficial_currency_code: null,
+            },
+          },
+          {
+            account_id: 'acc_plaid_2',
+            name: 'Sin saldos',
+            official_name: null,
+            type: 'credit',
+            subtype: null,
+            mask: null,
+            balances: {
+              available: null,
+              current: null,
+              iso_currency_code: null,
+              unofficial_currency_code: 'COP',
+            },
+          },
+        ],
+        item: { item_id: 'item_1' },
+      });
+
+      const adapter = new PlaidAdapter(
+        new ConfigService({
+          PLAID_CLIENT_ID: 'client',
+          PLAID_SECRET: 'secret',
+          PLAID_ENV: 'development',
+        }),
+      );
+
+      const accounts = await adapter.getAccounts({ accessToken: 'access-tok' });
+
+      expect(accounts).toHaveLength(2);
+      expect(accounts[0]).toMatchObject({
+        providerAccountId: 'acc_plaid_1',
+        isoCurrencyCode: 'USD',
+        balanceCurrentMinor: 12025n,
+        balanceAvailableMinor: 11050n,
+        rawMetadata: {
+          type: 'depository',
+          subtype: 'checking',
+        },
+      });
+      expect(accounts[1].balanceCurrentMinor).toBeNull();
+      expect(accounts[1].balanceAvailableMinor).toBeNull();
+      expect(accounts[1].isoCurrencyCode).toBe('USD');
+    });
+  });
+
+  describe('PlaidAdapter syncTransactions contract', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    const baseTx = {
+      account_id: 'acc_1',
+      iso_currency_code: 'USD',
+      unofficial_currency_code: null,
+      date: '2026-05-01',
+      authorized_date: '2026-05-02',
+      name: 'Compra',
+      merchant_name: 'Tienda',
+      category: ['GENERAL_MERCHANDISE'],
+      pending: false,
+    };
+
+    it('mapea added/modified/removed, has_more y next_cursor enviando el cursor', async () => {
+      const fetchMock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          added: [{ ...baseTx, transaction_id: 'tx_added', amount: 15.75 }],
+          modified: [{ ...baseTx, transaction_id: 'tx_modified', amount: -3.5 }],
+          removed: [{ transaction_id: 'tx_removed' }],
+          next_cursor: 'cursor-next',
+          has_more: true,
+        }),
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const adapter = new PlaidAdapter(
+        new ConfigService({ PLAID_CLIENT_ID: 'id', PLAID_SECRET: 'secret' }),
+      );
+
+      const page = await adapter.syncTransactions({
+        accessToken: 'tok',
+        cursor: 'cursor-prev',
+        count: 50,
+      });
+
+      expect(page.added[0]).toMatchObject({
+        providerTransactionId: 'tx_added',
+        amountMinor: 1575n,
+        transactionType: TransactionType.EXPENSE,
+        authorizedDate: '2026-05-02',
+        category: ['GENERAL_MERCHANDISE'],
+        rawMetadata: { plaid_transaction_id: 'tx_added', original_amount: 15.75 },
+      });
+      expect(page.modified[0]).toMatchObject({
+        providerTransactionId: 'tx_modified',
+        transactionType: TransactionType.INCOME,
+      });
+      expect(page.removed).toEqual([{ providerTransactionId: 'tx_removed' }]);
+      expect(page.nextCursor).toBe('cursor-next');
+      expect(page.hasMore).toBe(true);
+
+      const init = fetchMock.mock.calls[0][1];
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      expect(body).toMatchObject({ access_token: 'tok', cursor: 'cursor-prev', count: 50 });
+      expect(fetchMock.mock.calls[0][0]).toBe('https://sandbox.plaid.com/transactions/sync');
+    });
+
+    it('omite cursor del body cuando no existe cursor previo', async () => {
+      const fetchMock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          added: [],
+          modified: [],
+          removed: [],
+          next_cursor: '',
+          has_more: false,
+        }),
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const adapter = new PlaidAdapter(
+        new ConfigService({ PLAID_CLIENT_ID: 'id', PLAID_SECRET: 'secret' }),
+      );
+      await adapter.syncTransactions({ accessToken: 'tok' });
+
+      const init = fetchMock.mock.calls[0][1];
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      expect(body).not.toHaveProperty('cursor');
+      expect(body.count).toBe(100);
+    });
+  });
+
+  describe('PlaidAdapter disconnect', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('llama a /item/remove con el access_token', async () => {
+      const fetchMock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ removed: true, request_id: 'req-1' }),
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const adapter = new PlaidAdapter(
+        new ConfigService({ PLAID_CLIENT_ID: 'id', PLAID_SECRET: 'secret' }),
+      );
+      await adapter.disconnect({ accessToken: 'tok-remove', providerItemId: 'item-1' });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][0]).toBe('https://sandbox.plaid.com/item/remove');
+      const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body)) as Record<string, unknown>;
+      expect(body).toEqual({ access_token: 'tok-remove' });
+    });
+
+    it('no lanza si /item/remove falla porque se revoca localmente igual', async () => {
+      const fetchMock = vi.fn(async () => ({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          error_type: 'INVALID_REQUEST',
+          error_code: 'ITEM_NOT_FOUND',
+          error_message: 'item not found',
+        }),
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const adapter = new PlaidAdapter(
+        new ConfigService({ PLAID_CLIENT_ID: 'id', PLAID_SECRET: 'secret' }),
+      );
+
+      await expect(
+        adapter.disconnect({ accessToken: 'tok', providerItemId: 'item-1' }),
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('PlaidAdapter createLinkOrConnect webhook URL', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    function stubLinkToken() {
+      const fetchMock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          link_token: 'link-sandbox-123',
+          expiration: '2026-12-31T23:59:59Z',
+          request_id: 'req-link',
+        }),
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+      return fetchMock;
+    }
+
+    function bodyOf(fetchMock: ReturnType<typeof stubLinkToken>): Record<string, unknown> {
+      const init = fetchMock.mock.calls[0][1];
+      return JSON.parse(String(init?.body)) as Record<string, unknown>;
+    }
+
+    it('no incluye webhook en el body si PLAID_WEBHOOK_URL no está configurada', async () => {
+      const fetchMock = stubLinkToken();
+      const adapter = new PlaidAdapter(
+        new ConfigService({
+          PLAID_CLIENT_ID: 'id',
+          PLAID_SECRET: 'secret',
+          PLAID_PRODUCTS: 'transactions,auth',
+          PLAID_COUNTRY_CODES: 'US,CO',
+        }),
+      );
+
+      const result = await adapter.createLinkOrConnect({ userId: 'user-1', tenantId: 'tenant-1' });
+
+      expect(result.linkToken).toBe('link-sandbox-123');
+      expect(result.expiration).toBe('2026-12-31T23:59:59Z');
+      const body = bodyOf(fetchMock);
+      expect(body).not.toHaveProperty('webhook');
+      expect(body.products).toEqual(['transactions', 'auth']);
+      expect(body.country_codes).toEqual(['US', 'CO']);
+      expect(body.user).toEqual({ client_user_id: 'user-1' });
+    });
+
+    it('incluye webhook en el body si PLAID_WEBHOOK_URL está configurada', async () => {
+      const fetchMock = stubLinkToken();
+      const adapter = new PlaidAdapter(
+        new ConfigService({
+          PLAID_CLIENT_ID: 'id',
+          PLAID_SECRET: 'secret',
+          PLAID_WEBHOOK_URL: 'https://api.mybusiness.test/webhooks/plaid',
+        }),
+      );
+
+      await adapter.createLinkOrConnect({ userId: 'user-1', tenantId: 'tenant-1' });
+
+      expect(bodyOf(fetchMock).webhook).toBe('https://api.mybusiness.test/webhooks/plaid');
+    });
+  });
+
+  describe('BankingService connections & local revocation', () => {
+    function buildService(db: object, aggregator: object) {
+      const config = new ConfigService({
+        BANK_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      });
+      const encryption = new BankingEncryptionService(config);
+      return {
+        encryption,
+        service: new BankingService(
+          { db } as unknown as FinanceDatabaseService,
+          aggregator as unknown as BankingAggregatorService,
+          encryption,
+          {} as unknown as BankingSyncService,
+          config,
+        ),
+      };
+    }
+
+    const ctx = {
+      userId: 'user-1',
+      tenantId: 'tenant-A',
+      role: 'TENANT_ADMIN',
+    } as unknown as RequestContext;
+
+    it('getConnections filtra por tenant+user y mapea sin exponer tokens', async () => {
+      const now = new Date('2026-10-01T12:00:00.000Z');
+      const rows = [
+        {
+          id: 'conn-map-1',
+          userId: 'user-1',
+          tenantId: 'tenant-A',
+          provider: BankProvider.PLAID,
+          providerItemId: 'item-secret',
+          accessTokenCiphertext: 'super-secret-ciphertext',
+          tokenKeyVersion: 'v1',
+          institutionId: 'ins_1',
+          institutionName: 'Banco Uno',
+          environment: 'sandbox',
+          status: 'active',
+          consentedProducts: [],
+          lastSuccessfulSyncAt: now,
+          rawMetadata: {},
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+        },
+      ];
+
+      const mockDb = {
+        select: vi.fn().mockReturnThis(),
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockResolvedValue(rows),
+      };
+
+      const { service } = buildService(mockDb, {});
+      const result = await service.getConnections(ctx);
+
+      expect(mockDb.where).toHaveBeenCalledTimes(1);
+      expect(result).toEqual([
+        {
+          id: 'conn-map-1',
+          provider: BankProvider.PLAID,
+          institutionId: 'ins_1',
+          institutionName: 'Banco Uno',
+          status: 'active',
+          lastSuccessfulSyncAt: '2026-10-01T12:00:00.000Z',
+          createdAt: '2026-10-01T12:00:00.000Z',
+          updatedAt: '2026-10-01T12:00:00.000Z',
+        },
+      ]);
+      expect(JSON.stringify(result)).not.toContain('super-secret-ciphertext');
+      expect(result[0]).not.toHaveProperty('accessTokenCiphertext');
+    });
+
+    it('disconnectConnection revoca localmente aunque el adapter falle', async () => {
+      const encrypted = await new BankingEncryptionService(
+        new ConfigService({
+          BANK_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+        }),
+      ).encrypt('access-token-local');
+
+      const revocationSets: Array<Record<string, unknown>> = [];
+      const connection = {
+        id: 'conn-revoke-1',
+        userId: 'user-1',
+        tenantId: 'tenant-A',
+        provider: BankProvider.PLAID,
+        providerItemId: 'item-1',
+        accessTokenCiphertext: encrypted.ciphertext,
+        tokenKeyVersion: encrypted.keyVersion,
+        institutionId: null,
+        institutionName: 'Banco',
+        environment: 'sandbox',
+        status: 'active',
+        consentedProducts: [],
+        lastSuccessfulSyncAt: null,
+        rawMetadata: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deletedAt: null,
+      };
+
+      const mockDb = {
+        select: vi.fn().mockReturnThis(),
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([connection]),
+        update: vi.fn().mockReturnValue({
+          set: vi.fn((values: Record<string, unknown>) => {
+            revocationSets.push(values);
+            return { where: vi.fn().mockResolvedValue([]) };
+          }),
+        }),
+      };
+
+      const { service: serviceWithDb } = buildService(mockDb, {
+        getAdapter: vi.fn().mockReturnValue({
+          provider: BankProvider.PLAID,
+          disconnect: vi.fn().mockRejectedValue(new Error('Plaid no disponible')),
+        }),
+      });
+
+      await expect(serviceWithDb.disconnectConnection(ctx, 'conn-revoke-1')).resolves.toEqual({
+        success: true,
+      });
+
+      expect(revocationSets).toHaveLength(1);
+      expect(revocationSets[0]).toMatchObject({ status: 'revoked' });
+      expect(revocationSets[0].deletedAt).toBeInstanceOf(Date);
     });
   });
 });
