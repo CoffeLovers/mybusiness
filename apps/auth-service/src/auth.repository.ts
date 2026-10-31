@@ -198,4 +198,14 @@ export class AuthRepository {
       .set({ isRevoked: true, revokedAt: new Date() })
       .where(and(eq(refreshTokens.familyId, familyId), eq(refreshTokens.isRevoked, false)));
   }
+
+  async revokeAllForUser(userId: string): Promise<number> {
+    const revoked = await this.db
+      .update(refreshTokens)
+      .set({ isRevoked: true, revokedAt: new Date() })
+      .where(and(eq(refreshTokens.userId, userId), eq(refreshTokens.isRevoked, false)))
+      .returning({ id: refreshTokens.id });
+
+    return revoked.length;
+  }
 }

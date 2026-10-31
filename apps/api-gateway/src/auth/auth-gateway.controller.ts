@@ -103,6 +103,15 @@ export class AuthGatewayController {
     return { success: true };
   }
 
+  @Post('logout-all')
+  @ApiBearerAuth()
+  async logoutAll(@CurrentUser() user: UserContext) {
+    return this.call<{ success: true; revoked: number }, UserContext>(
+      AuthPatterns.LOGOUT_ALL,
+      user,
+    );
+  }
+
   @Get('me')
   @ApiBearerAuth()
   getProfile(@CurrentUser() user: UserContext) {

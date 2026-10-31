@@ -32,6 +32,57 @@ type Crumb = {
   href: string;
 };
 
+export type ShellUser = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: string;
+};
+
+/** Cookie CSRF de doble envío (la única legible por el cliente). */
+const CSRF_COOKIE = 'mb_csrf';
+
+/** Lee una cookie no httpOnly; `undefined` si no existe o está vacía. */
+function readCookie(name: string): string | undefined {
+  const prefix = `${name}=`;
+  const entry = document.cookie
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(prefix));
+
+  if (entry === undefined) {
+    return undefined;
+  }
+
+  const rawValue = entry.slice(prefix.length);
+
+  if (rawValue.length === 0) {
+    return undefined;
+  }
+
+  try {
+    return decodeURIComponent(rawValue);
+  } catch {
+    return undefined;
+  }
+}
+
+async function logout(): Promise<void> {
+  try {
+    const csrfToken = readCookie(CSRF_COOKIE);
+
+    await fetch('/api/session/logout', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: csrfToken === undefined ? {} : { 'x-csrf-token': csrfToken },
+    });
+  } catch {
+    // La sesión local se limpia igualmente al navegar al login.
+  }
+
+  window.location.assign('/login');
+}
+
 function readableSegment(segment: string): string {
   return SEGMENT_LABELS[segment] ?? segment.charAt(0).toUpperCase() + segment.slice(1);
 }
@@ -87,7 +138,7 @@ function NavLinks({
   );
 }
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({ children, user }: { children: ReactNode; user?: ShellUser }) {
   const pathname = usePathname();
 
   return (
@@ -142,12 +193,19 @@ export function AppShell({ children }: { children: ReactNode }) {
             </nav>
 
             <div className="flex shrink-0 items-center gap-2">
+              {user === undefined ? null : (
+                <p className="hidden text-right text-sm leading-tight sm:block">
+                  <span className="block font-medium text-text">{user.firstName}</span>
+                  <span className="block text-xs text-text-muted">{user.role}</span>
+                </p>
+              )}
               <ThemeToggle />
               <button
                 type="button"
-                disabled
-                title="Disponible en SF2-03"
-                className="rounded-md border border-border bg-surface-raised px-3 py-2 text-sm font-medium text-text-muted transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => {
+                  void logout();
+                }}
+                className="rounded-md border border-border bg-surface-raised px-3 py-2 text-sm font-medium text-text transition-colors hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 Cerrar sesión
               </button>

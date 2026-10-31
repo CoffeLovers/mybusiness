@@ -3,6 +3,7 @@ export const AuthPatterns = {
   REGISTER: 'auth.register',
   REFRESH: 'auth.refresh',
   LOGOUT: 'auth.logout',
+  LOGOUT_ALL: 'auth.logout_all',
   VALIDATE_TOKEN: 'auth.validate_token',
   GET_PROFILE: 'auth.get_profile',
 } as const;

@@ -13,14 +13,18 @@ module.exports = [
       '**/.next/**',
       '**/coverage/**',
       '**/*.d.ts',
+      'apps/web/**',
     ],
   },
   {
-    files: ['**/*.ts'],
+    files: ['**/*.{ts,tsx}'],
     languageOptions: {
       parser: tsParser,
       ecmaVersion: 2022,
       sourceType: 'module',
+      parserOptions: {
+        ecmaFeatures: { jsx: true },
+      },
     },
     plugins: {
       '@typescript-eslint': tsPlugin,

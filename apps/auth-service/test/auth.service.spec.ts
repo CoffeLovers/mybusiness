@@ -196,6 +196,19 @@ class FakeAuthRepository {
     }
   }
 
+  async revokeAllForUser(userId: string): Promise<number> {
+    let revoked = 0;
+
+    for (const [id, token] of this.tokens) {
+      if (token.userId === userId && !token.isRevoked) {
+        this.tokens.set(id, { ...token, isRevoked: true, revokedAt: new Date() });
+        revoked += 1;
+      }
+    }
+
+    return revoked;
+  }
+
   familyTokens(familyId: string): RefreshToken[] {
     return [...this.tokens.values()].filter((token) => token.familyId === familyId);
   }
@@ -412,6 +425,48 @@ describe('AuthService', () => {
     expect(repository.familyTokens(stored!.familyId).every((token) => token.isRevoked)).toBe(true);
     await expect(service.logout(session.refreshToken)).resolves.toEqual({ success: true });
     await expect(service.logout('inexistente')).resolves.toEqual({ success: true });
+  });
+
+  it('logoutAll revoca todas las sesiones del usuario y es idempotente', async () => {
+    const first = await service.login({ email: record.user.email, password: PASSWORD });
+    const second = await service.login({ email: record.user.email, password: PASSWORD });
+    const other = repository.addUser({ email: 'otro@example.test', passwordHash });
+    const otherSession = await service.login({ email: other.user.email, password: PASSWORD });
+
+    const context = {
+      userId: record.user.id,
+      tenantId: record.tenant.id,
+      email: record.user.email,
+      role: UserRole.TENANT_ADMIN,
+    };
+
+    await expect(service.logoutAll(context)).resolves.toEqual({ success: true, revoked: 2 });
+
+    const owned = [...repository.tokens.values()].filter(
+      (token) => token.userId === record.user.id,
+    );
+    expect(owned).toHaveLength(2);
+    expect(owned.every((token) => token.isRevoked)).toBe(true);
+
+    const foreign = [...repository.tokens.values()].filter(
+      (token) => token.userId === other.user.id,
+    );
+    expect(foreign.some((token) => token.isRevoked)).toBe(false);
+
+    await expect(service.logoutAll(context)).resolves.toEqual({ success: true, revoked: 0 });
+    expect(second.refreshToken).not.toBe(first.refreshToken);
+    expect(otherSession.refreshToken).toBeTruthy();
+  });
+
+  it('logoutAll rechaza un contexto sin userId', async () => {
+    await expect(
+      service.logoutAll({
+        userId: '',
+        tenantId: record.tenant.id,
+        email: record.user.email,
+        role: UserRole.TENANT_ADMIN,
+      }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('devuelve el perfil y valida access tokens contra la base de datos', async () => {

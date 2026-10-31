@@ -1,4 +1,14 @@
 import { expect, test } from '@playwright/test';
+import type { Page } from '@playwright/test';
+
+/** Inicia sesión con las credenciales del gateway falso de los E2E. */
+async function login(page: Page): Promise<void> {
+  await page.goto('/login');
+  await page.getByLabel('Correo electrónico').fill('ada@example.com');
+  await page.getByLabel('Contraseña').fill('correct-password');
+  await page.getByRole('button', { name: 'Entrar' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Resumen' })).toBeVisible();
+}
 
 test.describe('smoke del portal', () => {
   test('/healthz responde con estado ok', async ({ request }) => {
@@ -11,11 +21,11 @@ test.describe('smoke del portal', () => {
     expect(body).toMatchObject({ status: 'ok', service: 'web' });
   });
 
-  test('la portada carga el resumen y el enlace de salto', async ({ page }) => {
+  test('sin sesión, la portada redirige al login', async ({ page }) => {
     await page.goto('/');
 
-    await expect(page.getByRole('heading', { level: 1, name: 'Resumen' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Saltar al contenido' })).toBeAttached();
+    await expect(page).toHaveURL(/\/login$/);
+    await expect(page.getByRole('heading', { level: 2, name: 'Iniciar sesión' })).toBeVisible();
   });
 
   test('el login muestra sus campos y el botón habilitado', async ({ page }) => {
@@ -27,8 +37,14 @@ test.describe('smoke del portal', () => {
     await expect(page.getByRole('button', { name: 'Entrar' })).toBeEnabled();
   });
 
+  test('el resumen con sesión muestra el enlace de salto', async ({ page }) => {
+    await login(page);
+
+    await expect(page.getByRole('link', { name: 'Saltar al contenido' })).toBeAttached();
+  });
+
   test('el botón de tema activa la clase dark en html', async ({ page }) => {
-    await page.goto('/');
+    await login(page);
 
     await page.getByRole('button', { name: /tema/i }).click();
 
