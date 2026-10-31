@@ -120,25 +120,40 @@ jobs:
     permissions:
       contents: read
       security-events: write
+      actions: read
     steps:
       - uses: actions/checkout@v4
       - name: Build image
         run: docker build -f apps/web/Dockerfile -t mybusiness-web:${{ github.sha }} .
-      - name: Trivy scan
+      - name: Trivy scan (table)
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: mybusiness-web:${{ github.sha }}
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          ignore-unfixed: true
+          scanners: vuln,secret
+
+      - name: Trivy scan (SARIF)
+        if: always()
         uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: mybusiness-web:${{ github.sha }}
           format: sarif
           output: trivy-web.sarif
           severity: CRITICAL,HIGH
-          exit-code: '1'
+          exit-code: '0'
           ignore-unfixed: true
-      - name: Upload SARIF
+          scanners: vuln,secret
+      - name: Upload Trivy SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: actions/upload-artifact@v4
         with:
-          sarif_file: trivy-web.sarif
-          category: trivy-web
+          name: trivy-web-sarif
+          path: trivy-web.sarif
+          retention-days: 7
+          if-no-files-found: ignore
 
   sonar:
     name: SonarCloud
