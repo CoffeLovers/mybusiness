@@ -22,6 +22,13 @@
       "when": 1793473445089,
       "tag": "0002_nice_the_call",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793479467707,
+      "tag": "0003_panoramic_tomorrow_man",
+      "breakpoints": true
     }
   ]
 }

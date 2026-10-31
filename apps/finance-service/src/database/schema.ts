@@ -2,8 +2,11 @@ import { relations, sql } from 'drizzle-orm';
 import {
   bigint,
   boolean,
+  date,
   index,
+  integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   text,
@@ -45,6 +48,17 @@ export const invoiceStatusEnum = pgEnum('invoice_status', [
   'PAID',
   'OVERDUE',
   'CANCELLED',
+]);
+
+/**
+ * Alineado con `DocumentStatus` de `@mybusiness/contracts`.
+ */
+export const documentStatusEnum = pgEnum('document_status', [
+  'PENDING',
+  'PROCESSING',
+  'EXTRACTED',
+  'NEEDS_REVIEW',
+  'FAILED',
 ]);
 
 /**
@@ -278,6 +292,58 @@ export const transactions = pgTable(
 );
 
 /**
+ * Tabla: documents
+ * Documentos subidos (facturas, recibos) y el resultado de su extracción OCR.
+ * Idempotencia por tenant garantizada con UNIQUE(tenant_id, checksum_sha256).
+ */
+export const documents = pgTable(
+  'documents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    userId: uuid('user_id').notNull(),
+    originalName: varchar('original_name', { length: 255 }).notNull(),
+    mimeType: varchar('mime_type', { length: 100 }).notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    checksumSha256: varchar('checksum_sha256', { length: 64 }).notNull(),
+    storageKey: varchar('storage_key', { length: 500 }).notNull(),
+    status: documentStatusEnum('status').notNull().default('PENDING'),
+    ocrProvider: varchar('ocr_provider', { length: 50 }),
+    confidence: numeric('confidence', { precision: 4, scale: 3 }),
+    providerName: varchar('provider_name', { length: 255 }),
+    taxId: varchar('tax_id', { length: 50 }),
+    issueDate: date('issue_date'),
+    currency: varchar('currency', { length: 3 }),
+    totalMinor: bigint('total_minor', { mode: 'bigint' }),
+    lineItems: jsonb('line_items')
+      .$type<
+        Array<{
+          description: string;
+          quantity: number;
+          unitPriceMinor: string;
+          taxRateBps: number;
+          totalMinor: string;
+        }>
+      >()
+      .notNull()
+      .default([]),
+    failureReason: text('failure_reason'),
+    processedAt: timestamp('processed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('documents_tenant_status_idx').on(table.tenantId, table.status),
+    uniqueIndex('documents_tenant_checksum_uq').on(table.tenantId, table.checksumSha256),
+    index('documents_tenant_created_at_idx').on(table.tenantId, table.createdAt),
+  ],
+);
+
+/**
  * Tabla: invoices
  * Facturas emitidas o recibidas (cuentas por cobrar / pagar).
  * Subtotal, impuestos y totales en unidades menores (BIGINT) según ADR-003.
@@ -314,6 +380,7 @@ export const invoices = pgTable(
     associatedTransactionId: uuid('associated_transaction_id').references(() => transactions.id, {
       onDelete: 'set null',
     }),
+    documentId: uuid('document_id').references(() => documents.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .notNull()
@@ -327,6 +394,7 @@ export const invoices = pgTable(
     index('invoices_status_idx').on(table.status),
     index('invoices_due_date_idx').on(table.dueDate),
     index('invoices_deleted_at_idx').on(table.deletedAt),
+    index('invoices_document_id_idx').on(table.documentId),
   ],
 );
 
@@ -382,10 +450,18 @@ export const transactionsRelations = relations(transactions, ({ one, many }) => 
   invoices: many(invoices),
 }));
 
+export const documentsRelations = relations(documents, ({ many }) => ({
+  invoices: many(invoices),
+}));
+
 export const invoicesRelations = relations(invoices, ({ one }) => ({
   associatedTransaction: one(transactions, {
     fields: [invoices.associatedTransactionId],
     references: [transactions.id],
+  }),
+  document: one(documents, {
+    fields: [invoices.documentId],
+    references: [documents.id],
   }),
 }));
 
@@ -403,3 +479,5 @@ export type Transaction = typeof transactions.$inferSelect;
 export type NewTransaction = typeof transactions.$inferInsert;
 export type Invoice = typeof invoices.$inferSelect;
 export type NewInvoice = typeof invoices.$inferInsert;
+export type Document = typeof documents.$inferSelect;
+export type NewDocument = typeof documents.$inferInsert;

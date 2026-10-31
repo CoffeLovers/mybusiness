@@ -19,6 +19,7 @@ import { AgentGatewayController } from './agent/agent-gateway.controller';
 import { DistributedThrottlerGuard, ThrottlerStorageRedisService } from './throttler';
 import { SecurityAuditFilter } from './security-audit.filter';
 import { BankingModule } from './banking/banking.module';
+import { DocumentsModule } from './documents/documents.module';
 
 @Module({
   imports: [
@@ -103,6 +104,7 @@ import { BankingModule } from './banking/banking.module';
       },
     ]),
     BankingModule,
+    DocumentsModule,
   ],
   controllers: [
     HealthController,
