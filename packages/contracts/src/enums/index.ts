@@ -60,3 +60,4 @@ export enum ContextType {
 }
 
 export * from './banking.enum';
+export * from './document.enum';
