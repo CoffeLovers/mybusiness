@@ -25,6 +25,20 @@ RUN groupadd --system --gid 1001 nodejs && useradd --system --uid 1001 --gid nod
 RUN apt-get update \
   && apt-get upgrade -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
+# El runtime sólo ejecuta `node server.js`: se elimina el tooling (corepack, npm,
+# yarn, pnpm) que aporta CVEs en dependencias de desarrollo y no se usa en producción.
+RUN rm -rf \
+  /opt/yarn-* \
+  /usr/local/lib/node_modules/corepack \
+  /usr/local/lib/node_modules/npm \
+  /usr/local/lib/node_modules/pnpm \
+  /usr/local/bin/corepack \
+  /usr/local/bin/npm \
+  /usr/local/bin/npx \
+  /usr/local/bin/pnpm \
+  /usr/local/bin/pnpx \
+  /usr/local/bin/yarn \
+  /usr/local/bin/yarnpkg
 WORKDIR /app
 COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/.next/static ./apps/web/.next/static
