@@ -18,6 +18,7 @@ import { FinanceGatewayController } from './finance/finance-gateway.controller';
 import { AgentGatewayController } from './agent/agent-gateway.controller';
 import { DistributedThrottlerGuard, ThrottlerStorageRedisService } from './throttler';
 import { SecurityAuditFilter } from './security-audit.filter';
+import { BankingModule } from './banking/banking.module';
 
 @Module({
   imports: [
@@ -101,6 +102,7 @@ import { SecurityAuditFilter } from './security-audit.filter';
         }),
       },
     ]),
+    BankingModule,
   ],
   controllers: [
     HealthController,

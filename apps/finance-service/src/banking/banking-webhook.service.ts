@@ -1,0 +1,164 @@
+import {
+  BadRequestException,
+  forwardRef,
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
+import { and, eq } from 'drizzle-orm';
+import { BankProvider } from '@mybusiness/contracts';
+import { FinanceDatabaseService } from '../database/database.service';
+import { bankConnections, bankWebhookEvents } from '../database/schema';
+import { BankingAggregatorService } from './banking-aggregator.service';
+import { BankingService } from './banking.service';
+
+@Injectable()
+export class BankingWebhookService {
+  private readonly logger = new Logger(BankingWebhookService.name);
+
+  constructor(
+    private readonly databaseService: FinanceDatabaseService,
+    private readonly aggregatorService: BankingAggregatorService,
+    @Inject(forwardRef(() => BankingService))
+    private readonly bankingService: BankingService,
+  ) {}
+
+  private get db() {
+    return this.databaseService.db;
+  }
+
+  /**
+   * Recibe, valida, deduplica e indexa eventos webhook de proveedores bancarios.
+   * Fail-closed: si la autenticación o verificación falla, propaga 4xx sin insertar nada en DB.
+   * Garantiza idempotencia mediante UNIQUE(provider, provider_event_key).
+   */
+  async handleIncomingWebhook(
+    provider: BankProvider,
+    payload: Record<string, unknown>,
+    headers?: Record<string, string>,
+    rawBody?: string,
+  ): Promise<{ status: string; eventId?: string }> {
+    const adapter = this.aggregatorService.getAdapter(provider);
+    if (typeof adapter.handleWebhook !== 'function') {
+      throw new BadRequestException(`El proveedor ${provider} no soporta webhooks.`);
+    }
+
+    // Cualquier excepción (401/400) del adapter se propaga sin persistir nada en DB
+    const parsedEvent = await adapter.handleWebhook(payload, headers, rawBody);
+
+    if (!parsedEvent.providerEventKey || parsedEvent.providerEventKey.length > 255) {
+      throw new BadRequestException('providerEventKey inválida.');
+    }
+    if (!parsedEvent.webhookType) {
+      throw new BadRequestException('webhookType es requerido.');
+    }
+
+    // 1. Deduplicación por (provider, provider_event_key)
+    const [existing] = await this.db
+      .select()
+      .from(bankWebhookEvents)
+      .where(
+        and(
+          eq(bankWebhookEvents.provider, provider),
+          eq(bankWebhookEvents.providerEventKey, parsedEvent.providerEventKey),
+        ),
+      )
+      .limit(1);
+
+    if (existing) {
+      this.logger.log(
+        `Webhook duplicado ignorado: provider=${provider}, eventKey=${parsedEvent.providerEventKey}`,
+      );
+      return { status: 'already_processed', eventId: existing.id };
+    }
+
+    // 2. Asociar conexión si providerItemId está presente
+    let connectionId: string | null = null;
+    if (parsedEvent.providerItemId) {
+      const [connection] = await this.db
+        .select({ id: bankConnections.id })
+        .from(bankConnections)
+        .where(
+          and(
+            eq(bankConnections.provider, provider),
+            eq(bankConnections.providerItemId, parsedEvent.providerItemId),
+          ),
+        )
+        .limit(1);
+
+      if (connection) {
+        connectionId = connection.id;
+      }
+    }
+
+    // 3. Registrar en bank_webhook_events con onConflictDoNothing para cubrir condiciones de carrera
+    const [eventRecord] = await this.db
+      .insert(bankWebhookEvents)
+      .values({
+        provider,
+        providerEventKey: parsedEvent.providerEventKey,
+        webhookType: parsedEvent.webhookType,
+        webhookCode: parsedEvent.webhookCode,
+        connectionId: connectionId || undefined,
+        payload,
+        processingStatus: 'pending',
+      })
+      .onConflictDoNothing({
+        target: [bankWebhookEvents.provider, bankWebhookEvents.providerEventKey],
+      })
+      .returning();
+
+    if (!eventRecord) {
+      return { status: 'already_processed' };
+    }
+
+    // 4. Procesamiento asíncrono / enrutamiento según tipo de evento
+    try {
+      if (connectionId && provider === BankProvider.PLAID) {
+        if (
+          parsedEvent.webhookType === 'TRANSACTIONS' &&
+          (parsedEvent.webhookCode === 'SYNC_UPDATES_AVAILABLE' ||
+            parsedEvent.webhookCode === 'DEFAULT_UPDATE' ||
+            parsedEvent.webhookCode === 'HISTORICAL_UPDATE')
+        ) {
+          this.logger.log(
+            `Disparando sincronización por webhook para connectionId: ${connectionId}`,
+          );
+          // Ejecución en segundo plano sin bloquear respuesta HTTP del webhook
+          this.bankingService
+            .internalSyncConnection(connectionId)
+            .catch((err) =>
+              this.logger.error(
+                `Error en sync disparado por webhook: ${err instanceof Error ? err.message : 'Error'}`,
+              ),
+            );
+        }
+      }
+
+      await this.db
+        .update(bankWebhookEvents)
+        .set({
+          processingStatus: 'processed',
+          processedAt: new Date(),
+        })
+        .where(eq(bankWebhookEvents.id, eventRecord.id));
+
+      return { status: 'processed', eventId: eventRecord.id };
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Error al procesar webhook';
+      await this.db
+        .update(bankWebhookEvents)
+        .set({
+          processingStatus: 'failed',
+          errorMessage,
+          processedAt: new Date(),
+        })
+        .where(eq(bankWebhookEvents.id, eventRecord.id));
+
+      throw new InternalServerErrorException(
+        `Fallo al procesar evento de webhook ${eventRecord.id}: ${errorMessage}`,
+      );
+    }
+  }
+}

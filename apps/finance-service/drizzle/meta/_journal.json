@@ -8,6 +8,20 @@
       "when": 1793089486802,
       "tag": "0000_kind_sauron",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793428376536,
+      "tag": "0001_cute_doctor_strange",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793473445089,
+      "tag": "0002_nice_the_call",
+      "breakpoints": true
     }
   ]
 }
