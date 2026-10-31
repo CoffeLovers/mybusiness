@@ -2,6 +2,9 @@ packages:
   - 'apps/*'
   - 'packages/*'
 
+overrides:
+  postcss: ^8.5.18
+
 allowBuilds:
   '@scarf/scarf': false
   msgpackr-extract: false

@@ -1,0 +1,19 @@
+# Dependencias y artefactos de build
+**/node_modules
+**/.next
+**/dist
+**/coverage
+**/playwright-report
+**/test-results
+
+# Metadatos y CI
+.git
+.github
+
+# Secretos y entorno
+.env*
+
+# Documentación y plataformas no usadas en la imagen web
+docs
+apps/mobile-android
+*.md
