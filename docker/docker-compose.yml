@@ -50,6 +50,48 @@ services:
       timeout: 5s
       retries: 5
 
+  # NOTE: los valores por defecto de S3_ACCESS_KEY/S3_SECRET_KEY (minioadmin) son
+  # SOLO para desarrollo local. En cualquier entorno compartido/staging/producción
+  # deben definirse explícitamente S3_ACCESS_KEY y S3_SECRET_KEY con credenciales
+  # seguras; nunca usar los defaults fuera de un entorno local aislado.
+  minio:
+    image: minio/minio:latest
+    container_name: mybusiness_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
+    ports:
+      - '127.0.0.1:${MINIO_PORT:-9000}:9000'
+      - '127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001'
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: mybusiness_minio_init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD} &&
+      mc mb --ignore-existing local/$${S3_BUCKET} &&
+      exit 0
+      "
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
+      S3_BUCKET: ${S3_BUCKET:-mybusiness-documents}
+    restart: 'no'
+
 volumes:
   postgres_data:
   redis_data:
+  minio_data:
