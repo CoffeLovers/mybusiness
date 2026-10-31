@@ -1,3 +1,5 @@
+import { readSession } from '@/lib/session/server';
+
 export const metadata = {
   title: 'Resumen · Asistente Financiero',
 };
@@ -8,11 +10,15 @@ const CARDS = [
   { id: 'balance', title: 'Balance' },
 ] as const;
 
-export default function ResumenPage() {
+export default async function ResumenPage() {
+  const session = await readSession();
+  const firstName = session?.user.firstName ?? 'usuario';
+
   return (
     <section className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
         <h1 className="text-3xl font-semibold text-text">Resumen</h1>
+        <p className="text-base text-text">Hola, {firstName}. Bienvenido de nuevo.</p>
         <p className="max-w-2xl text-base text-text-muted">
           Aquí verás el estado de tus finanzas de un vistazo. Los datos reales llegarán con SF2-08,
           cuando el portal se conecte a los servicios de finanzas.

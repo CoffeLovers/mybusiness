@@ -33,6 +33,11 @@ export class AuthController {
     return this.authService.logout(data.refreshToken);
   }
 
+  @MessagePattern(AuthPatterns.LOGOUT_ALL)
+  logoutAll(@Payload() context: UserContext) {
+    return this.authService.logoutAll(context);
+  }
+
   @MessagePattern(AuthPatterns.VALIDATE_TOKEN)
   validateToken(@Payload() data: { accessToken: string }) {
     return this.authService.validateToken(data.accessToken);
