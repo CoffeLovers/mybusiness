@@ -72,8 +72,9 @@ jobs:
         image: redis:7-alpine
         ports:
           - 6379:6379
+        command: redis-server --requirepass test_password
         options: >-
-          --health-cmd "redis-cli ping"
+          --health-cmd "redis-cli --no-auth-warning -a test_password ping"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -119,6 +120,7 @@ jobs:
     env:
       REDIS_HOST: localhost
       REDIS_PORT: 6379
+      REDIS_PASSWORD: test_password
       FINANCE_DATABASE_URL: postgresql://finance_user:test_password@localhost:5432/finance_db
       AGENT_DATABASE_URL: postgresql://agent_user:test_password@localhost:5433/agent_db
       AUDIT_DATABASE_URL: postgresql://audit_user:test_password@localhost:5434/audit_db

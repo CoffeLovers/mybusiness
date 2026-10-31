@@ -76,6 +76,8 @@ flowchart TD
     AuditService --> AuditDB
 ```
 
+- **Colas durables**: el trabajo en segundo plano (sincronización bancaria, OCR, conciliación y notificaciones) se encola con BullMQ sobre el mismo Redis autenticado, mediante `BullMQModule` en `@mybusiness/common`. Detalle en [Colas durables](docs/queues.md).
+
 ---
 
 ## 🧩 Catálogo de Microservicios
