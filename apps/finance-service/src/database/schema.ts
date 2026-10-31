@@ -57,7 +57,7 @@ export const bankConnections = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     userId: uuid('user_id').notNull(),
-    tenantId: uuid('tenant_id'),
+    tenantId: uuid('tenant_id').notNull(),
     provider: varchar('provider', { length: 50 }).notNull(),
     providerItemId: varchar('provider_item_id', { length: 255 }).notNull(),
     accessTokenCiphertext: text('access_token_ciphertext').notNull(),
@@ -82,6 +82,7 @@ export const bankConnections = pgTable(
       table.provider,
       table.status,
     ),
+    index('bank_connections_tenant_user_idx').on(table.tenantId, table.userId),
     uniqueIndex('bank_connections_provider_env_item_uq').on(
       table.provider,
       table.environment,

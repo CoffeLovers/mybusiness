@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, Headers, Param, Post, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Headers,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Req,
+} from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -38,17 +48,17 @@ export class BankingController {
   }
 
   @Get('connections/:id/accounts')
-  getConnectionAccounts(@CurrentUser() user: UserContext, @Param('id') id: string) {
+  getConnectionAccounts(@CurrentUser() user: UserContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.bankingService.getConnectionAccounts(user, id);
   }
 
   @Post('connections/:id/sync')
-  syncConnection(@CurrentUser() user: UserContext, @Param('id') id: string) {
+  syncConnection(@CurrentUser() user: UserContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.bankingService.syncConnection(user, id);
   }
 
   @Delete('connections/:id')
-  disconnectConnection(@CurrentUser() user: UserContext, @Param('id') id: string) {
+  disconnectConnection(@CurrentUser() user: UserContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.bankingService.disconnectConnection(user, id);
   }
 }

@@ -28,7 +28,7 @@ export class BankingSyncService {
     connection: BankConnection,
     normalizedAccounts: NormalizedBankAccount[],
   ): Promise<BankAccount[]> {
-    const tenantId = connection.tenantId || connection.userId;
+    const tenantId = connection.tenantId;
     const syncedAccounts: BankAccount[] = [];
 
     for (const acc of normalizedAccounts) {

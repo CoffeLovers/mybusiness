@@ -80,7 +80,6 @@ export interface StartBankConnectionResponse {
   provider: BankProvider;
   linkToken?: string;
   expiration?: string;
-  [key: string]: unknown;
 }
 
 export interface SyncConnectionResponse {

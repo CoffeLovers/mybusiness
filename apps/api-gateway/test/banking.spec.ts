@@ -81,36 +81,39 @@ describe('Banking Gateway Unit Tests', () => {
     });
 
     it('getConnectionAccounts debe incluir connectionId y userId', async () => {
-      await controller.getConnectionAccounts(mockUser, 'conn-789');
+      const validId = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+      await controller.getConnectionAccounts(mockUser, validId);
 
       expect(mockClientProxy.send).toHaveBeenCalledWith(
         BankingPatterns.GET_CONNECTION_ACCOUNTS,
         expect.objectContaining({
-          connectionId: 'conn-789',
+          connectionId: validId,
           userId: 'user-uuid-123',
         }),
       );
     });
 
     it('syncConnection debe solicitar sync para connectionId', async () => {
-      await controller.syncConnection(mockUser, 'conn-789');
+      const validId = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+      await controller.syncConnection(mockUser, validId);
 
       expect(mockClientProxy.send).toHaveBeenCalledWith(
         BankingPatterns.SYNC_CONNECTION,
         expect.objectContaining({
-          connectionId: 'conn-789',
+          connectionId: validId,
           userId: 'user-uuid-123',
         }),
       );
     });
 
     it('disconnectConnection debe enviar orden de desconexión', async () => {
-      await controller.disconnectConnection(mockUser, 'conn-789');
+      const validId = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+      await controller.disconnectConnection(mockUser, validId);
 
       expect(mockClientProxy.send).toHaveBeenCalledWith(
         BankingPatterns.DISCONNECT_CONNECTION,
         expect.objectContaining({
-          connectionId: 'conn-789',
+          connectionId: validId,
           userId: 'user-uuid-123',
         }),
       );

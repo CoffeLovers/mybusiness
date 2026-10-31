@@ -3,6 +3,7 @@ import { createHash, createSign, generateKeyPairSync } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import {
   BadRequestException,
+  ConflictException,
   InternalServerErrorException,
   NotFoundException,
   NotImplementedException,
@@ -100,6 +101,42 @@ describe('Banking Module Unit Tests', () => {
 
       const decrypted = await service.decrypt(encrypted.ciphertext, encrypted.keyVersion);
       expect(decrypted).toBe(secret);
+    });
+
+    it('debe permitir rotación de claves seleccionando la versión adecuada desde el keyring', async () => {
+      const keyV1 = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+      const keyV2 = 'fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210';
+
+      // Servicio inicial con v1
+      const configV1 = new ConfigService({
+        BANK_ENCRYPTION_KEY: keyV1,
+        BANK_ENCRYPTION_KEY_VERSION: 'v1',
+      });
+      const serviceV1 = new BankingEncryptionService(configV1);
+      const secret = 'token-cifrado-con-v1';
+      const encryptedV1 = await serviceV1.encrypt(secret);
+      expect(encryptedV1.keyVersion).toBe('v1');
+
+      // Servicio rotado a v2 pero con v1 en el keyring
+      const configV2 = new ConfigService({
+        BANK_ENCRYPTION_KEY: keyV2,
+        BANK_ENCRYPTION_KEY_VERSION: 'v2',
+        BANK_ENCRYPTION_KEY_RING: JSON.stringify({ v1: keyV1, v2: keyV2 }),
+      });
+      const serviceV2 = new BankingEncryptionService(configV2);
+
+      // Puede descifrar el token generado con v1 usando la versión v1
+      const decryptedOld = await serviceV2.decrypt(encryptedV1.ciphertext, 'v1');
+      expect(decryptedOld).toBe(secret);
+
+      // Token nuevo usa v2
+      const encryptedV2 = await serviceV2.encrypt('token-nuevo-v2');
+      expect(encryptedV2.keyVersion).toBe('v2');
+      const decryptedNew = await serviceV2.decrypt(encryptedV2.ciphertext, 'v2');
+      expect(decryptedNew).toBe('token-nuevo-v2');
+
+      // Falla si la versión solicitada no existe en el keyring
+      await expect(serviceV2.decrypt(encryptedV1.ciphertext, 'v999')).rejects.toThrow();
     });
 
     it('debe fallar al descifrar si el ciphertext es manipulado', async () => {
@@ -688,6 +725,143 @@ describe('Banking Module Unit Tests', () => {
       await expect(bankingService.disconnectConnection(ctx, 'tenant-B-conn-id')).rejects.toThrow(
         NotFoundException,
       );
+    });
+
+    it('exchange debe lanzar ConflictException (409) si el ítem ya existe en la base de datos', async () => {
+      const mockDb = {
+        insert: vi.fn().mockReturnValue({
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockRejectedValue({
+              code: '23505',
+              message:
+                'duplicate key value violates unique constraint bank_connections_provider_env_item_uq',
+            }),
+          }),
+        }),
+      };
+      const mockDbService = { db: mockDb } as any;
+      const config = new ConfigService({
+        BANK_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      });
+      const encryption = new BankingEncryptionService(config);
+
+      const mockAdapter = {
+        provider: BankProvider.PLAID,
+        exchange: vi.fn().mockResolvedValue({
+          accessToken: 'access-123',
+          providerItemId: 'item-dup-1',
+        }),
+      };
+      const mockAggregator = {
+        getAdapter: vi.fn().mockReturnValue(mockAdapter),
+      };
+
+      const bankingService = new BankingService(
+        mockDbService,
+        mockAggregator as any,
+        encryption,
+        {} as any,
+        config,
+      );
+
+      const ctx = {
+        userId: 'user-1',
+        tenantId: 'tenant-A',
+        role: 'TENANT_ADMIN' as any,
+      };
+
+      await expect(
+        bankingService.exchange(ctx, {
+          provider: BankProvider.PLAID,
+          publicToken: 'public-tok',
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('exchange debe marcar la conexión con status ERROR si getAccounts falla', async () => {
+      let updatedStatus = '';
+
+      const mockDb = {
+        insert: vi.fn().mockReturnValue({
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                id: 'conn-new-1',
+                userId: 'user-1',
+                tenantId: 'tenant-A',
+                provider: 'plaid',
+                status: 'pending',
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              },
+            ]),
+            onConflictDoNothing: vi.fn().mockResolvedValue([]),
+          }),
+        }),
+        update: vi.fn().mockReturnValue({
+          set: vi.fn().mockImplementation((val) => {
+            updatedStatus = val.status;
+            return {
+              where: vi.fn().mockReturnValue({
+                returning: vi.fn().mockResolvedValue([
+                  {
+                    id: 'conn-new-1',
+                    userId: 'user-1',
+                    tenantId: 'tenant-A',
+                    provider: 'plaid',
+                    status: updatedStatus,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                  },
+                ]),
+              }),
+            };
+          }),
+        }),
+      };
+      const mockDbService = { db: mockDb } as any;
+      const config = new ConfigService({
+        BANK_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      });
+      const encryption = new BankingEncryptionService(config);
+
+      const mockAdapter = {
+        provider: BankProvider.PLAID,
+        exchange: vi.fn().mockResolvedValue({
+          accessToken: 'access-123',
+          providerItemId: 'item-new-1',
+          accounts: [],
+        }),
+        getAccounts: vi.fn().mockRejectedValue(new Error('Plaid API Error')),
+      };
+      const mockAggregator = {
+        getAdapter: vi.fn().mockReturnValue(mockAdapter),
+      };
+
+      const mockSync = {
+        syncAccounts: vi.fn(),
+      };
+
+      const bankingService = new BankingService(
+        mockDbService,
+        mockAggregator as any,
+        encryption,
+        mockSync as any,
+        config,
+      );
+
+      const ctx = {
+        userId: 'user-1',
+        tenantId: 'tenant-A',
+        role: 'TENANT_ADMIN' as any,
+      };
+
+      const res = await bankingService.exchange(ctx, {
+        provider: BankProvider.PLAID,
+        publicToken: 'public-tok',
+      });
+
+      expect(res.status).toBe('error');
     });
   });
 

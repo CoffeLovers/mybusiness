@@ -1,7 +1,7 @@
 CREATE TABLE "bank_connections" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" uuid NOT NULL,
-	"tenant_id" uuid,
+	"tenant_id" uuid NOT NULL,
 	"provider" varchar(50) NOT NULL,
 	"provider_item_id" varchar(255) NOT NULL,
 	"access_token_ciphertext" text NOT NULL,
@@ -81,6 +81,7 @@ ALTER TABLE "bank_transactions" ADD CONSTRAINT "bank_transactions_account_id_ban
 ALTER TABLE "bank_transactions" ADD CONSTRAINT "bank_transactions_connection_id_bank_connections_id_fk" FOREIGN KEY ("connection_id") REFERENCES "public"."bank_connections"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "bank_webhook_events" ADD CONSTRAINT "bank_webhook_events_connection_id_bank_connections_id_fk" FOREIGN KEY ("connection_id") REFERENCES "public"."bank_connections"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "bank_connections_user_provider_status_idx" ON "bank_connections" USING btree ("user_id","provider","status");--> statement-breakpoint
+CREATE INDEX "bank_connections_tenant_user_idx" ON "bank_connections" USING btree ("tenant_id","user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "bank_connections_provider_env_item_uq" ON "bank_connections" USING btree ("provider","environment","provider_item_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "bank_transactions_account_provider_tx_uq" ON "bank_transactions" USING btree ("account_id","provider_transaction_id");--> statement-breakpoint
 CREATE INDEX "bank_transactions_account_id_idx" ON "bank_transactions" USING btree ("account_id");--> statement-breakpoint

@@ -305,7 +305,7 @@
           "name": "tenant_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "provider": {
           "name": "provider",
@@ -453,6 +453,26 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "bank_connections_tenant_user_idx": {
+          "name": "bank_connections_tenant_user_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrent": false,
+          "method": "btree"
         }
       },
       "foreignKeys": {},

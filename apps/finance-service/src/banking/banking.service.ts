@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import {
@@ -87,23 +87,39 @@ export class BankingService {
     const encrypted = await this.encryptionService.encrypt(exchangeResult.accessToken);
     const environment = this.configService.get<string>('PLAID_ENV', 'sandbox');
 
-    // 2. Guardar conexión con status 'pending'
-    const [connection] = await this.db
-      .insert(bankConnections)
-      .values({
-        userId: ctx.userId,
-        tenantId: ctx.tenantId,
-        provider: dto.provider,
-        providerItemId: exchangeResult.providerItemId,
-        accessTokenCiphertext: encrypted.ciphertext,
-        tokenKeyVersion: encrypted.keyVersion,
-        institutionId: exchangeResult.institutionId,
-        institutionName: exchangeResult.institutionName,
-        environment,
-        status: BankConnectionStatus.PENDING,
-        rawMetadata: exchangeResult.rawMetadata || {},
-      })
-      .returning();
+    // 2. Guardar conexión con status 'pending' (manejando duplicados con 409 Conflict)
+    let connection: typeof bankConnections.$inferSelect;
+    try {
+      const [inserted] = await this.db
+        .insert(bankConnections)
+        .values({
+          userId: ctx.userId,
+          tenantId: ctx.tenantId,
+          provider: dto.provider,
+          providerItemId: exchangeResult.providerItemId,
+          accessTokenCiphertext: encrypted.ciphertext,
+          tokenKeyVersion: encrypted.keyVersion,
+          institutionId: exchangeResult.institutionId,
+          institutionName: exchangeResult.institutionName,
+          environment,
+          status: BankConnectionStatus.PENDING,
+          rawMetadata: exchangeResult.rawMetadata || {},
+        })
+        .returning();
+      connection = inserted;
+    } catch (err: unknown) {
+      const dbErr = err as { code?: string; message?: string };
+      if (
+        dbErr?.code === '23505' ||
+        dbErr?.message?.includes('bank_connections_provider_env_item_uq') ||
+        dbErr?.message?.includes('duplicate key')
+      ) {
+        throw new ConflictException(
+          'Esta cuenta bancaria ya ha sido vinculada previamente en este entorno.',
+        );
+      }
+      throw err;
+    }
 
     // 3. Inicializar bank_transaction_sync_state
     await this.db
@@ -115,6 +131,8 @@ export class BankingService {
 
     // 4. Obtener cuentas y normalizarlas
     let normalizedAccounts = exchangeResult.accounts;
+    let accountsSyncFailed = false;
+
     if (!normalizedAccounts || normalizedAccounts.length === 0) {
       try {
         normalizedAccounts = await adapter.getAccounts({
@@ -122,6 +140,7 @@ export class BankingService {
           providerItemId: exchangeResult.providerItemId,
         });
       } catch (err: unknown) {
+        accountsSyncFailed = true;
         this.logger.warn(
           `No se pudieron sincronizar las cuentas inmediatamente en exchange: ${
             err instanceof Error ? err.message : 'Error'
@@ -132,19 +151,25 @@ export class BankingService {
 
     if (normalizedAccounts && normalizedAccounts.length > 0) {
       await this.syncService.syncAccounts(connection, normalizedAccounts);
+    } else {
+      accountsSyncFailed = true;
     }
 
-    // 5. Pasar conexión a status 'active'
-    const [activeConnection] = await this.db
+    // 5. Pasar conexión a status 'active' o 'error' según resultado de obtención de cuentas
+    const finalStatus = accountsSyncFailed
+      ? BankConnectionStatus.ERROR
+      : BankConnectionStatus.ACTIVE;
+
+    const [finalConnection] = await this.db
       .update(bankConnections)
       .set({
-        status: BankConnectionStatus.ACTIVE,
+        status: finalStatus,
         updatedAt: new Date(),
       })
       .where(eq(bankConnections.id, connection.id))
       .returning();
 
-    return this.mapConnectionResponse(activeConnection);
+    return this.mapConnectionResponse(finalConnection);
   }
 
   /**

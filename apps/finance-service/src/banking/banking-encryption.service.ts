@@ -9,6 +9,7 @@ export class BankingEncryptionService {
   private readonly defaultKeyVersion = 'v1';
   private readonly key: Buffer;
   private readonly keyVersion: string;
+  private readonly keyRing = new Map<string, Buffer>();
 
   constructor(private readonly configService: ConfigService) {
     this.key = this.resolveAndValidateKey();
@@ -16,6 +17,35 @@ export class BankingEncryptionService {
       'BANK_ENCRYPTION_KEY_VERSION',
       this.defaultKeyVersion,
     );
+    this.keyRing.set(this.keyVersion, this.key);
+    this.loadKeyRing();
+  }
+
+  private loadKeyRing(): void {
+    const rawRing = this.configService.get<string>('BANK_ENCRYPTION_KEY_RING');
+    if (rawRing) {
+      try {
+        const parsed = JSON.parse(rawRing) as Record<string, string>;
+        for (const [version, keyStr] of Object.entries(parsed)) {
+          this.keyRing.set(version, this.parseKeyBuffer(keyStr));
+        }
+      } catch (err) {
+        this.logger.warn(`No se pudo cargar BANK_ENCRYPTION_KEY_RING: ${(err as Error).message}`);
+      }
+    }
+  }
+
+  private parseKeyBuffer(rawKey: string): Buffer {
+    if (rawKey.length === 64 && /^[0-9a-fA-F]{64}$/.test(rawKey)) {
+      return Buffer.from(rawKey, 'hex');
+    }
+    if (/^[A-Za-z0-9+/=_-]{43,44}$/.test(rawKey)) {
+      const b64Buf = Buffer.from(rawKey, 'base64');
+      if (b64Buf.length === 32) {
+        return b64Buf;
+      }
+    }
+    throw new Error('Clave inválida: debe ser de 32 bytes (64 hex o base64).');
   }
 
   private resolveAndValidateKey(): Buffer {
@@ -83,11 +113,18 @@ export class BankingEncryptionService {
    * Valida la integridad criptográfica mediante el authTag.
    * NUNCA genera logs del secreto descifrado.
    */
-  async decrypt(ciphertext: string, _keyVersion?: string): Promise<string> {
+  async decrypt(ciphertext: string, keyVersion?: string): Promise<string> {
     try {
       const parts = ciphertext.split(':');
       if (parts.length !== 3) {
         throw new Error('Formato de ciphertext inválido.');
+      }
+
+      const version = keyVersion || this.keyVersion;
+      const decryptionKey =
+        this.keyRing.get(version) || (version === this.keyVersion ? this.key : undefined);
+      if (!decryptionKey) {
+        throw new Error(`Clave no disponible para versión: ${version}`);
       }
 
       const [ivHex, authTagHex, encryptedHex] = parts;
@@ -95,7 +132,7 @@ export class BankingEncryptionService {
       const authTag = Buffer.from(authTagHex, 'hex');
       const encrypted = Buffer.from(encryptedHex, 'hex');
 
-      const decipher = createDecipheriv(this.algorithm, this.key, iv);
+      const decipher = createDecipheriv(this.algorithm, decryptionKey, iv);
       decipher.setAuthTag(authTag);
 
       const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
