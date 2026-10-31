@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { FinanceDatabaseService } from '../database/database.service';
+import { FinanceDatabaseModule } from '../database/database.module';
 import { PlaidAdapter } from './adapters/plaid.adapter';
 import { BelvoAdapter } from './adapters/belvo.adapter';
 import { BankingAggregatorService } from './banking-aggregator.service';
@@ -11,10 +11,9 @@ import { BankingService } from './banking.service';
 import { BankingController } from './banking.controller';
 
 @Module({
-  imports: [ConfigModule],
+  imports: [ConfigModule, FinanceDatabaseModule],
   controllers: [BankingController],
   providers: [
-    FinanceDatabaseService,
     PlaidAdapter,
     BelvoAdapter,
     BankingAggregatorService,

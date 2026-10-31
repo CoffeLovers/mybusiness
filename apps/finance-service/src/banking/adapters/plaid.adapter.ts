@@ -1,4 +1,5 @@
 import { createHash, createPublicKey, createVerify, timingSafeEqual } from 'node:crypto';
+import type { JsonWebKey } from 'node:crypto';
 import {
   BadGatewayException,
   BadRequestException,
@@ -166,19 +167,50 @@ export class PlaidAdapter implements IBankAdapter {
       public_token: ctx.publicToken,
     });
 
-    const institutionId =
-      typeof ctx.metadata?.institution_id === 'string' ? ctx.metadata.institution_id : undefined;
-    const institutionName =
-      typeof ctx.metadata?.institution_name === 'string'
-        ? ctx.metadata.institution_name
-        : undefined;
+    // La institución se obtiene de Plaid; no se confía en metadatos del cliente.
+    let institutionId: string | undefined;
+    try {
+      const itemResponse = await this.request<{
+        item?: { institution_id?: string | null };
+      }>('/item/get', { access_token: data.access_token });
+      institutionId = itemResponse.item?.institution_id ?? undefined;
+    } catch (err: unknown) {
+      this.logger.warn(
+        `No fue posible obtener el item de Plaid durante el exchange: ${
+          err instanceof Error ? err.message : 'error desconocido'
+        }`,
+      );
+    }
+
+    let institutionName: string | undefined;
+    if (institutionId) {
+      const countryCodesEnv = this.configService.get<string>('PLAID_COUNTRY_CODES', 'US');
+      const countryCodes = countryCodesEnv
+        .split(',')
+        .map((c) => c.trim())
+        .filter(Boolean);
+
+      try {
+        const institutionResponse = await this.request<{ institution?: { name?: string } }>(
+          '/institutions/get_by_id',
+          { institution_id: institutionId, country_codes: countryCodes },
+        );
+        institutionName = institutionResponse.institution?.name;
+      } catch (err: unknown) {
+        this.logger.warn(
+          `No fue posible obtener la institución ${institutionId} de Plaid: ${
+            err instanceof Error ? err.message : 'error desconocido'
+          }`,
+        );
+      }
+    }
 
     return {
       providerItemId: data.item_id,
       accessToken: data.access_token,
       institutionId,
       institutionName,
-      rawMetadata: ctx.metadata || {},
+      rawMetadata: ctx.metadata ?? {},
     };
   }
 
@@ -387,7 +419,10 @@ export class PlaidAdapter implements IBankAdapter {
       this.verificationKeys.set(header.kid, cached);
     }
 
-    const publicKey = createPublicKey({ key: cached.key as any, format: 'jwk' });
+    const publicKey = createPublicKey({
+      key: cached.key as unknown as JsonWebKey,
+      format: 'jwk',
+    });
     const verifier = createVerify('sha256');
     verifier.update(`${encodedHeader}.${encodedPayload}`);
     verifier.end();

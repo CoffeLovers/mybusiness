@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { createHash, createSign, generateKeyPairSync } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -156,14 +156,14 @@ describe('Banking Module Unit Tests', () => {
     });
   });
 
-  describe('BelvoAdapter (Fail-Closed)', () => {
-    it('handleWebhook debe lanzar UnauthorizedException (401) en fail-closed', async () => {
+  describe('BelvoAdapter (Deshabilitado)', () => {
+    it('handleWebhook debe lanzar NotImplementedException con el mensaje de versión', async () => {
       const adapter = new BelvoAdapter();
       expect(adapter.provider).toBe(BankProvider.BELVO);
 
-      await expect(adapter.handleWebhook({}, {}, '{}')).rejects.toThrow(UnauthorizedException);
+      await expect(adapter.handleWebhook({}, {}, '{}')).rejects.toThrow(NotImplementedException);
       await expect(adapter.handleWebhook({}, {}, '{}')).rejects.toThrow(
-        /Verificación de webhooks Belvo no implementada/,
+        /La integración con Belvo no está habilitada en esta versión \(solo Plaid\)\./,
       );
     });
 
@@ -270,6 +270,100 @@ describe('Banking Module Unit Tests', () => {
       } finally {
         vi.unstubAllGlobals();
       }
+    });
+  });
+
+  describe('PlaidAdapter Exchange Institution Resolution', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    function jsonResponse(body: unknown, status = 200) {
+      return {
+        ok: status >= 200 && status < 300,
+        status,
+        json: async () => body,
+      };
+    }
+
+    function plaidAdapter(): PlaidAdapter {
+      return new PlaidAdapter(
+        new ConfigService({
+          PLAID_CLIENT_ID: 'id',
+          PLAID_SECRET: 'secret',
+          PLAID_COUNTRY_CODES: 'US,MX',
+        }),
+      );
+    }
+
+    it('debe resolver institutionId e institutionName consultando a Plaid', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string) => {
+        if (url.endsWith('/item/public_token/exchange')) {
+          return Promise.resolve(
+            jsonResponse({ access_token: 'access-1', item_id: 'item-1', request_id: 'req-1' }),
+          );
+        }
+        if (url.endsWith('/item/get')) {
+          return Promise.resolve(jsonResponse({ item: { institution_id: 'ins_1' } }));
+        }
+        if (url.endsWith('/institutions/get_by_id')) {
+          return Promise.resolve(jsonResponse({ institution: { name: 'Banco Uno' } }));
+        }
+        return Promise.reject(new Error(`URL no esperada: ${url}`));
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result = await plaidAdapter().exchange({
+        userId: 'u1',
+        tenantId: 't1',
+        publicToken: 'public-1',
+      });
+
+      expect(result.accessToken).toBe('access-1');
+      expect(result.providerItemId).toBe('item-1');
+      expect(result.institutionId).toBe('ins_1');
+      expect(result.institutionName).toBe('Banco Uno');
+
+      const institutionCall = fetchMock.mock.calls.find(([url]: [string]) =>
+        url.endsWith('/institutions/get_by_id'),
+      );
+      expect(institutionCall).toBeDefined();
+      expect(JSON.parse(institutionCall[1].body)).toEqual({
+        institution_id: 'ins_1',
+        country_codes: ['US', 'MX'],
+      });
+    });
+
+    it('si /item/get falla, el exchange sigue OK y no usa metadatos del cliente', async () => {
+      const fetchMock = vi.fn().mockImplementation((url: string) => {
+        if (url.endsWith('/item/public_token/exchange')) {
+          return Promise.resolve(
+            jsonResponse({ access_token: 'access-2', item_id: 'item-2', request_id: 'req-2' }),
+          );
+        }
+        if (url.endsWith('/item/get')) {
+          return Promise.resolve(jsonResponse({ error_message: 'boom' }, 500));
+        }
+        return Promise.reject(new Error(`URL no esperada: ${url}`));
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result = await plaidAdapter().exchange({
+        userId: 'u1',
+        tenantId: 't1',
+        publicToken: 'public-2',
+        metadata: { institution_name: 'Falso' },
+      });
+
+      expect(result.accessToken).toBe('access-2');
+      expect(result.providerItemId).toBe('item-2');
+      expect(result.institutionId).toBeUndefined();
+      expect(result.institutionName).toBeUndefined();
+
+      const requestedUrls = fetchMock.mock.calls.map(([url]: [string]) => url);
+      expect(requestedUrls.some((url: string) => url.endsWith('/institutions/get_by_id'))).toBe(
+        false,
+      );
     });
   });
 

@@ -1,4 +1,4 @@
-import { Injectable, NotImplementedException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, NotImplementedException } from '@nestjs/common';
 import { BankProvider } from '@mybusiness/contracts';
 import {
   DisconnectParams,
@@ -18,26 +18,36 @@ export class BelvoAdapter implements IBankAdapter {
   readonly provider = BankProvider.BELVO;
 
   async createLinkOrConnect(_ctx: LinkTokenParams): Promise<LinkTokenResult> {
-    throw new NotImplementedException('Belvo adapter not implemented yet');
+    throw new NotImplementedException(
+      'La integración con Belvo no está habilitada en esta versión (solo Plaid).',
+    );
   }
 
   async exchange(_ctx: ExchangeParams): Promise<ExchangeResult> {
-    throw new NotImplementedException('Belvo adapter not implemented yet');
+    throw new NotImplementedException(
+      'La integración con Belvo no está habilitada en esta versión (solo Plaid).',
+    );
   }
 
   async getAccounts(_ctx: {
     accessToken: string;
     providerItemId?: string;
   }): Promise<NormalizedBankAccount[]> {
-    throw new NotImplementedException('Belvo adapter not implemented yet');
+    throw new NotImplementedException(
+      'La integración con Belvo no está habilitada en esta versión (solo Plaid).',
+    );
   }
 
   async syncTransactions(_ctx: SyncTransactionsParams): Promise<SyncTransactionsResult> {
-    throw new NotImplementedException('Belvo adapter not implemented yet');
+    throw new NotImplementedException(
+      'La integración con Belvo no está habilitada en esta versión (solo Plaid).',
+    );
   }
 
   async disconnect(_ctx: DisconnectParams): Promise<void> {
-    throw new NotImplementedException('Belvo adapter not implemented yet');
+    throw new NotImplementedException(
+      'La integración con Belvo no está habilitada en esta versión (solo Plaid).',
+    );
   }
 
   async handleWebhook(
@@ -45,9 +55,10 @@ export class BelvoAdapter implements IBankAdapter {
     _headers?: Record<string, string>,
     _rawBody?: string,
   ): Promise<WebhookResult> {
-    // Fail-closed: rechazar cualquier webhook entrante hasta que la verificación
-    // criptográfica de autenticidad e integridad (e.g. HMAC-SHA256) esté implementada.
-    // TODO: Implementar verificación de firma/HMAC de Belvo cuando el adapter esté completo.
-    throw new UnauthorizedException('Verificación de webhooks Belvo no implementada.');
+    // Belvo no está habilitado en esta versión: se rechaza cualquier webhook entrante.
+    // TODO: Implementar la verificación de firma/HMAC de Belvo cuando el adapter esté completo.
+    throw new NotImplementedException(
+      'La integración con Belvo no está habilitada en esta versión (solo Plaid).',
+    );
   }
 }

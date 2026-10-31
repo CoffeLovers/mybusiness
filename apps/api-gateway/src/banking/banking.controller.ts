@@ -6,6 +6,7 @@ import {
   Headers,
   Param,
   ParseUUIDPipe,
+  PayloadTooLargeException,
   Post,
   Req,
 } from '@nestjs/common';
@@ -63,10 +64,18 @@ export class BankingController {
   }
 }
 
+const MAX_WEBHOOK_BYTES = 256 * 1024;
+
 @ApiTags('Webhooks')
 @Controller('webhooks')
 export class BankingWebhooksController {
   constructor(private readonly bankingService: BankingService) {}
+
+  private assertPayloadSize(req: RawBodyRequest<Request>): void {
+    if ((req.rawBody?.byteLength ?? 0) > MAX_WEBHOOK_BYTES) {
+      throw new PayloadTooLargeException('El cuerpo del webhook excede 256 KB.');
+    }
+  }
 
   @Public()
   @Post('plaid')
@@ -75,6 +84,7 @@ export class BankingWebhooksController {
     @Headers() headers: Record<string, string>,
     @Req() req: RawBodyRequest<Request>,
   ) {
+    this.assertPayloadSize(req);
     return this.bankingService.handleWebhook(
       BankProvider.PLAID,
       payload,
@@ -90,6 +100,7 @@ export class BankingWebhooksController {
     @Headers() headers: Record<string, string>,
     @Req() req: RawBodyRequest<Request>,
   ) {
+    this.assertPayloadSize(req);
     return this.bankingService.handleWebhook(
       BankProvider.BELVO,
       payload,

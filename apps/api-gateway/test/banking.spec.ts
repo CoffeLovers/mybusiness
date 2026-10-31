@@ -1,5 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { firstValueFrom, of, throwError } from 'rxjs';
+import { PayloadTooLargeException } from '@nestjs/common';
+import type { RawBodyRequest } from '@nestjs/common';
+import type { Request } from 'express';
 import {
   BankingPatterns,
   BankProvider,
@@ -158,6 +161,26 @@ describe('Banking Gateway Unit Tests', () => {
       ).rejects.toMatchObject({
         status: 401,
       });
+    });
+
+    it('handlePlaidWebhook debe rechazar cuerpos mayores de 256 KB con PayloadTooLargeException', () => {
+      const req = { rawBody: Buffer.alloc(300 * 1024) } as unknown as RawBodyRequest<Request>;
+
+      expect(() => webhooksController.handlePlaidWebhook({}, {}, req)).toThrow(
+        PayloadTooLargeException,
+      );
+      expect(mockClientProxy.send).not.toHaveBeenCalled();
+    });
+
+    it('handlePlaidWebhook debe delegar al RPC cuando el cuerpo no supera 256 KB', async () => {
+      const req = { rawBody: Buffer.alloc(1024) } as unknown as RawBodyRequest<Request>;
+
+      await webhooksController.handlePlaidWebhook({}, {}, req);
+
+      expect(mockClientProxy.send).toHaveBeenCalledWith(
+        BankingPatterns.HANDLE_WEBHOOK,
+        expect.objectContaining({ provider: BankProvider.PLAID }),
+      );
     });
 
     it('handleBelvoWebhook debe reenviar rawBody y headers al RPC de finance-service', async () => {

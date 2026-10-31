@@ -8,7 +8,7 @@ import {
   getMicroserviceRedisOptions,
   getRootEnvFilePaths,
 } from '@mybusiness/common';
-import { FinanceDatabaseService } from './database/database.service';
+import { FinanceDatabaseModule } from './database/database.module';
 import { FINANCE_EVENT_BUS, DomainEventPublisher } from './events/domain-event.publisher';
 import { FinanceController } from './finance.controller';
 import { FinanceRepository } from './finance.repository';
@@ -21,12 +21,12 @@ import { BankingModule } from './banking/banking.module';
       isGlobal: true,
       envFilePath: getRootEnvFilePaths(),
     }),
+    FinanceDatabaseModule,
     BankingModule,
   ],
   controllers: [FinanceController],
   providers: [
     FinanceService,
-    FinanceDatabaseService,
     FinanceRepository,
     DomainEventPublisher,
     {
