@@ -42,3 +42,5 @@ export const FinanceEvents = {
   TRANSACTION_CREATED: 'finance.transaction.created',
   INVOICE_PAID: 'finance.invoice.paid',
 } as const;
+
+export * from './banking.patterns';

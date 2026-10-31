@@ -13,6 +13,7 @@ import { FINANCE_EVENT_BUS, DomainEventPublisher } from './events/domain-event.p
 import { FinanceController } from './finance.controller';
 import { FinanceRepository } from './finance.repository';
 import { FinanceService } from './finance.service';
+import { BankingModule } from './banking/banking.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { FinanceService } from './finance.service';
       isGlobal: true,
       envFilePath: getRootEnvFilePaths(),
     }),
+    BankingModule,
   ],
   controllers: [FinanceController],
   providers: [

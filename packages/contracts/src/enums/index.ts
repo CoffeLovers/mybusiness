@@ -58,3 +58,5 @@ export enum ContextType {
   CONVERSATION_SUMMARY = 'CONVERSATION_SUMMARY',
   TRANSACTION_NOTE = 'TRANSACTION_NOTE',
 }
+
+export * from './banking.enum';
