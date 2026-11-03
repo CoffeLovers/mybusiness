@@ -13,7 +13,7 @@ type NavItem = {
 
 const NAV_ITEMS: readonly NavItem[] = [
   { label: 'Resumen', href: '/' },
-  { label: 'Movimientos', href: '#' },
+  { label: 'Libro mayor', href: '/libro-mayor' },
   { label: 'Facturas', href: '#' },
   { label: 'Bancos', href: '#' },
   { label: 'Agente', href: '#' },
@@ -21,6 +21,7 @@ const NAV_ITEMS: readonly NavItem[] = [
 
 const SEGMENT_LABELS: Record<string, string> = {
   resumen: 'Resumen',
+  'libro-mayor': 'Libro mayor',
   movimientos: 'Movimientos',
   facturas: 'Facturas',
   bancos: 'Bancos',
@@ -116,7 +117,7 @@ function NavLinks({
       }
     >
       {NAV_ITEMS.map((item) => {
-        const isCurrent = item.href === '/' && pathname === '/';
+        const isCurrent = item.href === pathname;
 
         return (
           <li key={item.label}>
