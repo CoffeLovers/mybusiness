@@ -71,7 +71,7 @@ pnpm --filter @mybusiness/agent-service test
 ## SF3-02 — [Agent] Asistente conversacional determinista sin streaming
 
 **Labels:** `phase-3`, `sprint-5`, `agent`, `backend`
-**Owner:** Backend 2 · **SP:** 8 · **Depende de:** SF3-04
+**Owner:** Backend 2 · **SP:** 8 · **Depende de:** SF3-01, SF3-04
 
 ### Contexto
 

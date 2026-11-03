@@ -58,6 +58,8 @@ Supuestos de capacidad: 4 roles, 10 días hábiles por sprint, 11 SP por rol y s
 | Frontend 2 | 8        | 12       | 20     |
 | **Total**  | **44**   | **44**   | **88** |
 
+Materialización en GitHub: el equipo real son dos cuentas (`farid15berrio10-a11y` y `Umbrex47`); los roles de planificación son sombras de capacidad, no cuentas. El reparto de issues deja **48 SP en Farid** (agente, PayPal backend, OTel y QA E2E) y **40 SP en Umbrex47** (MCP, panel web, cobros web/móvil, set dorado y dashboards). Si la capacidad real cambia, se renegocia el reparto antes de empezar el Sprint 5, nunca el alcance ni los criterios de aceptación.
+
 ## 5. Sprint 5 — Agentes y gobernanza
 
 **Objetivo:** que el asistente responda con cifras del backend a través de herramientas MCP auditadas, con el gasto de tokens acotado por tenant y trazas visibles de extremo a extremo.
@@ -65,7 +67,7 @@ Supuestos de capacidad: 4 roles, 10 días hábiles por sprint, 11 SP por rol y s
 | ID     | Issue                                                  | Owner      | SP  | Depende de     | Entregable verificable                                                            |
 | ------ | ------------------------------------------------------ | ---------- | --- | -------------- | --------------------------------------------------------------------------------- |
 | SF3-01 | Evaluación de Astropods y ADR de orquestación          | Backend 2  | 3   | —              | ADR-007 con decisión, escenarios comparados y criterio de reversibilidad.         |
-| SF3-02 | Asistente conversacional determinista sin streaming    | Backend 2  | 8   | SF3-04         | `agent.chat` responde citando herramientas y sin aritmética en el LLM.            |
+| SF3-02 | Asistente conversacional determinista sin streaming    | Backend 2  | 8   | SF3-01, SF3-04 | `agent.chat` responde citando herramientas y sin aritmética en el LLM.            |
 | SF3-03 | Gobernanza de tokens: presupuesto, caché y degradación | Backend 1  | 8   | —              | Un tenant que agota presupuesto recibe respuesta degradada y evento de auditoría. |
 | SF3-04 | Servidor MCP interno con herramientas auditadas        | Backend 1  | 8   | #51            | Tres herramientas invocables con esquema validado y auditoría por invocación.     |
 | SF3-05 | Panel de agente con chat, citas y presupuesto          | Frontend 2 | 8   | SF3-02         | `/agente` conversa con citas, muestra presupuesto y estados de error.             |
