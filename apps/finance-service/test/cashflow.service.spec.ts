@@ -8,14 +8,31 @@ import { CashflowController } from '../src/cashflow/cashflow.controller';
 const ctx = {
   tenantId: '11111111-1111-4111-8111-111111111111',
   userId: 'user-1',
-  role: UserRole.ADMIN,
+  role: UserRole.TENANT_ADMIN,
 };
 
-function createMockDb(options: {
-  accounts?: any[];
-  transactions?: any[];
-  previousTransactions?: any[];
-}) {
+interface MockAccount {
+  id: string;
+  currency: string;
+  currentBalanceMinor: bigint;
+}
+
+interface MockTransaction {
+  id: string;
+  amountMinor: bigint;
+  transactionType: string;
+  isoCurrencyCode?: string;
+  date: string;
+  category: string[] | null;
+}
+
+interface MockDbOptions {
+  accounts?: MockAccount[];
+  transactions?: MockTransaction[];
+  previousTransactions?: MockTransaction[];
+}
+
+function createMockDb(options: MockDbOptions) {
   let selectCallCount = 0;
   return {
     select: vi.fn().mockImplementation(() => {
@@ -44,7 +61,7 @@ describe('CashflowService', () => {
       service.getCashflowSummary({
         tenantId: '',
         userId: 'u1',
-        role: UserRole.ADMIN,
+        role: UserRole.TENANT_ADMIN,
         from: '2026-10-01',
         to: '2026-10-30',
       }),

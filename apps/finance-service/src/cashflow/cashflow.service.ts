@@ -77,6 +77,7 @@ export class CashflowService {
         id: bankTransactions.id,
         amountMinor: bankTransactions.amountMinor,
         transactionType: bankTransactions.transactionType,
+        isoCurrencyCode: bankTransactions.isoCurrencyCode,
         date: bankTransactions.date,
         category: bankTransactions.category,
       })
@@ -85,6 +86,8 @@ export class CashflowService {
         and(
           inArray(bankTransactions.accountId, matchingAccountIds),
           isNull(bankTransactions.removedAt),
+          // Los movimientos en otra divisa no contaminan los totales de la moneda activa.
+          eq(bankTransactions.isoCurrencyCode, activeCurrency),
           gte(bankTransactions.date, from),
           lte(bankTransactions.date, to),
         ),
@@ -126,8 +129,10 @@ export class CashflowService {
         if (balanceMinorBigInt <= 0n) {
           runwayMonths = 0;
         } else {
-          // Un decimal: Math.round((balance / burnRate) * 10) / 10
-          runwayMonths = Math.round(Number((balanceMinorBigInt * 10n) / burnRateBigInt)) / 10;
+          // Runway con un decimal y redondeo half-up real en BigInt: el truncado
+          // previo de (balance * 10) / burnRate redondeaba siempre hacia abajo.
+          const runwayTenths = (balanceMinorBigInt * 10n + burnRateBigInt / 2n) / burnRateBigInt;
+          runwayMonths = Number(runwayTenths) / 10;
         }
       }
     }
@@ -141,7 +146,12 @@ export class CashflowService {
     // 7. Comparación con período anterior si compare !== false
     let previousPeriod: CashflowPreviousPeriod | null = null;
     if (compare) {
-      previousPeriod = await this.getPreviousPeriodTotals(matchingAccountIds, fromDate, rangeDays);
+      previousPeriod = await this.getPreviousPeriodTotals(
+        matchingAccountIds,
+        activeCurrency,
+        fromDate,
+        rangeDays,
+      );
     }
 
     return {
@@ -233,7 +243,9 @@ export class CashflowService {
       }
 
       for (const tx of txRows) {
-        const bucket = bucketMap.get(tx.date);
+        // `date` es varchar y puede llegar como `YYYY-MM-DD` o como datetime ISO;
+        // se normaliza al día antes de buscar su bucket.
+        const bucket = bucketMap.get(tx.date.slice(0, 10));
         if (bucket) {
           const rawAmt = BigInt(tx.amountMinor);
           const absAmt = rawAmt < 0n ? -rawAmt : rawAmt;
@@ -328,6 +340,7 @@ export class CashflowService {
 
   private async getPreviousPeriodTotals(
     matchingAccountIds: string[],
+    activeCurrency: string,
     fromDate: Date,
     rangeDays: number,
   ): Promise<CashflowPreviousPeriod> {
@@ -347,6 +360,7 @@ export class CashflowService {
         and(
           inArray(bankTransactions.accountId, matchingAccountIds),
           isNull(bankTransactions.removedAt),
+          eq(bankTransactions.isoCurrencyCode, activeCurrency),
           gte(bankTransactions.date, prevFrom),
           lte(bankTransactions.date, prevTo),
         ),

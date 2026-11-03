@@ -10,6 +10,63 @@ const DEFAULT_LOCALE = 'es-ES';
 /** Espacio no separable que separa el signo del importe. */
 const SIGN_GAP = '\u00A0';
 
+/** Decimales asumidos cuando `Intl` no puede resolver la divisa (p. ej. código inválido). */
+const DEFAULT_FRACTION_DIGITS = 2;
+
+/**
+ * Caché de formateadores por `locale|currency`. Crear un `Intl.NumberFormat` es
+ * caro y las listas de movimientos reutilizan la misma divisa miles de veces,
+ * así que se memoiza la instancia. El `Map` es de módulo: vive mientras viva el
+ * proceso, igual que las instancias cacheadas.
+ */
+const formatters = new Map<string, Intl.NumberFormat>();
+
+/** Ejecuta `operation` y devuelve `fallback` si lanza. */
+function runCatching<T>(operation: () => T, fallback: T): T {
+  try {
+    return operation();
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * Devuelve el formateador memoizado para la combinación `locale`/`currency`.
+ *
+ * `useGrouping: true` explícito: el CLDR de `es` marca `minimumGroupingDigits=2`
+ * y sin esta opción 1234,56 se emitiría sin separador de miles.
+ */
+function formatterFor(currency: string, locale: string): Intl.NumberFormat {
+  const key = `${locale}|${currency}`;
+  const cached = formatters.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  const formatter = new Intl.NumberFormat(locale, {
+    style: 'currency',
+    currency,
+    useGrouping: true,
+  });
+  formatters.set(key, formatter);
+
+  return formatter;
+}
+
+/**
+ * Número de decimales que `Intl` usa para la divisa: 0 para JPY/CLP/COP,
+ * 2 para EUR/USD y 3 para KWD. Sin esto, formatear unidades menores con
+ * `/100` produciría "12.345,00 ¥" en vez de "12.345 ¥".
+ */
+function fractionDigitsFor(currency: string, locale: string): number {
+  return (
+    runCatching(
+      () => formatterFor(currency, locale).resolvedOptions().maximumFractionDigits,
+      DEFAULT_FRACTION_DIGITS,
+    ) ?? DEFAULT_FRACTION_DIGITS
+  );
+}
+
 /**
  * Formatea un importe en unidades menores como moneda localizada.
  *
@@ -25,15 +82,10 @@ export function formatMinorUnits(
     throw new RangeError(`amountMinor debe ser un entero finito; recibido: ${String(amountMinor)}`);
   }
 
-  // `useGrouping: true` explícito: el CLDR de `es` marca `minimumGroupingDigits=2`
-  // y sin esta opción 1234,56 se emitiría sin separador de miles.
-  const formatter = new Intl.NumberFormat(locale, {
-    style: 'currency',
-    currency,
-    useGrouping: true,
-  });
+  const digits = fractionDigitsFor(currency, locale);
+  const divisor = 10 ** digits;
 
-  return formatter.format(amountMinor / 100);
+  return formatterFor(currency, locale).format(amountMinor / divisor);
 }
 
 /**
@@ -88,18 +140,20 @@ export function formatMinorUnitsString(
   const isNegative = value < 0n;
   const absVal = isNegative ? -value : value;
 
-  const whole = absVal / 100n;
-  const fraction = absVal % 100n;
-  const fractionStr = fraction.toString().padStart(2, '0');
-  const decimalString = `${isNegative ? '-' : ''}${whole.toString()}.${fractionStr}`;
+  // La divisa decide los decimales (JPY/CLP = 0, EUR/USD = 2, KWD = 3).
+  const digits = fractionDigitsFor(currency, locale);
+  const divisor = 10n ** BigInt(digits);
+  const whole = absVal / divisor;
+  const fraction = absVal % divisor;
+  const fractionStr = digits > 0 ? fraction.toString().padStart(digits, '0') : '';
+  const decimalString = `${isNegative ? '-' : ''}${whole.toString()}${
+    digits > 0 ? `.${fractionStr}` : ''
+  }`;
 
-  const formatter = new Intl.NumberFormat(locale, {
-    style: 'currency',
-    currency,
-    useGrouping: true,
-  });
-
-  return formatter.format(decimalString as unknown as number);
+  // `Intl.NumberFormat#format` acepta cadenas decimales desde la especificación
+  // Intl v3 (Node 20 / V8 moderno), pero los tipos de TS todavía lo declaran
+  // como `number`; el cast documenta esa brecha sin convertir realmente el valor.
+  return formatterFor(currency, locale).format(decimalString as unknown as number);
 }
 
 /**

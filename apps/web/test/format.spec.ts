@@ -31,6 +31,22 @@ describe('formatMinorUnits', () => {
     expect(() => formatMinorUnits(invalid)).toThrow(RangeError);
     expect(() => formatMinorUnits(invalid)).toThrow(/entero finito/);
   });
+
+  // Salidas reales de `Intl` en Node 22/24 para es-ES: JPY y CLP no usan
+  // decimales, KWD usa 3. El divisor de las unidades menores debe seguirlos.
+  it('respeta divisas sin decimales (JPY)', () => {
+    expect(plain(formatMinorUnits(12345, 'JPY', 'es-ES'))).toBe('12.345 JPY');
+    expect(plain(formatMinorUnits(0, 'JPY', 'es-ES'))).toBe('0 JPY');
+  });
+
+  it('respeta divisas sin decimales (CLP)', () => {
+    expect(plain(formatMinorUnits(1234567, 'CLP', 'es-ES'))).toBe('1.234.567 CLP');
+  });
+
+  it('respeta divisas con 3 decimales (KWD)', () => {
+    expect(plain(formatMinorUnits(1234567, 'KWD', 'es-ES'))).toBe('1.234,567 KWD');
+    expect(plain(formatMinorUnits(0, 'KWD', 'es-ES'))).toBe('0,000 KWD');
+  });
 });
 
 describe('formatSignedMinorUnits', () => {
@@ -96,6 +112,17 @@ describe('formatMinorUnitsString', () => {
 
   it('formatea importes negativos', () => {
     expect(plain(formatMinorUnitsString('-12345'))).toContain('-123,45');
+  });
+
+  it('formatea divisas sin decimales sin añadir fracción (JPY/CLP)', () => {
+    expect(plain(formatMinorUnitsString('12345', 'JPY', 'es-ES'))).toBe('12.345 JPY');
+    expect(plain(formatMinorUnitsString('-12345', 'JPY', 'es-ES'))).toBe('-12.345 JPY');
+    expect(plain(formatMinorUnitsString('1234567', 'CLP', 'es-ES'))).toBe('1.234.567 CLP');
+  });
+
+  it('formatea divisas con 3 decimales rellenando la fracción (KWD)', () => {
+    expect(plain(formatMinorUnitsString('1234567', 'KWD', 'es-ES'))).toBe('1.234,567 KWD');
+    expect(plain(formatMinorUnitsString('5', 'KWD', 'es-ES'))).toBe('0,005 KWD');
   });
 
   it.each(['', 'abc', '12.34', '1.5', '123a', 'NaN', 'Infinity', '   ', undefined, null])(
