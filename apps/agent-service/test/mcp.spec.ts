@@ -1,8 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { of, throwError, TimeoutError } from 'rxjs';
+import { HttpException, HttpStatus, Logger } from '@nestjs/common';
 import type { ClientProxy } from '@nestjs/microservices';
 import type { ConfigService } from '@nestjs/config';
 import {
+  AuditEvents,
   CashflowPatterns,
   LedgerPatterns,
   MCP_PROTOCOL_VERSION,
@@ -17,7 +19,7 @@ import {
 } from '@mybusiness/contracts';
 import { McpController } from '../src/mcp/mcp.controller';
 import { McpToolsService, type RateLimiter } from '../src/mcp/mcp-tools.service';
-import type { McpAuditPublisher } from '../src/mcp/mcp-audit.publisher';
+import { McpAuditPublisher } from '../src/mcp/mcp-audit.publisher';
 import { MCP_TOOLS } from '../src/mcp/tool-schemas';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
@@ -32,15 +34,27 @@ interface Harness {
   consume: ReturnType<typeof vi.fn>;
 }
 
-function createHarness(options: { allowed?: boolean } = {}): Harness {
+function createHarness(
+  options: {
+    allowed?: boolean;
+    consumeRejects?: Error;
+    publishRejects?: Error;
+    rateLimit?: string | number;
+  } = {},
+): Harness {
   const send = vi.fn();
-  const publish = vi.fn().mockResolvedValue(undefined);
-  const consume = vi.fn().mockResolvedValue(options.allowed ?? true);
+  const publish = options.publishRejects
+    ? vi.fn().mockRejectedValue(options.publishRejects)
+    : vi.fn().mockResolvedValue(undefined);
+  const consume = options.consumeRejects
+    ? vi.fn().mockRejectedValue(options.consumeRejects)
+    : vi.fn().mockResolvedValue(options.allowed ?? true);
 
   const financeClient = { send } as unknown as ClientProxy;
   const auditPublisher = { publish } as unknown as McpAuditPublisher;
   const config = {
-    get: (_key: string, defaultValue?: unknown) => defaultValue,
+    get: (_key: string, defaultValue?: unknown) =>
+      options.rateLimit !== undefined ? options.rateLimit : defaultValue,
   } as unknown as ConfigService;
   const limiter: RateLimiter = { consume };
 
@@ -348,5 +362,251 @@ describe('McpToolsService auditoría', () => {
     const names: McpToolName[] = MCP_TOOLS.map((tool) => tool.name);
     expect(names).toEqual(['get_cashflow_summary', 'list_unreconciled_transactions']);
     expect(McpPatterns.RPC).toBe('mcp.rpc');
+  });
+});
+
+describe('McpController validación de solicitudes', () => {
+  let harness: Harness;
+
+  beforeEach(() => {
+    harness = createHarness();
+  });
+
+  it.each([
+    ['method no es string', { ...rpc('initialize'), method: 42 }],
+    ['id no es string ni número', { ...rpc('initialize'), id: { nested: true } }],
+  ])('responde INVALID_REQUEST cuando %s', async (_label, payload) => {
+    const response = await harness.controller.handle(
+      payload as unknown as WithContext<McpJsonRpcRequest>,
+    );
+
+    expect(expectFailure(response).code).toBe(McpErrorCodes.INVALID_REQUEST);
+  });
+
+  it('responde INVALID_REQUEST con id null cuando el payload no es un objeto', async () => {
+    const response = await harness.controller.handle(
+      null as unknown as WithContext<McpJsonRpcRequest>,
+    );
+
+    expect(response.jsonrpc).toBe('2.0');
+    expect(response.id).toBeNull();
+    expect(expectFailure(response).code).toBe(McpErrorCodes.INVALID_REQUEST);
+  });
+
+  it('initialize con id numérico devuelve el mismo id', async () => {
+    const response = await harness.controller.handle(rpc('initialize', undefined, 7));
+
+    expect(response.id).toBe(7);
+    expect('result' in response).toBe(true);
+  });
+
+  it('initialize con id null responde con id null', async () => {
+    const response = await harness.controller.handle(rpc('initialize', undefined, null));
+
+    expect(response.id).toBeNull();
+    expect('result' in response).toBe(true);
+  });
+
+  it('tools/list sin id genera un requestId interno y responde con id null', async () => {
+    const response = await harness.controller.handle({
+      jsonrpc: '2.0',
+      method: 'tools/list',
+      tenantId: TENANT_ID,
+      userId: USER_ID,
+      role: ROLE,
+    } as unknown as WithContext<McpJsonRpcRequest>);
+
+    expect(response.id).toBeNull();
+    const result = (response as { result: McpToolsListResult }).result;
+    expect(result.tools).toHaveLength(2);
+  });
+
+  it.each([
+    ['sin name', { arguments: {} }],
+    ['arguments no es objeto', { name: 'get_cashflow_summary', arguments: 'no-objeto' }],
+    ['params ausente', undefined],
+  ])('responde INVALID_PARAMS cuando tools/call llega %s', async (_label, params) => {
+    const response = await harness.controller.handle(
+      rpc('tools/call', params as Record<string, unknown> | undefined),
+    );
+
+    expect(expectFailure(response).code).toBe(McpErrorCodes.INVALID_PARAMS);
+    expect(harness.send).not.toHaveBeenCalled();
+  });
+
+  it('ejecuta tools/call sin arguments y aplica el objeto vacío', async () => {
+    harness.send.mockReturnValue(of({ items: [] }));
+
+    const response = await harness.controller.handle(
+      rpc('tools/call', { name: 'list_unreconciled_transactions' }),
+    );
+
+    expect(harness.send).toHaveBeenCalledWith(
+      LedgerPatterns.LIST,
+      expect.objectContaining({ reconciliationStatus: 'UNMATCHED', tenantId: TENANT_ID }),
+    );
+    expect('result' in response).toBe(true);
+  });
+
+  it.each([
+    ['403', new HttpException('forbidden', HttpStatus.FORBIDDEN), McpErrorCodes.TOOL_FORBIDDEN],
+    [
+      '500 del microservicio',
+      { statusCode: HttpStatus.INTERNAL_SERVER_ERROR, message: 'boom' },
+      McpErrorCodes.TOOL_UNAVAILABLE,
+    ],
+    ['status no HTTP', { status: 999, message: 'raro' }, McpErrorCodes.TOOL_UNAVAILABLE],
+    ['error inesperado', new Error('sin estado'), McpErrorCodes.TOOL_UNAVAILABLE],
+  ])('mapea un fallo de finance (%s) a %s', async (_label, error, expected) => {
+    harness.send.mockReturnValue(throwError(() => error));
+
+    const response = await harness.controller.handle(
+      callTool('get_cashflow_summary', { from: '2026-01-01', to: '2026-01-31' }),
+    );
+
+    expect(expectFailure(response).code).toBe(-32000);
+    expect(expectFailure(response).data?.code).toBe(expected);
+  });
+
+  it('mapea un HttpException 503 a TOOL_TIMEOUT', async () => {
+    harness.send.mockReturnValue(
+      throwError(() => new HttpException('no disponible', HttpStatus.SERVICE_UNAVAILABLE)),
+    );
+
+    const response = await harness.controller.handle(
+      callTool('get_cashflow_summary', { from: '2026-01-01', to: '2026-01-31' }),
+    );
+
+    expect(expectFailure(response).data?.code).toBe(McpErrorCodes.TOOL_TIMEOUT);
+  });
+
+  it('responde INTERNAL_ERROR si la auditoría rompe la invocación', async () => {
+    harness = createHarness({ publishRejects: new Error('audit caído') });
+    harness.send.mockReturnValue(of({ net: 1 }));
+
+    const response = await harness.controller.handle(
+      callTool('get_cashflow_summary', { from: '2026-01-01', to: '2026-01-31' }),
+    );
+
+    expect(expectFailure(response).code).toBe(McpErrorCodes.INTERNAL_ERROR);
+  });
+
+  it('usa el límite por defecto cuando la configuración no es numérica', async () => {
+    harness = createHarness({ rateLimit: 'no-numérico', allowed: false });
+
+    const response = await harness.controller.handle(
+      callTool('get_cashflow_summary', { from: '2026-01-01', to: '2026-01-31' }),
+    );
+
+    expect(expectFailure(response).data?.code).toBe(McpErrorCodes.RATE_LIMITED);
+  });
+});
+
+describe('McpToolsService tolerancia a fallos', () => {
+  it('continúa sin cuota si el limitador lanza (fail-open)', async () => {
+    const harness = createHarness({ consumeRejects: new Error('limiter caído') });
+    harness.send.mockReturnValue(of({ net: 5 }));
+
+    const result = await harness.service.call(
+      'get_cashflow_summary',
+      { from: '2026-01-01', to: '2026-01-31' },
+      { tenantId: TENANT_ID, userId: USER_ID, role: ROLE, requestId: 'req-6' },
+    );
+
+    expect(result.data).toEqual({ net: 5 });
+    expect(harness.publish).toHaveBeenCalledTimes(1);
+  });
+
+  it('calcula resultSize cuando la herramienta devuelve un array', async () => {
+    const harness = createHarness();
+    harness.send.mockReturnValue(of([{ id: 1 }, { id: 2 }]));
+
+    await harness.service.call(
+      'list_unreconciled_transactions',
+      {},
+      { tenantId: TENANT_ID, userId: USER_ID, role: ROLE, requestId: 'req-7' },
+    );
+
+    expect(harness.publish).toHaveBeenCalledWith(
+      expect.objectContaining({ ok: true, resultSize: 2 }),
+    );
+  });
+
+  it('deja resultSize indefinido cuando el resultado no es colección', async () => {
+    const harness = createHarness();
+    harness.send.mockReturnValue(of({ count: 3 }));
+
+    await harness.service.call(
+      'list_unreconciled_transactions',
+      {},
+      { tenantId: TENANT_ID, userId: USER_ID, role: ROLE, requestId: 'req-8' },
+    );
+
+    expect(harness.publish).toHaveBeenCalledWith(
+      expect.objectContaining({ ok: true, resultSize: undefined }),
+    );
+  });
+});
+
+describe('McpAuditPublisher', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function event(overrides: Record<string, unknown> = {}) {
+    return {
+      tenantId: TENANT_ID,
+      userId: USER_ID,
+      role: ROLE,
+      tool: 'get_cashflow_summary',
+      ok: true,
+      latencyMs: 12,
+      resultSize: 3,
+      ...overrides,
+    } as Parameters<McpAuditPublisher['publish']>[0];
+  }
+
+  it('emite un evento de auditoría con eventId UUID y sin argumentos de la herramienta', async () => {
+    const emit = vi.fn().mockReturnValue(of(undefined));
+    const publisher = new McpAuditPublisher({ emit } as unknown as ClientProxy);
+
+    await publisher.publish(event());
+
+    expect(emit).toHaveBeenCalledTimes(1);
+    const [pattern, payload] = emit.mock.calls[0] as [string, Record<string, unknown>];
+    expect(pattern).toBe(AuditEvents.LOG_EVENT);
+    expect(payload).toMatchObject({
+      tenantId: TENANT_ID,
+      userId: USER_ID,
+      role: ROLE,
+      action: 'mcp.tool.invoked',
+      entityName: 'mcp_tool',
+      entityId: 'get_cashflow_summary',
+      newValues: { ok: true, latencyMs: 12, resultSize: 3 },
+    });
+    expect(payload.eventId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
+    expect(typeof payload.timestamp).toBe('string');
+  });
+
+  it.each([
+    ['un Error', new Error('bus caído'), 'Error'],
+    ['un rechazo sin Error', 'string-rechazo', 'UnknownError'],
+  ])('no lanza ni filtra datos cuando el bus falla con %s', async (_label, error, expectedName) => {
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const emit = vi.fn().mockReturnValue(throwError(() => error));
+    const publisher = new McpAuditPublisher({ emit } as unknown as ClientProxy);
+
+    await expect(publisher.publish(event({ ok: false, errorCode: 'TOOL_TIMEOUT' }))).resolves.toBe(
+      undefined,
+    );
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    const [[message]] = warn.mock.calls as [[string]];
+    expect(message).toContain(expectedName);
+    expect(message).not.toContain(TENANT_ID);
+    expect(message).not.toContain('get_cashflow_summary');
+    expect(message).not.toContain('TOOL_TIMEOUT');
   });
 });
