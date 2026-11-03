@@ -405,9 +405,54 @@ describeIfDb('LedgerService (integración PostgreSQL)', () => {
 
     const names = byName.rows.map((row) => row.name);
     expect(names).toHaveLength(25);
-    expect(names[0]).toBe('Compra menor');
+    // Orden determinista `lower(name) COLLATE "C"`: los símbolos (`=`) van antes
+    // que las letras y el resto es alfabético sin distinguir mayúsculas.
+    expect(names[0]).toBe('=SUM(A1:A2)');
     expect(names[24]).toBe('Transferencia ahorro');
+    expect(names.indexOf('Compra menor')).toBeLessThan(names.indexOf('Factura conciliada'));
     expect(names.indexOf('Pago nómina')).toBeGreaterThan(names.indexOf('Movimiento 24'));
+  });
+
+  it('ordena por nombre con collation "C" fija: símbolos y luego alfabético sin distinguir caso', async () => {
+    const tenant = newTenant();
+    const ctx = contextFor(tenant);
+    const connection = await createConnection(tenant);
+    const account = await createAccount(tenant, connection, '9001');
+
+    await insertTransactions([account], connection, [
+      {
+        name: 'Beta',
+        merchantName: null,
+        category: null,
+        amountMinor: 300n,
+        date: '2026-03-01',
+        type: 'EXPENSE',
+      },
+      {
+        name: 'alfa',
+        merchantName: null,
+        category: null,
+        amountMinor: 200n,
+        date: '2026-03-02',
+        type: 'EXPENSE',
+      },
+      {
+        name: '=A',
+        merchantName: null,
+        category: null,
+        amountMinor: 100n,
+        date: '2026-03-03',
+        type: 'EXPENSE',
+      },
+    ]);
+
+    const page = await service.list(ctx, {
+      sortBy: LedgerSortField.NAME,
+      sortDir: 'asc',
+      pageSize: 200,
+    });
+
+    expect(page.rows.map((row) => row.name)).toEqual(['=A', 'alfa', 'Beta']);
   });
 
   it('sin sortBy no rompe y aplica fecha descendente por defecto', async () => {
@@ -518,7 +563,12 @@ describeIfDb('LedgerService (integración PostgreSQL)', () => {
     expect(lines[0]).toBe(
       'fecha,descripcion,contraparte,categoria,monto,moneda,estado_conciliacion,evidencia',
     );
-    expect(full.content).toContain("'=SUM(A1:A2)");
+
+    // El orden de las filas no se asume: se localiza la fila por su contenido.
+    const formulaLine = lines.find((line) => line.includes("'=SUM(A1:A2)"));
+    expect(formulaLine).toBeDefined();
+    expect(formulaLine?.split(',')[1].startsWith("'=SUM(A1:A2)")).toBe(true);
+    expect(full.content.startsWith('\uFEFF')).toBe(true);
     expect(full.content).toContain('factura-auto.pdf');
 
     const filtered = await service.exportCsv(ctxA, { category: 'Compras' });

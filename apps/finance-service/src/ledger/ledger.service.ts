@@ -545,32 +545,41 @@ export class LedgerService {
 
   /** Orden whitelisted + desempate por id para paginación estable. */
   private buildOrder(sortBy: LedgerSortField, sortDir: SortDirection): SQL[] {
-    const column = this.sortColumn(sortBy);
     const isAsc = sortDir === 'asc';
     return [
-      isAsc ? asc(column) : desc(column),
+      this.sortColumn(sortBy, sortDir),
       isAsc ? asc(bankTransactions.id) : desc(bankTransactions.id),
     ];
   }
 
-  private sortColumn(sortBy: LedgerSortField): SQL {
+  /**
+   * Expresión de orden para la columna elegida.
+   *
+   * Las columnas de texto usan `lower(...) COLLATE "C"`: la collation binaria
+   * `"C"` garantiza el mismo orden en cualquier locale/instalación de PostgreSQL
+   * (CI con locale `C` vs. producción), y `lower` lo hace insensible a
+   * mayúsculas. Así `=`, dígitos y minúsculas se ordenan de forma determinista.
+   */
+  private sortColumn(sortBy: LedgerSortField, sortDir: SortDirection): SQL {
+    const direction = sortDir === 'asc' ? asc : desc;
+
     switch (sortBy) {
       case LedgerSortField.AMOUNT:
-        return sql`${bankTransactions.amountMinor}`;
+        return direction(sql`${bankTransactions.amountMinor}`);
       case LedgerSortField.NAME:
-        return sql`${bankTransactions.name}`;
+        return direction(sql`lower(${bankTransactions.name}) collate "C"`);
       case LedgerSortField.CATEGORY:
-        return sql`coalesce(${bankTransactions.category}->>0, '')`;
+        return direction(sql`lower(coalesce(${bankTransactions.category}->>0, '')) collate "C"`);
       case LedgerSortField.STATUS:
-        return sql`coalesce((
+        return direction(sql`coalesce((
           SELECT m.status::text FROM reconciliation_matches m
           WHERE m.bank_transaction_id = ${bankTransactions.id}
           ORDER BY m.score DESC, m.created_at DESC
           LIMIT 1
-        ), 'UNMATCHED')`;
+        ), 'UNMATCHED')`);
       case LedgerSortField.DATE:
       default:
-        return sql`${bankTransactions.date}`;
+        return direction(sql`${bankTransactions.date}`);
     }
   }
 
