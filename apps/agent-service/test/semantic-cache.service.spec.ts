@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ConfigService } from '@nestjs/config';
 import { SemanticCacheService } from '../src/cache/semantic-cache.service';
+import { CACHE_TTL_MAX_SECONDS } from '../src/budget/budget.constants';
 import type {
   CacheSimilarResult,
   ISemanticCacheRepository,
@@ -208,6 +209,40 @@ describe('SemanticCacheService (SF3-03)', () => {
       const result = await service.get(tenantA, 'pregunta temporal');
 
       expect(result.hit).toBe(false);
+    });
+
+    it('debe rechazar un TTL superior al máximo permitido', async () => {
+      await expect(
+        service.set(tenantA, 'pregunta', 'Respuesta', CACHE_TTL_MAX_SECONDS + 1),
+      ).rejects.toThrow(/TTL de caché inválido/);
+
+      expect(fakeRepo.entries.size).toBe(0);
+    });
+  });
+
+  describe('Validación estricta de configuración', () => {
+    it('no debe arrancar si AGENT_CACHE_TTL_SECONDS excede el máximo', () => {
+      const invalidConfig = {
+        get: vi.fn((key: string, defaultValue?: unknown) =>
+          key === 'AGENT_CACHE_TTL_SECONDS' ? '86400' : defaultValue,
+        ),
+      } as unknown as ConfigService;
+
+      expect(() => new SemanticCacheService(fakeRepo, fakeEmbeddingService, invalidConfig)).toThrow(
+        /AGENT_CACHE_TTL_SECONDS/,
+      );
+    });
+
+    it('no debe arrancar si AGENT_CACHE_SIMILARITY_THRESHOLD está fuera de rango', () => {
+      const invalidConfig = {
+        get: vi.fn((key: string, defaultValue?: unknown) =>
+          key === 'AGENT_CACHE_SIMILARITY_THRESHOLD' ? '0.2' : defaultValue,
+        ),
+      } as unknown as ConfigService;
+
+      expect(() => new SemanticCacheService(fakeRepo, fakeEmbeddingService, invalidConfig)).toThrow(
+        /AGENT_CACHE_SIMILARITY_THRESHOLD/,
+      );
     });
   });
 

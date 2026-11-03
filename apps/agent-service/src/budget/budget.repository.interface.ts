@@ -39,9 +39,11 @@ export interface SettleReservationParams {
 }
 
 export interface SettleReservationResult {
+  /** `true` cuando la reserva ya estaba liquidada y no se volvió a aplicar el consumo. */
+  alreadySettled?: boolean;
   budget: AgentTokenBudget;
   reservation: AgentTokenReservation;
-  usage: AgentTokenUsage;
+  usage?: AgentTokenUsage | null;
 }
 
 export interface ReleaseReservationParams {

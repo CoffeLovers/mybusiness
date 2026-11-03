@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AgentDegradationReason } from '@mybusiness/contracts';
 import { BudgetService } from '../src/budget/budget.service';
@@ -142,7 +143,27 @@ class FakeBudgetRepository implements IBudgetRepository {
           this.budgets.set(budgetKey, budget);
         }
 
-        const estimated = reservation.status === 'ACTIVE' ? reservation.estimatedCostMicroUsd : 0;
+        // Reintento idempotente: ya liquidada, no se vuelve a sumar ni a insertar uso.
+        if (reservation.status === 'SETTLED') {
+          const existingUsage =
+            this.usages.find(
+              (u) => u.tenantId === params.tenantId && u.correlationId === params.correlationId,
+            ) ?? null;
+          resolve({
+            alreadySettled: true,
+            budget: { ...budget },
+            reservation: { ...reservation },
+            usage: existingUsage,
+          });
+          return;
+        }
+
+        if (reservation.status !== 'ACTIVE') {
+          reject(new Error(`Reserva no liquidable: ${reservation.status}`));
+          return;
+        }
+
+        const estimated = reservation.estimatedCostMicroUsd;
         budget.reservedMicroUsd = Math.max(0, budget.reservedMicroUsd - estimated);
         budget.spentMicroUsd += params.actualCostMicroUsd;
         budget.updatedAt = new Date();
@@ -153,6 +174,7 @@ class FakeBudgetRepository implements IBudgetRepository {
         const usage: AgentTokenUsage = {
           id: `usage-${Math.random().toString(36).substring(2, 9)}`,
           tenantId: params.tenantId,
+          correlationId: params.correlationId,
           conversationId: params.conversationId ?? null,
           model: params.model,
           promptTokens: params.promptTokens,
@@ -165,6 +187,7 @@ class FakeBudgetRepository implements IBudgetRepository {
         this.usages.push(usage);
 
         resolve({
+          alreadySettled: false,
           budget: { ...budget },
           reservation: { ...reservation },
           usage,
@@ -215,6 +238,7 @@ class FakeBudgetRepository implements IBudgetRepository {
     const usage: AgentTokenUsage = {
       id: `usage-${Math.random().toString(36).substring(2, 9)}`,
       tenantId: params.tenantId,
+      correlationId: params.correlationId ?? null,
       conversationId: params.conversationId ?? null,
       model: params.model,
       promptTokens: params.promptTokens ?? 0,
@@ -308,6 +332,31 @@ describe('BudgetService (SF3-03 Token Governance)', () => {
       // 1 prompt token: ceil((1 * 1500) / 1000) = ceil(1.5) = 2 micro-USD
       const cost = service.calculateCost(1, 0);
       expect(cost).toBe(2);
+    });
+  });
+
+  describe('Validación estricta de configuración (fallo en el arranque)', () => {
+    function buildWith(value: unknown): BudgetService {
+      const config = {
+        get: vi.fn((key: string, defaultValue?: unknown) =>
+          key === 'AGENT_TOKEN_BUDGET_USD_MONTHLY' ? value : defaultValue,
+        ),
+      } as unknown as ConfigService;
+      return new BudgetService(fakeRepo, config);
+    }
+
+    it('no debe arrancar con un presupuesto mensual no numérico', () => {
+      expect(() => buildWith('no-es-un-numero')).toThrow(
+        /Configuración inválida: AGENT_TOKEN_BUDGET_USD_MONTHLY/,
+      );
+    });
+
+    it('no debe arrancar con un presupuesto mensual por debajo del mínimo', () => {
+      expect(() => buildWith(0)).toThrow(/AGENT_TOKEN_BUDGET_USD_MONTHLY/);
+    });
+
+    it('no debe arrancar con un presupuesto mensual por encima del máximo', () => {
+      expect(() => buildWith(2_000_000)).toThrow(/AGENT_TOKEN_BUDGET_USD_MONTHLY/);
     });
   });
 
@@ -581,5 +630,135 @@ describe('BudgetService (SF3-03 Token Governance)', () => {
       expect(degraded.reason).toBe(AgentDegradationReason.PROVIDER_ERROR);
       expect(degraded.message).toContain('proveedor de Inteligencia Artificial');
     });
+  });
+
+  describe('Idempotencia contable del repositorio (mocks)', () => {
+    const buildBudget = (overrides: Partial<AgentTokenBudget> = {}): AgentTokenBudget => ({
+      id: 'budget-mock',
+      tenantId: tenantA,
+      periodKey: currentPeriod,
+      limitMicroUsd: 10_000_000,
+      spentMicroUsd: 2_000_000,
+      reservedMicroUsd: 0,
+      warnRatio: 0.8,
+      hardLimit: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...overrides,
+    });
+
+    const buildReservation = (
+      overrides: Partial<AgentTokenReservation> = {},
+    ): AgentTokenReservation => ({
+      id: 'res-mock',
+      tenantId: tenantA,
+      correlationId: 'mock-1',
+      estimatedCostMicroUsd: 1_000_000,
+      status: 'SETTLED',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...overrides,
+    });
+
+    const buildService = (repository: IBudgetRepository): BudgetService => {
+      const mockConfig = {
+        get: vi.fn((key: string, defaultValue?: unknown) => {
+          switch (key) {
+            case 'AGENT_TOKEN_BUDGET_USD_MONTHLY':
+              return 10;
+            case 'AGENT_BUDGET_WARN_RATIO':
+              return 0.8;
+            case 'AGENT_MODEL_INPUT_COST_PER_1K_USD':
+              return 0.0015;
+            case 'AGENT_MODEL_OUTPUT_COST_PER_1K_USD':
+              return 0.002;
+            case 'AGENT_DEGRADED_MODE_ENABLED':
+              return 'true';
+            default:
+              return defaultValue;
+          }
+        }),
+      } as unknown as ConfigService;
+
+      return new BudgetService(repository, mockConfig);
+    };
+
+    it('settle con alreadySettled=true no duplica uso, no suma gasto y no re-emite warning', async () => {
+      const usage: AgentTokenUsage = {
+        id: 'usage-existing',
+        tenantId: tenantA,
+        correlationId: 'mock-1',
+        conversationId: null,
+        model: 'mock-model',
+        promptTokens: 800,
+        completionTokens: 300,
+        costMicroUsd: 1_800_000,
+        cacheHit: false,
+        degraded: false,
+        createdAt: new Date(),
+      };
+      const repository = {
+        settleReservation: vi.fn().mockResolvedValue({
+          alreadySettled: true,
+          budget: buildBudget({ spentMicroUsd: 2_000_000, reservedMicroUsd: 0 }),
+          reservation: buildReservation(),
+          usage,
+        }),
+      } as unknown as IBudgetRepository;
+
+      const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      const mockedService = buildService(repository);
+
+      const result = await mockedService.settle({
+        tenantId: tenantA,
+        correlationId: 'mock-1',
+        // Valores distintos a los persistidos: deben ignorarse en el reintento idempotente.
+        actualCostMicroUsd: 9_000_000,
+        promptTokens: 1,
+        completionTokens: 1,
+        periodKey: currentPeriod,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.settled).toBe(true);
+      expect(result.actualCostMicroUsd).toBe(1_800_000);
+      expect(result.consumption.totalTokens).toBe(1100);
+      // El snapshot no se altera: 10M - (2M gastado + 0 reservado)
+      expect(result.remainingMicroUsd).toBe(8_000_000);
+      expect(repository.settleReservation).toHaveBeenCalledTimes(1);
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      warnSpy.mockRestore();
+    });
+
+    it('reserve con una reserva ACTIVE existente no incrementa el saldo reservado', async () => {
+      const reservation = buildReservation({ estimatedCostMicroUsd: 1_000_000 });
+      const repository = {
+        reserveAtomic: vi.fn().mockResolvedValue({
+          granted: true,
+          budget: buildBudget({ spentMicroUsd: 0, reservedMicroUsd: 1_000_000 }),
+          reservation,
+        }),
+      } as unknown as IBudgetRepository;
+
+      const mockedService = buildService(repository);
+
+      const result = await mockedService.reserve({
+        tenantId: tenantA,
+        correlationId: 'mock-1',
+        estimatedCostMicroUsd: 1_000_000,
+        periodKey: currentPeriod,
+      });
+
+      expect(result.granted).toBe(true);
+      expect(result.reservedMicroUsd).toBe(1_000_000);
+      // 10M - (0 gastado + 1M reservado), sin doble reserva
+      expect(result.remainingMicroUsd).toBe(9_000_000);
+      expect(repository.reserveAtomic).toHaveBeenCalledTimes(1);
+    });
+
+    // E2E pendiente (siguiente iteración): levantar Postgres real y reutilizar el patrón de
+    // `test/agent.repository.e2e-spec.ts` para lanzar dos settleReservation concurrentes sobre
+    // el mismo correlationId y verificar que solo se inserta una fila en agent_token_usage.
   });
 });

@@ -1,7 +1,12 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EMBEDDING_SERVICE, type IEmbeddingService } from '../embeddings';
-import { BUDGET_CONSTANTS, hashPrompt } from '../budget/budget.constants';
+import {
+  BUDGET_CONSTANTS,
+  CACHE_TTL_MAX_SECONDS,
+  hashPrompt,
+  parseConfigNumber,
+} from '../budget/budget.constants';
 import {
   SEMANTIC_CACHE_REPOSITORY,
   type ISemanticCacheRepository,
@@ -14,6 +19,12 @@ export interface CacheLookupResult {
   source?: 'exact' | 'semantic';
 }
 
+/**
+ * Caché semántica de respuestas del agente por tenant.
+ *
+ * Política de frescura: TTL corto por defecto (5 min); nunca cachear respuestas
+ * financieras sin snapshot de datos, y jamás por encima de `CACHE_TTL_MAX_SECONDS`.
+ */
 @Injectable()
 export class SemanticCacheService {
   private readonly logger = new Logger(SemanticCacheService.name);
@@ -29,17 +40,19 @@ export class SemanticCacheService {
     private readonly config: ConfigService,
   ) {
     this.enabled = this.config.get<string>('AGENT_CACHE_ENABLED', 'true') !== 'false';
-    this.similarityThreshold = Number(
-      this.config.get<number>(
-        'AGENT_CACHE_SIMILARITY_THRESHOLD',
-        BUDGET_CONSTANTS.DEFAULT_CACHE_SIMILARITY_THRESHOLD,
-      ),
+    this.similarityThreshold = parseConfigNumber(
+      this.config.get<unknown>('AGENT_CACHE_SIMILARITY_THRESHOLD'),
+      BUDGET_CONSTANTS.DEFAULT_CACHE_SIMILARITY_THRESHOLD,
+      0.5,
+      1,
+      'AGENT_CACHE_SIMILARITY_THRESHOLD',
     );
-    this.defaultTtlSeconds = Number(
-      this.config.get<number>(
-        'AGENT_CACHE_TTL_SECONDS',
-        BUDGET_CONSTANTS.DEFAULT_CACHE_TTL_SECONDS,
-      ),
+    this.defaultTtlSeconds = parseConfigNumber(
+      this.config.get<unknown>('AGENT_CACHE_TTL_SECONDS'),
+      BUDGET_CONSTANTS.DEFAULT_CACHE_TTL_SECONDS,
+      1,
+      CACHE_TTL_MAX_SECONDS,
+      'AGENT_CACHE_TTL_SECONDS',
     );
   }
 
@@ -114,6 +127,13 @@ export class SemanticCacheService {
 
     const promptHash = hashPrompt(prompt);
     const ttl = ttlSeconds ?? this.defaultTtlSeconds;
+
+    if (!Number.isFinite(ttl) || ttl > CACHE_TTL_MAX_SECONDS) {
+      throw new Error(
+        `TTL de caché inválido: ${ttl}s (máximo permitido ${CACHE_TTL_MAX_SECONDS}s)`,
+      );
+    }
+
     const expiresAt = new Date(Date.now() + ttl * 1000);
 
     let embedding: number[] | null = null;

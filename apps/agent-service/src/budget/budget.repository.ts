@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { and, eq, gte, lt, sql } from 'drizzle-orm';
+import type { NodePgQueryResultHKT } from 'drizzle-orm/node-postgres';
+import type { PgDatabase } from 'drizzle-orm/pg-core';
+import type { AgentDatabase } from '../database/client';
 import { AgentDatabaseService } from '../database/database.service';
 import {
   agentBudgetEvents,
@@ -23,12 +26,25 @@ import type {
 } from './budget.repository.interface';
 import type { AgentUsageSummary } from '@mybusiness/contracts';
 
+/**
+ * Cliente mínimo compartido por la conexión raíz y las transacciones de Drizzle.
+ * Permite reutilizar los helpers dentro y fuera de `db.transaction`.
+ */
+type BudgetDb = PgDatabase<NodePgQueryResultHKT, Record<string, unknown>>;
+
 @Injectable()
 export class BudgetRepository implements IBudgetRepository {
   constructor(private readonly database: AgentDatabaseService) {}
 
-  private get db() {
+  private get db(): AgentDatabase {
     return this.database.db;
+  }
+
+  /**
+   * Normaliza la conexión (raíz o transacción) al tipo estructural que usan los helpers.
+   */
+  private client(db: AgentDatabase | BudgetDb): BudgetDb {
+    return db as BudgetDb;
   }
 
   async getOrCreateBudget(
@@ -38,48 +54,18 @@ export class BudgetRepository implements IBudgetRepository {
     defaultWarnRatio: number,
     defaultHardLimit: boolean,
   ): Promise<AgentTokenBudget> {
-    const existing = await this.findBudget(tenantId, periodKey);
-    if (existing) {
-      return existing;
-    }
-
-    const [created] = await this.db
-      .insert(agentTokenBudgets)
-      .values({
-        tenantId,
-        periodKey,
-        limitMicroUsd: defaultLimitMicroUsd,
-        spentMicroUsd: 0,
-        reservedMicroUsd: 0,
-        warnRatio: defaultWarnRatio,
-        hardLimit: defaultHardLimit,
-      })
-      .onConflictDoNothing()
-      .returning();
-
-    if (created) {
-      return created;
-    }
-
-    const fetched = await this.findBudget(tenantId, periodKey);
-    if (!fetched) {
-      throw new Error(
-        `No se pudo inicializar o recuperar el presupuesto para el tenant ${tenantId}`,
-      );
-    }
-    return fetched;
+    return this.getOrCreateBudgetWith(
+      this.client(this.db),
+      tenantId,
+      periodKey,
+      defaultLimitMicroUsd,
+      defaultWarnRatio,
+      defaultHardLimit,
+    );
   }
 
   async findBudget(tenantId: string, periodKey: string): Promise<AgentTokenBudget | null> {
-    const [found] = await this.db
-      .select()
-      .from(agentTokenBudgets)
-      .where(
-        and(eq(agentTokenBudgets.tenantId, tenantId), eq(agentTokenBudgets.periodKey, periodKey)),
-      )
-      .limit(1);
-
-    return found ?? null;
+    return this.findBudgetWith(this.client(this.db), tenantId, periodKey);
   }
 
   async reserveAtomic(params: ReserveAtomicParams): Promise<ReserveAtomicResult> {
@@ -93,83 +79,91 @@ export class BudgetRepository implements IBudgetRepository {
       defaultHardLimit,
     } = params;
 
-    // 1. Idempotencia: Verificar si ya existe una reserva con este correlationId
-    const existingReservation = await this.findReservation(tenantId, correlationId);
-    if (existingReservation) {
-      const budget = await this.getOrCreateBudget(
+    return this.db.transaction(async (tx) => {
+      const db = this.client(tx);
+
+      // 1. Asegurar la fila de presupuesto del período dentro de la misma transacción.
+      const budget = await this.getOrCreateBudgetWith(
+        db,
         tenantId,
         periodKey,
         defaultLimitMicroUsd,
         defaultWarnRatio,
         defaultHardLimit,
       );
-      if (existingReservation.status === 'ACTIVE') {
-        return { granted: true, budget, reservation: existingReservation };
+
+      // 2. Insertar la reserva ANTES de tocar el saldo. El UNIQUE (tenant, correlation)
+      // decide el ganador de la carrera; nunca se incrementa reserved sin fila propia.
+      const [reservation] = await db
+        .insert(agentTokenReservations)
+        .values({
+          tenantId,
+          correlationId,
+          estimatedCostMicroUsd,
+          status: 'ACTIVE',
+        })
+        .onConflictDoNothing({
+          target: [agentTokenReservations.tenantId, agentTokenReservations.correlationId],
+        })
+        .returning();
+
+      // 3. Conflicto: la reserva ya existía. Resolver de forma idempotente sin sumar saldo.
+      if (!reservation) {
+        const existing = await this.findReservationWith(db, tenantId, correlationId);
+        if (!existing) {
+          throw new Error(
+            `Conflicto de reserva sin fila recuperable para correlationId: ${correlationId}`,
+          );
+        }
+        if (existing.status === 'ACTIVE') {
+          return { granted: true, budget, reservation: existing };
+        }
+        return {
+          granted: false,
+          budget,
+          reason: `RESERVATION_ALREADY_${existing.status}`,
+        };
       }
-      return {
-        granted: false,
-        budget,
-        reason: `RESERVATION_ALREADY_${existingReservation.status}`,
-      };
-    }
 
-    // 2. Asegurar que existe la fila de presupuesto para este período
-    await this.getOrCreateBudget(
-      tenantId,
-      periodKey,
-      defaultLimitMicroUsd,
-      defaultWarnRatio,
-      defaultHardLimit,
-    );
+      // 4. UPDATE condicional del presupuesto (bloqueo de fila en Postgres).
+      const [updatedBudget] = await db
+        .update(agentTokenBudgets)
+        .set({
+          reservedMicroUsd: sql`${agentTokenBudgets.reservedMicroUsd} + ${estimatedCostMicroUsd}`,
+          updatedAt: sql`NOW()`,
+        })
+        .where(
+          and(
+            eq(agentTokenBudgets.tenantId, tenantId),
+            eq(agentTokenBudgets.periodKey, periodKey),
+            sql`(${agentTokenBudgets.spentMicroUsd} + ${agentTokenBudgets.reservedMicroUsd} + ${estimatedCostMicroUsd} <= ${agentTokenBudgets.limitMicroUsd} OR ${agentTokenBudgets.hardLimit} = false)`,
+          ),
+        )
+        .returning();
 
-    // 3. UPDATE condicional atómico con bloqueo a nivel de fila en Postgres.
-    // Garantiza que la suma de spent + reserved + estimated nunca supere el límite si hard_limit = true.
-    const [updatedBudget] = await this.db
-      .update(agentTokenBudgets)
-      .set({
-        reservedMicroUsd: sql`${agentTokenBudgets.reservedMicroUsd} + ${estimatedCostMicroUsd}`,
-        updatedAt: sql`NOW()`,
-      })
-      .where(
-        and(
-          eq(agentTokenBudgets.tenantId, tenantId),
-          eq(agentTokenBudgets.periodKey, periodKey),
-          sql`(${agentTokenBudgets.spentMicroUsd} + ${agentTokenBudgets.reservedMicroUsd} + ${estimatedCostMicroUsd} <= ${agentTokenBudgets.limitMicroUsd} OR ${agentTokenBudgets.hardLimit} = false)`,
-        ),
-      )
-      .returning();
+      // 5. Sin cupo: marcar la reserva como REJECTED. Sin incremento y sin fuga de saldo.
+      if (!updatedBudget) {
+        await db
+          .update(agentTokenReservations)
+          .set({ status: 'REJECTED', updatedAt: sql`NOW()` })
+          .where(
+            and(
+              eq(agentTokenReservations.tenantId, tenantId),
+              eq(agentTokenReservations.correlationId, correlationId),
+              eq(agentTokenReservations.status, 'ACTIVE'),
+            ),
+          );
 
-    if (!updatedBudget) {
-      const currentBudget = await this.getOrCreateBudget(
-        tenantId,
-        periodKey,
-        defaultLimitMicroUsd,
-        defaultWarnRatio,
-        defaultHardLimit,
-      );
-      return {
-        granted: false,
-        budget: currentBudget,
-        reason: 'BUDGET_EXHAUSTED',
-      };
-    }
+        const budgetActual = (await this.findBudgetWith(db, tenantId, periodKey)) ?? budget;
+        return {
+          granted: false,
+          budget: budgetActual,
+          reason: 'BUDGET_EXHAUSTED',
+        };
+      }
 
-    // 4. Registrar la reserva con estado ACTIVE
-    const [reservation] = await this.db
-      .insert(agentTokenReservations)
-      .values({
-        tenantId,
-        correlationId,
-        estimatedCostMicroUsd,
-        status: 'ACTIVE',
-      })
-      .returning();
-
-    return {
-      granted: true,
-      budget: updatedBudget,
-      reservation,
-    };
+      return { granted: true, budget: updatedBudget, reservation };
+    });
   }
 
   async settleReservation(params: SettleReservationParams): Promise<SettleReservationResult> {
@@ -186,123 +180,139 @@ export class BudgetRepository implements IBudgetRepository {
       degraded = false,
     } = params;
 
-    const reservation = await this.findReservation(tenantId, correlationId);
-    if (!reservation) {
-      throw new Error(`Reserva no encontrada para correlationId: ${correlationId}`);
-    }
+    return this.db.transaction(async (tx) => {
+      const db = this.client(tx);
 
-    const estimated = reservation.status === 'ACTIVE' ? reservation.estimatedCostMicroUsd : 0;
+      // 1. Transición atómica ACTIVE -> SETTLED: solo un reintento puede ganar.
+      const [settled] = await db
+        .update(agentTokenReservations)
+        .set({ status: 'SETTLED', updatedAt: sql`NOW()` })
+        .where(
+          and(
+            eq(agentTokenReservations.tenantId, tenantId),
+            eq(agentTokenReservations.correlationId, correlationId),
+            eq(agentTokenReservations.status, 'ACTIVE'),
+          ),
+        )
+        .returning();
 
-    // 1. Restar el estimado del reservado y sumar el coste real al gastado
-    const [updatedBudget] = await this.db
-      .update(agentTokenBudgets)
-      .set({
-        reservedMicroUsd: sql`GREATEST(0, ${agentTokenBudgets.reservedMicroUsd} - ${estimated})`,
-        spentMicroUsd: sql`${agentTokenBudgets.spentMicroUsd} + ${actualCostMicroUsd}`,
-        updatedAt: sql`NOW()`,
-      })
-      .where(
-        and(eq(agentTokenBudgets.tenantId, tenantId), eq(agentTokenBudgets.periodKey, periodKey)),
-      )
-      .returning();
+      // 2. Sin fila: o ya estaba liquidada (idempotente) o no es liquidable.
+      if (!settled) {
+        const existing = await this.findReservationWith(db, tenantId, correlationId);
+        if (!existing) {
+          throw new Error('Reserva no liquidable: NOT_FOUND');
+        }
+        if (existing.status === 'SETTLED') {
+          const budget = await this.requireBudget(db, tenantId, periodKey);
+          const usage = await this.findUsageByCorrelationWith(db, tenantId, correlationId);
+          return {
+            alreadySettled: true,
+            budget,
+            reservation: existing,
+            usage: usage ?? null,
+          };
+        }
+        throw new Error(`Reserva no liquidable: ${existing.status}`);
+      }
 
-    // 2. Marcar la reserva como SETTLED
-    const [updatedReservation] = await this.db
-      .update(agentTokenReservations)
-      .set({
-        status: 'SETTLED',
-        updatedAt: sql`NOW()`,
-      })
-      .where(
-        and(
-          eq(agentTokenReservations.tenantId, tenantId),
-          eq(agentTokenReservations.correlationId, correlationId),
-        ),
-      )
-      .returning();
+      // 3. Consumo real: liberar el estimado y sumar el coste efectivo.
+      const [updatedBudget] = await db
+        .update(agentTokenBudgets)
+        .set({
+          reservedMicroUsd: sql`GREATEST(0, ${agentTokenBudgets.reservedMicroUsd} - ${settled.estimatedCostMicroUsd})`,
+          spentMicroUsd: sql`${agentTokenBudgets.spentMicroUsd} + ${actualCostMicroUsd}`,
+          updatedAt: sql`NOW()`,
+        })
+        .where(
+          and(eq(agentTokenBudgets.tenantId, tenantId), eq(agentTokenBudgets.periodKey, periodKey)),
+        )
+        .returning();
 
-    // 3. Insertar registro de uso inmutable
-    const [usage] = await this.db
-      .insert(agentTokenUsage)
-      .values({
-        tenantId,
-        conversationId,
-        model,
-        promptTokens,
-        completionTokens,
-        costMicroUsd: actualCostMicroUsd,
-        cacheHit,
-        degraded,
-      })
-      .returning();
+      if (!updatedBudget) {
+        throw new Error(`Presupuesto no encontrado para el tenant ${tenantId} (${periodKey})`);
+      }
 
-    return {
-      budget: updatedBudget,
-      reservation: updatedReservation,
-      usage,
-    };
+      // 4. Uso inmutable; el UNIQUE parcial (tenant, correlation) actúa como defensa extra.
+      const [insertedUsage] = await db
+        .insert(agentTokenUsage)
+        .values({
+          tenantId,
+          correlationId,
+          conversationId,
+          model,
+          promptTokens,
+          completionTokens,
+          costMicroUsd: actualCostMicroUsd,
+          cacheHit,
+          degraded,
+        })
+        .onConflictDoNothing({
+          target: [agentTokenUsage.tenantId, agentTokenUsage.correlationId],
+          // El índice único es parcial: Postgres exige el predicado para poder inferirlo.
+          where: sql`${agentTokenUsage.correlationId} IS NOT NULL`,
+        })
+        .returning();
+
+      const usage =
+        insertedUsage ??
+        (await this.findUsageByCorrelationWith(db, tenantId, correlationId)) ??
+        null;
+
+      return {
+        alreadySettled: false,
+        budget: updatedBudget,
+        reservation: settled,
+        usage,
+      };
+    });
   }
 
   async releaseReservation(params: ReleaseReservationParams): Promise<ReleaseReservationResult> {
     const { tenantId, periodKey, correlationId } = params;
 
-    const reservation = await this.findReservation(tenantId, correlationId);
-    if (!reservation) {
-      return { releasedMicroUsd: 0 };
-    }
+    return this.db.transaction(async (tx) => {
+      const db = this.client(tx);
 
-    if (reservation.status !== 'ACTIVE') {
-      return { releasedMicroUsd: 0 };
-    }
+      // Transición atómica ACTIVE -> RELEASED: solo un proceso resta el estimado.
+      const [released] = await db
+        .update(agentTokenReservations)
+        .set({ status: 'RELEASED', updatedAt: sql`NOW()` })
+        .where(
+          and(
+            eq(agentTokenReservations.tenantId, tenantId),
+            eq(agentTokenReservations.correlationId, correlationId),
+            eq(agentTokenReservations.status, 'ACTIVE'),
+          ),
+        )
+        .returning();
 
-    const estimated = reservation.estimatedCostMicroUsd;
+      if (!released) {
+        return { releasedMicroUsd: 0 };
+      }
 
-    const [updatedBudget] = await this.db
-      .update(agentTokenBudgets)
-      .set({
-        reservedMicroUsd: sql`GREATEST(0, ${agentTokenBudgets.reservedMicroUsd} - ${estimated})`,
-        updatedAt: sql`NOW()`,
-      })
-      .where(
-        and(eq(agentTokenBudgets.tenantId, tenantId), eq(agentTokenBudgets.periodKey, periodKey)),
-      )
-      .returning();
+      const [updatedBudget] = await db
+        .update(agentTokenBudgets)
+        .set({
+          reservedMicroUsd: sql`GREATEST(0, ${agentTokenBudgets.reservedMicroUsd} - ${released.estimatedCostMicroUsd})`,
+          updatedAt: sql`NOW()`,
+        })
+        .where(
+          and(eq(agentTokenBudgets.tenantId, tenantId), eq(agentTokenBudgets.periodKey, periodKey)),
+        )
+        .returning();
 
-    await this.db
-      .update(agentTokenReservations)
-      .set({
-        status: 'RELEASED',
-        updatedAt: sql`NOW()`,
-      })
-      .where(
-        and(
-          eq(agentTokenReservations.tenantId, tenantId),
-          eq(agentTokenReservations.correlationId, correlationId),
-        ),
-      );
-
-    return {
-      budget: updatedBudget,
-      releasedMicroUsd: estimated,
-    };
+      return {
+        budget: updatedBudget,
+        releasedMicroUsd: released.estimatedCostMicroUsd,
+      };
+    });
   }
 
   async findReservation(
     tenantId: string,
     correlationId: string,
   ): Promise<AgentTokenReservation | null> {
-    const [found] = await this.db
-      .select()
-      .from(agentTokenReservations)
-      .where(
-        and(
-          eq(agentTokenReservations.tenantId, tenantId),
-          eq(agentTokenReservations.correlationId, correlationId),
-        ),
-      )
-      .limit(1);
-
-    return found ?? null;
+    return this.findReservationWith(this.client(this.db), tenantId, correlationId);
   }
 
   async recordUsage(params: NewAgentTokenUsage): Promise<AgentTokenUsage> {
@@ -371,5 +381,115 @@ export class BudgetRepository implements IBudgetRepository {
       .returning();
 
     return inserted.length > 0;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Helpers reutilizables dentro y fuera de transacción
+  // ---------------------------------------------------------------------------
+
+  private async getOrCreateBudgetWith(
+    db: BudgetDb,
+    tenantId: string,
+    periodKey: string,
+    defaultLimitMicroUsd: number,
+    defaultWarnRatio: number,
+    defaultHardLimit: boolean,
+  ): Promise<AgentTokenBudget> {
+    const existing = await this.findBudgetWith(db, tenantId, periodKey);
+    if (existing) {
+      return existing;
+    }
+
+    const [created] = await db
+      .insert(agentTokenBudgets)
+      .values({
+        tenantId,
+        periodKey,
+        limitMicroUsd: defaultLimitMicroUsd,
+        spentMicroUsd: 0,
+        reservedMicroUsd: 0,
+        warnRatio: defaultWarnRatio,
+        hardLimit: defaultHardLimit,
+      })
+      .onConflictDoNothing()
+      .returning();
+
+    if (created) {
+      return created;
+    }
+
+    const fetched = await this.findBudgetWith(db, tenantId, periodKey);
+    if (!fetched) {
+      throw new Error(
+        `No se pudo inicializar o recuperar el presupuesto para el tenant ${tenantId}`,
+      );
+    }
+    return fetched;
+  }
+
+  private async findBudgetWith(
+    db: BudgetDb,
+    tenantId: string,
+    periodKey: string,
+  ): Promise<AgentTokenBudget | null> {
+    const [found] = await db
+      .select()
+      .from(agentTokenBudgets)
+      .where(
+        and(eq(agentTokenBudgets.tenantId, tenantId), eq(agentTokenBudgets.periodKey, periodKey)),
+      )
+      .limit(1);
+
+    return found ?? null;
+  }
+
+  private async requireBudget(
+    db: BudgetDb,
+    tenantId: string,
+    periodKey: string,
+  ): Promise<AgentTokenBudget> {
+    const budget = await this.findBudgetWith(db, tenantId, periodKey);
+    if (!budget) {
+      throw new Error(`Presupuesto no encontrado para el tenant ${tenantId} (${periodKey})`);
+    }
+    return budget;
+  }
+
+  private async findReservationWith(
+    db: BudgetDb,
+    tenantId: string,
+    correlationId: string,
+  ): Promise<AgentTokenReservation | null> {
+    const [found] = await db
+      .select()
+      .from(agentTokenReservations)
+      .where(
+        and(
+          eq(agentTokenReservations.tenantId, tenantId),
+          eq(agentTokenReservations.correlationId, correlationId),
+        ),
+      )
+      .limit(1);
+
+    return found ?? null;
+  }
+
+  private async findUsageByCorrelationWith(
+    db: BudgetDb,
+    tenantId: string,
+    correlationId: string,
+  ): Promise<AgentTokenUsage | null> {
+    const [found] = await db
+      .select()
+      .from(agentTokenUsage)
+      .where(
+        and(
+          eq(agentTokenUsage.tenantId, tenantId),
+          eq(agentTokenUsage.correlationId, correlationId),
+        ),
+      )
+      .limit(1);
+
+    return found ?? null;
   }
 }

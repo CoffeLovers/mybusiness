@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   bigint,
   boolean,
@@ -96,6 +97,7 @@ export const agentTokenUsage = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     tenantId: uuid('tenant_id').notNull(),
+    correlationId: varchar('correlation_id', { length: 255 }),
     conversationId: varchar('conversation_id', { length: 255 }),
     model: varchar('model', { length: 100 }).notNull(),
     promptTokens: integer('prompt_tokens').notNull().default(0),
@@ -105,7 +107,12 @@ export const agentTokenUsage = pgTable(
     degraded: boolean('degraded').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index('agent_token_usage_tenant_created_idx').on(table.tenantId, table.createdAt)],
+  (table) => [
+    index('agent_token_usage_tenant_created_idx').on(table.tenantId, table.createdAt),
+    uniqueIndex('agent_token_usage_tenant_correlation_uq')
+      .on(table.tenantId, table.correlationId)
+      .where(sql`${table.correlationId} IS NOT NULL`),
+  ],
 );
 
 export type AgentTokenUsage = typeof agentTokenUsage.$inferSelect;

@@ -237,6 +237,10 @@ export interface SettleTokenBudgetResult {
   correlationId: string;
   actualCostMicroUsd: number;
   remainingMicroUsd: number;
+  /** `true` cuando la reserva quedó liquidada (incluidos los reintentos idempotentes). */
+  settled?: boolean;
+  /** `true` cuando la reserva ya estaba liquidada y este reintento no volvió a imputar consumo. */
+  alreadySettled?: boolean;
   consumption: AgentChatConsumption;
 }
 

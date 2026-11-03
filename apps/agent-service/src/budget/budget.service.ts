@@ -14,6 +14,7 @@ import {
   BUDGET_CONSTANTS,
   calculateTokenCostMicroUsd,
   getUtcPeriodKey,
+  parseConfigNumber,
   usdToMicroUsd,
 } from './budget.constants';
 import { BUDGET_REPOSITORY, type IBudgetRepository } from './budget.repository.interface';
@@ -59,31 +60,38 @@ export class BudgetService {
     private readonly budgetRepository: IBudgetRepository,
     private readonly config: ConfigService,
   ) {
-    const monthlyBudgetUsd = Number(
-      this.config.get<number>(
-        'AGENT_TOKEN_BUDGET_USD_MONTHLY',
-        BUDGET_CONSTANTS.DEFAULT_BUDGET_USD_MONTHLY,
-      ),
+    const monthlyBudgetUsd = parseConfigNumber(
+      this.config.get<unknown>('AGENT_TOKEN_BUDGET_USD_MONTHLY'),
+      BUDGET_CONSTANTS.DEFAULT_BUDGET_USD_MONTHLY,
+      0.01,
+      1_000_000,
+      'AGENT_TOKEN_BUDGET_USD_MONTHLY',
     );
     this.monthlyBudgetMicroUsd = usdToMicroUsd(monthlyBudgetUsd);
 
-    this.warnRatio = Number(
-      this.config.get<number>('AGENT_BUDGET_WARN_RATIO', BUDGET_CONSTANTS.DEFAULT_WARN_RATIO),
+    this.warnRatio = parseConfigNumber(
+      this.config.get<unknown>('AGENT_BUDGET_WARN_RATIO'),
+      BUDGET_CONSTANTS.DEFAULT_WARN_RATIO,
+      0.01,
+      1,
+      'AGENT_BUDGET_WARN_RATIO',
     );
 
-    const inputCostUsd = Number(
-      this.config.get<number>(
-        'AGENT_MODEL_INPUT_COST_PER_1K_USD',
-        BUDGET_CONSTANTS.DEFAULT_INPUT_COST_PER_1K_USD,
-      ),
+    const inputCostUsd = parseConfigNumber(
+      this.config.get<unknown>('AGENT_MODEL_INPUT_COST_PER_1K_USD'),
+      BUDGET_CONSTANTS.DEFAULT_INPUT_COST_PER_1K_USD,
+      0,
+      1000,
+      'AGENT_MODEL_INPUT_COST_PER_1K_USD',
     );
     this.inputCostMicroUsdPer1k = usdToMicroUsd(inputCostUsd);
 
-    const outputCostUsd = Number(
-      this.config.get<number>(
-        'AGENT_MODEL_OUTPUT_COST_PER_1K_USD',
-        BUDGET_CONSTANTS.DEFAULT_OUTPUT_COST_PER_1K_USD,
-      ),
+    const outputCostUsd = parseConfigNumber(
+      this.config.get<unknown>('AGENT_MODEL_OUTPUT_COST_PER_1K_USD'),
+      BUDGET_CONSTANTS.DEFAULT_OUTPUT_COST_PER_1K_USD,
+      0,
+      1000,
+      'AGENT_MODEL_OUTPUT_COST_PER_1K_USD',
     );
     this.outputCostMicroUsdPer1k = usdToMicroUsd(outputCostUsd);
 
@@ -237,6 +245,35 @@ export class BudgetService {
     const committed = budget.spentMicroUsd + budget.reservedMicroUsd;
     const remainingMicroUsd = Math.max(0, budget.limitMicroUsd - committed);
 
+    // Reintento idempotente: la reserva ya estaba liquidada. No se suma consumo ni se
+    // vuelve a emitir el warning de gasto; se devuelve el snapshot realmente persistido.
+    if (result.alreadySettled) {
+      const settledUsage = result.usage ?? null;
+      const settledPromptTokens = settledUsage?.promptTokens ?? promptTokens;
+      const settledCompletionTokens = settledUsage?.completionTokens ?? completionTokens;
+      const settledCostMicroUsd = settledUsage?.costMicroUsd ?? actualCostMicroUsd;
+
+      const settledConsumption: AgentChatConsumption = {
+        promptTokens: settledPromptTokens,
+        completionTokens: settledCompletionTokens,
+        totalTokens: settledPromptTokens + settledCompletionTokens,
+        costMicroUsd: settledCostMicroUsd,
+        cacheHit: settledUsage?.cacheHit ?? cacheHit,
+        degraded: settledUsage?.degraded ?? degraded,
+        remainingMicroUsd,
+      };
+
+      return {
+        success: true,
+        correlationId,
+        actualCostMicroUsd: settledCostMicroUsd,
+        remainingMicroUsd,
+        settled: true,
+        alreadySettled: true,
+        consumption: settledConsumption,
+      };
+    }
+
     const warnThreshold = Math.round(budget.limitMicroUsd * budget.warnRatio);
     if (budget.spentMicroUsd >= warnThreshold) {
       this.logger.warn(
@@ -267,6 +304,8 @@ export class BudgetService {
       correlationId,
       actualCostMicroUsd,
       remainingMicroUsd,
+      settled: true,
+      alreadySettled: false,
       consumption,
     };
   }
