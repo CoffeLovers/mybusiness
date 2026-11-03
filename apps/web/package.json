@@ -4,13 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3001",
-    "build": "next build",
+    "build": "pnpm --filter @mybusiness/contracts build && next build",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
-    "typecheck": "tsc --noEmit",
-    "test": "playwright test",
-    "test:unit": "vitest run",
-    "test:cov": "vitest run --coverage",
+    "typecheck": "pnpm --filter @mybusiness/contracts build && tsc --noEmit",
+    "test": "pnpm --filter @mybusiness/contracts build && playwright test",
+    "test:unit": "pnpm --filter @mybusiness/contracts build && vitest run",
+    "test:cov": "pnpm --filter @mybusiness/contracts build && vitest run --coverage",
     "test:install": "playwright install --with-deps chromium"
   },
   "dependencies": {
