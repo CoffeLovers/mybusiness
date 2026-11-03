@@ -10,3 +10,4 @@ export * from './dtos/banking.dto';
 export * from './dtos/cashflow.dto';
 export * from './dtos/document.dto';
 export * from './dtos/reconciliation.dto';
+export * from './dtos/ledger.dto';

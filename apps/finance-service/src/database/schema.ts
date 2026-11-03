@@ -232,6 +232,7 @@ export const bankTransactions = pgTable(
     name: varchar('name', { length: 500 }).notNull(),
     merchantName: varchar('merchant_name', { length: 255 }),
     category: jsonb('category').$type<string[]>().default([]),
+    notes: text('notes'),
     pending: boolean('pending').notNull().default(false),
     removedAt: timestamp('removed_at', { withTimezone: true }),
     rawMetadata: jsonb('raw_metadata').$type<Record<string, unknown>>().notNull().default({}),
@@ -249,6 +250,7 @@ export const bankTransactions = pgTable(
     index('bank_transactions_account_id_idx').on(table.accountId),
     index('bank_transactions_connection_id_idx').on(table.connectionId),
     index('bank_transactions_date_idx').on(table.date),
+    index('bank_transactions_account_date_idx').on(table.accountId, table.date),
   ],
 );
 
@@ -518,6 +520,34 @@ export const reconciliationRuns = pgTable(
   (table) => [index('reconciliation_runs_tenant_idx').on(table.tenantId, table.createdAt)],
 );
 
+/**
+ * Tabla: ledger_saved_views
+ * Vistas guardadas del libro mayor por usuario y tenant.
+ */
+export const ledgerSavedViews = pgTable(
+  'ledger_saved_views',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    userId: uuid('user_id').notNull(),
+    name: varchar('name', { length: 100 }).notNull(),
+    query: jsonb('query').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('ledger_saved_views_tenant_user_name_uq').on(
+      table.tenantId,
+      table.userId,
+      table.name,
+    ),
+    index('ledger_saved_views_tenant_user_idx').on(table.tenantId, table.userId),
+  ],
+);
+
 export const bankConnectionsRelations = relations(bankConnections, ({ many, one }) => ({
   accounts: many(bankAccounts),
   syncState: one(bankTransactionSyncState, {
@@ -622,3 +652,5 @@ export type ReconciliationMatch = typeof reconciliationMatches.$inferSelect;
 export type NewReconciliationMatch = typeof reconciliationMatches.$inferInsert;
 export type ReconciliationRun = typeof reconciliationRuns.$inferSelect;
 export type NewReconciliationRun = typeof reconciliationRuns.$inferInsert;
+export type LedgerSavedView = typeof ledgerSavedViews.$inferSelect;
+export type NewLedgerSavedView = typeof ledgerSavedViews.$inferInsert;
