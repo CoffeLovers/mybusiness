@@ -76,15 +76,14 @@ describeIfDb('Reconciliation (integración PostgreSQL y constraints)', () => {
     const [tx1] = await database.db
       .insert(bankTransactions)
       .values({
-        tenantId: tenantA,
         connectionId: connectionAId,
         accountId: accountAId,
         providerTransactionId: `tx-${randomUUID()}`,
-        postedAt: new Date('2026-03-01T10:00:00Z'),
+        date: '2026-03-01',
         amountMinor: -5000000n,
-        currency: 'COP',
-        descriptionRaw: 'PAGO FACTURA AWS CLOUD',
-        type: TransactionType.DEBIT,
+        isoCurrencyCode: 'COP',
+        name: 'PAGO FACTURA AWS CLOUD',
+        transactionType: TransactionType.EXPENSE,
       })
       .returning();
     bankTxA1Id = tx1.id;
@@ -92,15 +91,14 @@ describeIfDb('Reconciliation (integración PostgreSQL y constraints)', () => {
     const [tx2] = await database.db
       .insert(bankTransactions)
       .values({
-        tenantId: tenantA,
         connectionId: connectionAId,
         accountId: accountAId,
         providerTransactionId: `tx-${randomUUID()}`,
-        postedAt: new Date('2026-03-02T10:00:00Z'),
+        date: '2026-03-02',
         amountMinor: -3500000n,
-        currency: 'COP',
-        descriptionRaw: 'PAGO MICROSOFT AZURE',
-        type: TransactionType.DEBIT,
+        isoCurrencyCode: 'COP',
+        name: 'PAGO MICROSOFT AZURE',
+        transactionType: TransactionType.EXPENSE,
       })
       .returning();
     bankTxA2Id = tx2.id;
@@ -114,14 +112,15 @@ describeIfDb('Reconciliation (integración PostgreSQL y constraints)', () => {
         originalName: 'factura_aws.pdf',
         mimeType: 'application/pdf',
         sizeBytes: 1024,
+        checksumSha256: randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, ''),
         storageKey: `docs/${randomUUID()}.pdf`,
         status: DocumentStatus.EXTRACTED,
         totalMinor: 5000000n,
         currency: 'COP',
-        issueDate: new Date('2026-03-01T00:00:00Z'),
+        issueDate: '2026-03-01',
         providerName: 'Amazon Web Services Inc',
         invoiceNumber: 'AWS-2026-001',
-        confidence: 0.98,
+        confidence: '0.980',
       })
       .returning();
     docA1Id = doc1.id;
@@ -134,14 +133,15 @@ describeIfDb('Reconciliation (integración PostgreSQL y constraints)', () => {
         originalName: 'factura_azure.pdf',
         mimeType: 'application/pdf',
         sizeBytes: 1024,
+        checksumSha256: randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, ''),
         storageKey: `docs/${randomUUID()}.pdf`,
         status: DocumentStatus.EXTRACTED,
         totalMinor: 3500000n,
         currency: 'COP',
-        issueDate: new Date('2026-03-02T00:00:00Z'),
+        issueDate: '2026-03-02',
         providerName: 'Microsoft Colombia SAS',
         invoiceNumber: 'MS-2026-002',
-        confidence: 0.95,
+        confidence: '0.950',
       })
       .returning();
     docA2Id = doc2.id;
@@ -158,7 +158,9 @@ describeIfDb('Reconciliation (integración PostgreSQL y constraints)', () => {
     await database.db
       .delete(reconciliationSettings)
       .where(inArray(reconciliationSettings.tenantId, tenants));
-    await database.db.delete(bankTransactions).where(inArray(bankTransactions.tenantId, tenants));
+    await database.db
+      .delete(bankTransactions)
+      .where(inArray(bankTransactions.id, [bankTxA1Id, bankTxA2Id]));
     await database.db.delete(documents).where(inArray(documents.tenantId, tenants));
     await database.db.delete(bankAccounts).where(inArray(bankAccounts.tenantId, tenants));
     await database.db.delete(bankConnections).where(inArray(bankConnections.tenantId, tenants));
