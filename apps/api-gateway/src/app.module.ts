@@ -20,6 +20,7 @@ import { DistributedThrottlerGuard, ThrottlerStorageRedisService } from './throt
 import { SecurityAuditFilter } from './security-audit.filter';
 import { BankingModule } from './banking/banking.module';
 import { DocumentsModule } from './documents/documents.module';
+import { ReconciliationModule } from './reconciliation/reconciliation.module';
 
 @Module({
   imports: [
@@ -105,6 +106,7 @@ import { DocumentsModule } from './documents/documents.module';
     ]),
     BankingModule,
     DocumentsModule,
+    ReconciliationModule,
   ],
   controllers: [
     HealthController,
