@@ -170,3 +170,11 @@ export type LedgerBulkCategorizeRpcPayload = WithContext<BulkCategorizeDto>;
 export type LedgerSavedViewsListRpcPayload = WithContext<Record<string, never>>;
 export type LedgerSavedViewCreateRpcPayload = WithContext<SaveLedgerViewDto>;
 export type LedgerSavedViewDeleteRpcPayload = WithContext<{ viewId: string }>;
+
+/** Resultado de la exportación CSV (se sirve como descarga, nunca JSON en el cliente). */
+export interface LedgerCsvExportResponse {
+  filename: string;
+  contentType: 'text/csv; charset=utf-8';
+  content: string;
+  rowCount: number;
+}
