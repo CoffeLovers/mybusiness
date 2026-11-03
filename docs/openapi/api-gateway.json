@@ -14,7 +14,10 @@
             "type": "integer"
           }
         },
-        "required": ["statusCode", "message"],
+        "required": [
+          "statusCode",
+          "message"
+        ],
         "type": "object"
       },
       "AuthResponse": {
@@ -29,7 +32,11 @@
             "$ref": "#/components/schemas/UserDto"
           }
         },
-        "required": ["accessToken", "refreshToken", "user"],
+        "required": [
+          "accessToken",
+          "refreshToken",
+          "user"
+        ],
         "type": "object"
       },
       "BankAccountResponse": {
@@ -83,7 +90,13 @@
             "type": "string"
           }
         },
-        "required": ["id", "connectionId", "providerAccountId", "name", "isoCurrencyCode"],
+        "required": [
+          "id",
+          "connectionId",
+          "providerAccountId",
+          "name",
+          "isoCurrencyCode"
+        ],
         "type": "object"
       },
       "BankConnectionResponse": {
@@ -109,11 +122,20 @@
             "type": "string"
           },
           "provider": {
-            "enum": ["PLAID", "BELVO"],
+            "enum": [
+              "PLAID",
+              "BELVO"
+            ],
             "type": "string"
           },
           "status": {
-            "enum": ["PENDING", "ACTIVE", "NEEDS_REAUTH", "ERROR", "DISCONNECTED"],
+            "enum": [
+              "PENDING",
+              "ACTIVE",
+              "NEEDS_REAUTH",
+              "ERROR",
+              "DISCONNECTED"
+            ],
             "type": "string"
           },
           "updatedAt": {
@@ -121,7 +143,13 @@
             "type": "string"
           }
         },
-        "required": ["id", "provider", "status", "createdAt", "updatedAt"],
+        "required": [
+          "id",
+          "provider",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ],
         "type": "object"
       },
       "BankTransactionResponse": {
@@ -168,7 +196,11 @@
             "type": "string"
           },
           "transactionType": {
-            "enum": ["INCOME", "EXPENSE", "TRANSFER"],
+            "enum": [
+              "INCOME",
+              "EXPENSE",
+              "TRANSFER"
+            ],
             "type": "string"
           }
         },
@@ -197,7 +229,10 @@
             "type": "array"
           }
         },
-        "required": ["ids", "category"],
+        "required": [
+          "ids",
+          "category"
+        ],
         "type": "object"
       },
       "CashflowSummaryQueryDto": {
@@ -215,7 +250,10 @@
             "type": "string"
           }
         },
-        "required": ["from", "to"],
+        "required": [
+          "from",
+          "to"
+        ],
         "type": "object"
       },
       "CashflowSummaryResponse": {
@@ -247,7 +285,11 @@
                   "type": "number"
                 }
               },
-              "required": ["category", "amountMinor", "share"],
+              "required": [
+                "category",
+                "amountMinor",
+                "share"
+              ],
               "type": "object"
             },
             "type": "array"
@@ -275,7 +317,10 @@
                 "type": "string"
               }
             },
-            "required": ["from", "to"],
+            "required": [
+              "from",
+              "to"
+            ],
             "type": "object"
           },
           "previousPeriod": {
@@ -307,7 +352,11 @@
                   "type": "string"
                 }
               },
-              "required": ["bucketStart", "incomeMinor", "expenseMinor"],
+              "required": [
+                "bucketStart",
+                "incomeMinor",
+                "expenseMinor"
+              ],
               "type": "object"
             },
             "type": "array"
@@ -329,7 +378,12 @@
             "type": "string"
           },
           "accountType": {
-            "enum": ["CHECKING", "SAVINGS", "CREDIT", "INVESTMENT"],
+            "enum": [
+              "CHECKING",
+              "SAVINGS",
+              "CREDIT",
+              "INVESTMENT"
+            ],
             "type": "string"
           },
           "currency": {
@@ -342,7 +396,12 @@
             "type": "string"
           }
         },
-        "required": ["institutionName", "accountType", "accountNumberMasked", "currency"],
+        "required": [
+          "institutionName",
+          "accountType",
+          "accountNumberMasked",
+          "currency"
+        ],
         "type": "object"
       },
       "CreateInvoiceDto": {
@@ -405,7 +464,11 @@
             "type": "string"
           },
           "type": {
-            "enum": ["INCOME", "EXPENSE", "TRANSFER"],
+            "enum": [
+              "INCOME",
+              "EXPENSE",
+              "TRANSFER"
+            ],
             "type": "string"
           }
         },
@@ -431,14 +494,19 @@
             "type": "object"
           },
           "provider": {
-            "enum": ["plaid", "belvo"],
+            "enum": [
+              "plaid",
+              "belvo"
+            ],
             "type": "string"
           },
           "publicToken": {
             "type": "string"
           }
         },
-        "required": ["provider"],
+        "required": [
+          "provider"
+        ],
         "type": "object"
       },
       "LedgerEvidence": {
@@ -461,7 +529,12 @@
             "type": "number"
           }
         },
-        "required": ["documentId", "documentName", "score", "rule"],
+        "required": [
+          "documentId",
+          "documentName",
+          "score",
+          "rule"
+        ],
         "type": "object"
       },
       "LedgerPageResponse": {
@@ -485,7 +558,13 @@
             "type": "integer"
           }
         },
-        "required": ["rows", "total", "page", "pageSize", "hasMore"],
+        "required": [
+          "rows",
+          "total",
+          "page",
+          "pageSize",
+          "hasMore"
+        ],
         "type": "object"
       },
       "LedgerQueryDto": {
@@ -509,15 +588,30 @@
             "type": "string"
           },
           "reconciliationStatus": {
-            "enum": ["UNMATCHED", "AUTO_MATCHED", "MANUAL_MATCHED", "NEEDS_REVIEW", "REJECTED"],
+            "enum": [
+              "UNMATCHED",
+              "AUTO_MATCHED",
+              "MANUAL_MATCHED",
+              "NEEDS_REVIEW",
+              "REJECTED"
+            ],
             "type": "string"
           },
           "sortBy": {
-            "enum": ["date", "amount", "name", "category", "status"],
+            "enum": [
+              "date",
+              "amount",
+              "name",
+              "category",
+              "status"
+            ],
             "type": "string"
           },
           "sortDir": {
-            "enum": ["asc", "desc"],
+            "enum": [
+              "asc",
+              "desc"
+            ],
             "type": "string"
           },
           "to": {
@@ -566,7 +660,13 @@
             "type": "string"
           },
           "reconciliationStatus": {
-            "enum": ["UNMATCHED", "AUTO_MATCHED", "MANUAL_MATCHED", "NEEDS_REVIEW", "REJECTED"],
+            "enum": [
+              "UNMATCHED",
+              "AUTO_MATCHED",
+              "MANUAL_MATCHED",
+              "NEEDS_REVIEW",
+              "REJECTED"
+            ],
             "type": "string"
           },
           "updatedAt": {
@@ -607,7 +707,10 @@
             "type": "string"
           }
         },
-        "required": ["email", "password"],
+        "required": [
+          "email",
+          "password"
+        ],
         "type": "object"
       },
       "ManualReconciliationDto": {
@@ -619,7 +722,10 @@
             "type": "string"
           }
         },
-        "required": ["bankTransactionId", "documentId"],
+        "required": [
+          "bankTransactionId",
+          "documentId"
+        ],
         "type": "object"
       },
       "PayInvoiceDto": {
@@ -631,7 +737,9 @@
             "type": "string"
           }
         },
-        "required": ["invoiceId"],
+        "required": [
+          "invoiceId"
+        ],
         "type": "object"
       },
       "QueryAgentMemoryDto": {
@@ -749,7 +857,12 @@
             "type": "string"
           },
           "status": {
-            "enum": ["AUTO_MATCHED", "NEEDS_REVIEW", "MANUAL_MATCHED", "REJECTED"],
+            "enum": [
+              "AUTO_MATCHED",
+              "NEEDS_REVIEW",
+              "MANUAL_MATCHED",
+              "REJECTED"
+            ],
             "type": "string"
           },
           "suggestedRule": {
@@ -805,7 +918,9 @@
             "type": "string"
           }
         },
-        "required": ["refreshToken"],
+        "required": [
+          "refreshToken"
+        ],
         "type": "object"
       },
       "RegisterDto": {
@@ -835,7 +950,14 @@
             "type": "string"
           }
         },
-        "required": ["email", "password", "firstName", "lastName", "companyName", "taxId"],
+        "required": [
+          "email",
+          "password",
+          "firstName",
+          "lastName",
+          "companyName",
+          "taxId"
+        ],
         "type": "object"
       },
       "ReplayBankWebhookDto": {
@@ -855,7 +977,10 @@
             "type": "string"
           },
           "trigger": {
-            "enum": ["MANUAL", "NIGHTLY"],
+            "enum": [
+              "MANUAL",
+              "NIGHTLY"
+            ],
             "type": "string"
           }
         },
@@ -870,7 +995,10 @@
             "$ref": "#/components/schemas/LedgerQueryDto"
           }
         },
-        "required": ["name", "query"],
+        "required": [
+          "name",
+          "query"
+        ],
         "type": "object"
       },
       "SearchDocumentsQuery": {
@@ -882,7 +1010,9 @@
             "type": "string"
           }
         },
-        "required": ["q"],
+        "required": [
+          "q"
+        ],
         "type": "object"
       },
       "StartBankConnectionDto": {
@@ -891,11 +1021,16 @@
             "type": "string"
           },
           "provider": {
-            "enum": ["plaid", "belvo"],
+            "enum": [
+              "plaid",
+              "belvo"
+            ],
             "type": "string"
           }
         },
-        "required": ["provider"],
+        "required": [
+          "provider"
+        ],
         "type": "object"
       },
       "StartBankConnectionResponse": {
@@ -910,11 +1045,16 @@
             "type": "string"
           },
           "provider": {
-            "enum": ["PLAID", "BELVO"],
+            "enum": [
+              "PLAID",
+              "BELVO"
+            ],
             "type": "string"
           }
         },
-        "required": ["provider"],
+        "required": [
+          "provider"
+        ],
         "type": "object"
       },
       "StoreAgentMemoryDto": {
@@ -936,7 +1076,9 @@
             "type": "object"
           }
         },
-        "required": ["content"],
+        "required": [
+          "content"
+        ],
         "type": "object"
       },
       "SyncConnectionResponse": {
@@ -961,7 +1103,13 @@
             "type": "integer"
           }
         },
-        "required": ["connectionId", "added", "modified", "removed", "hasMore"],
+        "required": [
+          "connectionId",
+          "added",
+          "modified",
+          "removed",
+          "hasMore"
+        ],
         "type": "object"
       },
       "UpdateLedgerTransactionDto": {
@@ -1015,14 +1163,28 @@
             "type": "string"
           },
           "role": {
-            "enum": ["SUPER_ADMIN", "TENANT_ADMIN", "ACCOUNTANT", "AUDITOR", "VIEWER", "EMPLOYEE"],
+            "enum": [
+              "SUPER_ADMIN",
+              "TENANT_ADMIN",
+              "ACCOUNTANT",
+              "AUDITOR",
+              "VIEWER",
+              "EMPLOYEE"
+            ],
             "type": "string"
           },
           "tenantId": {
             "type": "string"
           }
         },
-        "required": ["id", "email", "firstName", "lastName", "role", "tenantId"],
+        "required": [
+          "id",
+          "email",
+          "firstName",
+          "lastName",
+          "role",
+          "tenantId"
+        ],
         "type": "object"
       }
     },
@@ -1061,7 +1223,9 @@
             "description": ""
           }
         },
-        "tags": ["Agent"]
+        "tags": [
+          "Agent"
+        ]
       }
     },
     "/api/v1/agent/memory/store": {
@@ -1083,7 +1247,9 @@
             "description": ""
           }
         },
-        "tags": ["Agent"]
+        "tags": [
+          "Agent"
+        ]
       }
     },
     "/api/v1/auth/login": {
@@ -1105,7 +1271,9 @@
             "description": ""
           }
         },
-        "tags": ["Auth"]
+        "tags": [
+          "Auth"
+        ]
       }
     },
     "/api/v1/auth/logout": {
@@ -1117,7 +1285,9 @@
             "description": ""
           }
         },
-        "tags": ["Auth"]
+        "tags": [
+          "Auth"
+        ]
       }
     },
     "/api/v1/auth/logout-all": {
@@ -1134,7 +1304,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Auth"]
+        "tags": [
+          "Auth"
+        ]
       }
     },
     "/api/v1/auth/me": {
@@ -1151,7 +1323,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Auth"]
+        "tags": [
+          "Auth"
+        ]
       }
     },
     "/api/v1/auth/refresh": {
@@ -1163,7 +1337,9 @@
             "description": ""
           }
         },
-        "tags": ["Auth"]
+        "tags": [
+          "Auth"
+        ]
       }
     },
     "/api/v1/auth/register": {
@@ -1185,7 +1361,9 @@
             "description": ""
           }
         },
-        "tags": ["Auth"]
+        "tags": [
+          "Auth"
+        ]
       }
     },
     "/api/v1/banking/connect": {
@@ -1212,7 +1390,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Banking"]
+        "tags": [
+          "Banking"
+        ]
       }
     },
     "/api/v1/banking/connections": {
@@ -1229,7 +1409,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Banking"]
+        "tags": [
+          "Banking"
+        ]
       }
     },
     "/api/v1/banking/connections/{id}": {
@@ -1255,7 +1437,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Banking"]
+        "tags": [
+          "Banking"
+        ]
       }
     },
     "/api/v1/banking/connections/{id}/accounts": {
@@ -1281,7 +1465,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Banking"]
+        "tags": [
+          "Banking"
+        ]
       }
     },
     "/api/v1/banking/connections/{id}/sync": {
@@ -1307,7 +1493,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Banking"]
+        "tags": [
+          "Banking"
+        ]
       }
     },
     "/api/v1/banking/exchange": {
@@ -1334,7 +1522,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Banking"]
+        "tags": [
+          "Banking"
+        ]
       }
     },
     "/api/v1/banking/link-token": {
@@ -1361,7 +1551,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Banking"]
+        "tags": [
+          "Banking"
+        ]
       }
     },
     "/api/v1/documents": {
@@ -1378,7 +1570,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Documents"]
+        "tags": [
+          "Documents"
+        ]
       }
     },
     "/api/v1/documents/search": {
@@ -1412,7 +1606,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Documents"]
+        "tags": [
+          "Documents"
+        ]
       }
     },
     "/api/v1/documents/{id}": {
@@ -1438,7 +1634,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Documents"]
+        "tags": [
+          "Documents"
+        ]
       }
     },
     "/api/v1/documents/{id}/download": {
@@ -1464,7 +1662,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Documents"]
+        "tags": [
+          "Documents"
+        ]
       }
     },
     "/api/v1/finance/accounts": {
@@ -1476,7 +1676,9 @@
             "description": ""
           }
         },
-        "tags": ["Finance"]
+        "tags": [
+          "Finance"
+        ]
       },
       "post": {
         "operationId": "FinanceGatewayController_createAccount",
@@ -1496,7 +1698,9 @@
             "description": ""
           }
         },
-        "tags": ["Finance"]
+        "tags": [
+          "Finance"
+        ]
       }
     },
     "/api/v1/finance/cashflow/summary": {
@@ -1541,7 +1745,9 @@
             "description": ""
           }
         },
-        "tags": ["Finance"]
+        "tags": [
+          "Finance"
+        ]
       }
     },
     "/api/v1/finance/invoices": {
@@ -1553,7 +1759,9 @@
             "description": ""
           }
         },
-        "tags": ["Finance"]
+        "tags": [
+          "Finance"
+        ]
       },
       "post": {
         "operationId": "FinanceGatewayController_createInvoice",
@@ -1573,7 +1781,9 @@
             "description": ""
           }
         },
-        "tags": ["Finance"]
+        "tags": [
+          "Finance"
+        ]
       }
     },
     "/api/v1/finance/invoices/pay": {
@@ -1595,7 +1805,9 @@
             "description": ""
           }
         },
-        "tags": ["Finance"]
+        "tags": [
+          "Finance"
+        ]
       }
     },
     "/api/v1/finance/ledger": {
@@ -1623,7 +1835,13 @@
             "name": "sortBy",
             "required": false,
             "schema": {
-              "enum": ["date", "amount", "name", "category", "status"],
+              "enum": [
+                "date",
+                "amount",
+                "name",
+                "category",
+                "status"
+              ],
               "type": "string"
             }
           },
@@ -1632,7 +1850,10 @@
             "name": "sortDir",
             "required": false,
             "schema": {
-              "enum": ["asc", "desc"],
+              "enum": [
+                "asc",
+                "desc"
+              ],
               "type": "string"
             }
           },
@@ -1673,7 +1894,13 @@
             "name": "reconciliationStatus",
             "required": false,
             "schema": {
-              "enum": ["UNMATCHED", "AUTO_MATCHED", "MANUAL_MATCHED", "NEEDS_REVIEW", "REJECTED"],
+              "enum": [
+                "UNMATCHED",
+                "AUTO_MATCHED",
+                "MANUAL_MATCHED",
+                "NEEDS_REVIEW",
+                "REJECTED"
+              ],
               "type": "string"
             }
           },
@@ -1696,7 +1923,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Ledger"]
+        "tags": [
+          "Ledger"
+        ]
       }
     },
     "/api/v1/finance/ledger/bulk-categorize": {
@@ -1723,7 +1952,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Ledger"]
+        "tags": [
+          "Ledger"
+        ]
       }
     },
     "/api/v1/finance/ledger/export.csv": {
@@ -1751,7 +1982,13 @@
             "name": "sortBy",
             "required": false,
             "schema": {
-              "enum": ["date", "amount", "name", "category", "status"],
+              "enum": [
+                "date",
+                "amount",
+                "name",
+                "category",
+                "status"
+              ],
               "type": "string"
             }
           },
@@ -1760,7 +1997,10 @@
             "name": "sortDir",
             "required": false,
             "schema": {
-              "enum": ["asc", "desc"],
+              "enum": [
+                "asc",
+                "desc"
+              ],
               "type": "string"
             }
           },
@@ -1801,7 +2041,13 @@
             "name": "reconciliationStatus",
             "required": false,
             "schema": {
-              "enum": ["UNMATCHED", "AUTO_MATCHED", "MANUAL_MATCHED", "NEEDS_REVIEW", "REJECTED"],
+              "enum": [
+                "UNMATCHED",
+                "AUTO_MATCHED",
+                "MANUAL_MATCHED",
+                "NEEDS_REVIEW",
+                "REJECTED"
+              ],
               "type": "string"
             }
           },
@@ -1824,7 +2070,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Ledger"]
+        "tags": [
+          "Ledger"
+        ]
       }
     },
     "/api/v1/finance/ledger/saved-views": {
@@ -1841,7 +2089,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Ledger"]
+        "tags": [
+          "Ledger"
+        ]
       },
       "post": {
         "operationId": "LedgerController_createSavedView",
@@ -1866,7 +2116,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Ledger"]
+        "tags": [
+          "Ledger"
+        ]
       }
     },
     "/api/v1/finance/ledger/saved-views/{id}": {
@@ -1892,7 +2144,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Ledger"]
+        "tags": [
+          "Ledger"
+        ]
       }
     },
     "/api/v1/finance/ledger/{id}": {
@@ -1928,7 +2182,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Ledger"]
+        "tags": [
+          "Ledger"
+        ]
       }
     },
     "/api/v1/finance/reconciliation/matches": {
@@ -1955,7 +2211,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Reconciliation"]
+        "tags": [
+          "Reconciliation"
+        ]
       }
     },
     "/api/v1/finance/reconciliation/metrics": {
@@ -1989,7 +2247,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Reconciliation"]
+        "tags": [
+          "Reconciliation"
+        ]
       }
     },
     "/api/v1/finance/reconciliation/review": {
@@ -2023,7 +2283,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Reconciliation"]
+        "tags": [
+          "Reconciliation"
+        ]
       }
     },
     "/api/v1/finance/reconciliation/review/{id}/confirm": {
@@ -2049,7 +2311,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Reconciliation"]
+        "tags": [
+          "Reconciliation"
+        ]
       }
     },
     "/api/v1/finance/reconciliation/review/{id}/reject": {
@@ -2075,7 +2339,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Reconciliation"]
+        "tags": [
+          "Reconciliation"
+        ]
       }
     },
     "/api/v1/finance/reconciliation/run": {
@@ -2102,7 +2368,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Reconciliation"]
+        "tags": [
+          "Reconciliation"
+        ]
       }
     },
     "/api/v1/finance/reconciliation/settings": {
@@ -2119,7 +2387,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Reconciliation"]
+        "tags": [
+          "Reconciliation"
+        ]
       },
       "put": {
         "operationId": "ReconciliationController_updateSettings",
@@ -2144,7 +2414,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Reconciliation"]
+        "tags": [
+          "Reconciliation"
+        ]
       }
     },
     "/api/v1/finance/transactions": {
@@ -2156,7 +2428,9 @@
             "description": ""
           }
         },
-        "tags": ["Finance"]
+        "tags": [
+          "Finance"
+        ]
       },
       "post": {
         "operationId": "FinanceGatewayController_createTransaction",
@@ -2176,7 +2450,9 @@
             "description": ""
           }
         },
-        "tags": ["Finance"]
+        "tags": [
+          "Finance"
+        ]
       }
     },
     "/api/v1/webhooks/belvo": {
@@ -2188,7 +2464,9 @@
             "description": ""
           }
         },
-        "tags": ["Webhooks"]
+        "tags": [
+          "Webhooks"
+        ]
       }
     },
     "/api/v1/webhooks/plaid": {
@@ -2200,7 +2478,9 @@
             "description": ""
           }
         },
-        "tags": ["Webhooks"]
+        "tags": [
+          "Webhooks"
+        ]
       }
     },
     "/api/v1/webhooks/{id}/replay": {
@@ -2236,7 +2516,9 @@
             "bearer": []
           }
         ],
-        "tags": ["Webhooks"]
+        "tags": [
+          "Webhooks"
+        ]
       }
     }
   },
