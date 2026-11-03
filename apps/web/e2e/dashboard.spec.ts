@@ -50,6 +50,8 @@ test.describe('Dashboard de Flujo de Caja (Issue #50)', () => {
     ).toBeVisible();
     await expect(page.getByText('Servicios en la nube')).toBeVisible();
     await expect(page.getByText('Nómina')).toBeVisible();
+
+    await page.screenshot({ path: '../../docs/screenshots/dashboard-full.png', fullPage: true });
   });
 
   test('el cambio de período actualiza la URL y los datos del resumen', async ({ page }) => {
@@ -100,6 +102,8 @@ test.describe('Dashboard de Flujo de Caja (Issue #50)', () => {
     await expect(linkBancos).toHaveAttribute('href', '/bancos');
     await expect(linkFacturas).toBeVisible();
     await expect(linkFacturas).toHaveAttribute('href', '/facturas');
+
+    await page.screenshot({ path: '../../docs/screenshots/dashboard-empty.png', fullPage: true });
   });
 
   test('muestra estado de error con botón de reintento funcional', async ({ page }) => {
@@ -116,6 +120,9 @@ test.describe('Dashboard de Flujo de Caja (Issue #50)', () => {
     const retryButton = page.getByRole('button', { name: 'Reintentar' });
     await expect(retryButton).toBeVisible();
     await expect(retryButton).toBeEnabled();
+
+    await page.screenshot({ path: '../../docs/screenshots/dashboard-error.png', fullPage: true });
+
     await retryButton.click();
   });
 
