@@ -471,11 +471,11 @@ La fase introduce un segundo cliente. La paridad de contratos y el aislamiento p
 
 ### Criterios de aceptación
 
-- [ ] `web-ci` falla si OpenAPI y los tipos del cliente divergen.
-- [ ] Los E2E cubren los cinco flujos críticos en verde.
-- [ ] El test de aislamiento A/B pasa en todos los endpoints nuevos.
-- [ ] La carga de 50.000 transacciones no pierde eventos y mantiene p95 < 5 s en ingesta.
-- [ ] El reporte de carga y los artefactos quedan adjuntos.
+- [x] `web-ci` falla si OpenAPI y los tipos del cliente divergen.
+- [x] Los E2E cubren los cinco flujos críticos en verde.
+- [x] El test de aislamiento A/B pasa en todos los endpoints nuevos.
+- [x] La carga de 50.000 transacciones no pierde eventos y mantiene p95 < 5 s en ingesta.
+- [x] El reporte de carga y los artefactos quedan adjuntos.
 
 ### Validación
 

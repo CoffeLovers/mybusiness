@@ -1,0 +1,143 @@
+{
+  "$schema": "./kotlin-contract-map.schema.json",
+  "version": "1.0",
+  "description": "Mapeo declarativo entre DTOs y modelos Kotlin de mobile-android y los esquemas OpenAPI de api-gateway",
+  "mappings": [
+    {
+      "source": "apps/mobile-android/core/network/src/main/java/com/mybusiness/core/network/dto/LoginRequest.kt",
+      "kotlinClass": "LoginRequest",
+      "schema": "LoginDto",
+      "allowlistKotlinFields": [],
+      "allowlistSchemaFields": [],
+      "rationale": "DTO exacto de autenticación para login con email y password."
+    },
+    {
+      "source": "apps/mobile-android/core/network/src/main/java/com/mybusiness/core/network/dto/RegisterRequest.kt",
+      "kotlinClass": "RegisterRequest",
+      "schema": "RegisterDto",
+      "allowlistKotlinFields": [],
+      "allowlistSchemaFields": [],
+      "rationale": "DTO de registro con todos los datos de usuario y compañía."
+    },
+    {
+      "source": "apps/mobile-android/core/network/src/main/java/com/mybusiness/core/network/dto/RefreshTokenRequest.kt",
+      "kotlinClass": "RefreshTokenRequest",
+      "schema": "RefreshTokenDto",
+      "allowlistKotlinFields": [],
+      "allowlistSchemaFields": [],
+      "rationale": "DTO de rotación de refresh tokens."
+    },
+    {
+      "source": "apps/mobile-android/core/network/src/main/java/com/mybusiness/core/network/dto/AuthResponse.kt",
+      "kotlinClass": "UserDto",
+      "schema": "UserDto",
+      "allowlistKotlinFields": [],
+      "allowlistSchemaFields": [],
+      "rationale": "DTO del usuario retornado dentro de la sesión de autenticación."
+    },
+    {
+      "source": "apps/mobile-android/core/network/src/main/java/com/mybusiness/core/network/dto/AuthResponse.kt",
+      "kotlinClass": "AuthResponse",
+      "schema": "AuthResponse",
+      "allowlistKotlinFields": [],
+      "allowlistSchemaFields": [],
+      "rationale": "Respuesta canónica de login y registro con tokens y usuario."
+    },
+    {
+      "source": "apps/mobile-android/core/network/src/main/java/com/mybusiness/core/network/dto/BankingDto.kt",
+      "kotlinClass": "LinkTokenRequest",
+      "schema": "StartBankConnectionDto",
+      "allowlistKotlinFields": [],
+      "allowlistSchemaFields": [],
+      "rationale": "Solicitud para obtener link token de Plaid o Belvo."
+    },
+    {
+      "source": "apps/mobile-android/core/network/src/main/java/com/mybusiness/core/network/dto/BankingDto.kt",
+      "kotlinClass": "LinkTokenResponse",
+      "schema": "StartBankConnectionResponse",
+      "allowlistKotlinFields": [],
+      "allowlistSchemaFields": [],
+      "rationale": "Respuesta con el link token y expiración para el widget bancario."
+    },
+    {
+      "source": "apps/mobile-android/core/network/src/main/java/com/mybusiness/core/network/dto/BankingDto.kt",
+      "kotlinClass": "ExchangeConnectionRequest",
+      "schema": "ExchangeBankConnectionDto",
+      "allowlistKotlinFields": [],
+      "allowlistSchemaFields": ["metadata"],
+      "rationale": "Intercambio de token bancario. Kotlin omite metadata adicional opcional de la web."
+    },
+    {
+      "source": "apps/mobile-android/core/network/src/main/java/com/mybusiness/core/network/dto/BankingDto.kt",
+      "kotlinClass": "ConnectionDto",
+      "schema": "BankConnectionResponse",
+      "allowlistKotlinFields": [],
+      "allowlistSchemaFields": ["institutionId", "createdAt", "updatedAt"],
+      "rationale": "DTO de conexión bancaria. Kotlin consume los campos de vista sin timestamps de auditoría."
+    },
+    {
+      "source": "apps/mobile-android/core/network/src/main/java/com/mybusiness/core/network/dto/BankingDto.kt",
+      "kotlinClass": "AccountDto",
+      "schema": "BankAccountResponse",
+      "allowlistKotlinFields": [],
+      "allowlistSchemaFields": ["providerAccountId", "officialName", "type", "subtype"],
+      "rationale": "Cuenta vinculada. Campos de proveedor detallados quedan en el backend."
+    },
+    {
+      "source": "apps/mobile-android/core/network/src/main/java/com/mybusiness/core/network/dto/BankingDto.kt",
+      "kotlinClass": "SyncResponseDto",
+      "schema": "SyncConnectionResponse",
+      "allowlistKotlinFields": [],
+      "allowlistSchemaFields": ["nextCursor"],
+      "rationale": "Resultado de sincronización. Paginación por cursor no se expone a la vista móvil simple."
+    },
+    {
+      "source": "apps/mobile-android/core/network/src/main/java/com/mybusiness/core/network/dto/ApiErrorResponse.kt",
+      "kotlinClass": "ApiErrorResponse",
+      "schema": "ApiErrorResponse",
+      "allowlistKotlinFields": [],
+      "allowlistSchemaFields": [],
+      "rationale": "Formato canónico de error HTTP de la API."
+    },
+    {
+      "source": "apps/mobile-android/core/model/src/main/java/com/mybusiness/core/model/User.kt",
+      "kotlinClass": "User",
+      "schema": "UserDto",
+      "allowlistKotlinFields": [],
+      "allowlistSchemaFields": [],
+      "rationale": "Modelo de dominio de usuario móvil coincide con UserDto."
+    },
+    {
+      "source": "apps/mobile-android/core/model/src/main/java/com/mybusiness/core/model/AuthTokens.kt",
+      "kotlinClass": "AuthTokens",
+      "schema": "AuthResponse",
+      "allowlistKotlinFields": ["tokenType", "expiresIn"],
+      "allowlistSchemaFields": ["user"],
+      "rationale": "Modelo de tokens almacenados localmente en AndroidKeystore; no incluye la entidad User pero añade tokenType y expiresIn."
+    },
+    {
+      "source": "apps/mobile-android/core/model/src/main/java/com/mybusiness/core/model/Banking.kt",
+      "kotlinClass": "LinkedConnection",
+      "schema": "BankConnectionResponse",
+      "allowlistKotlinFields": [],
+      "allowlistSchemaFields": ["createdAt", "updatedAt"],
+      "rationale": "Modelo de conexión bancaria vinculada en capa de dominio."
+    },
+    {
+      "source": "apps/mobile-android/core/model/src/main/java/com/mybusiness/core/model/Banking.kt",
+      "kotlinClass": "LinkedAccount",
+      "schema": "BankAccountResponse",
+      "allowlistKotlinFields": [],
+      "allowlistSchemaFields": ["providerAccountId", "officialName", "type", "subtype"],
+      "rationale": "Modelo de cuenta bancaria vinculada en capa de dominio."
+    },
+    {
+      "source": "apps/mobile-android/core/model/src/main/java/com/mybusiness/core/model/Banking.kt",
+      "kotlinClass": "SyncSummary",
+      "schema": "SyncConnectionResponse",
+      "allowlistKotlinFields": [],
+      "allowlistSchemaFields": ["nextCursor"],
+      "rationale": "Resumen de sincronización en capa de dominio."
+    }
+  ]
+}

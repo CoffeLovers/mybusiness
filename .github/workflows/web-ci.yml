@@ -5,8 +5,12 @@ on:
     branches: [develop, main]
     paths:
       - 'apps/web/**'
+      - 'apps/api-gateway/**'
       - 'packages/contracts/**'
       - 'packages/common/**'
+      - 'docs/openapi/**'
+      - 'contracts/**'
+      - 'scripts/**'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - '.github/workflows/web-ci.yml'
@@ -14,8 +18,12 @@ on:
     branches: [develop, main]
     paths:
       - 'apps/web/**'
+      - 'apps/api-gateway/**'
       - 'packages/contracts/**'
       - 'packages/common/**'
+      - 'docs/openapi/**'
+      - 'contracts/**'
+      - 'scripts/**'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - '.github/workflows/web-ci.yml'
@@ -71,10 +79,43 @@ jobs:
       - name: Build
         run: pnpm --filter @mybusiness/web build
 
+  contracts:
+    name: Contracts & Drift Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build packages and API Gateway
+        run: |
+          pnpm --filter @mybusiness/contracts build
+          pnpm --filter @mybusiness/common build
+          pnpm --filter @mybusiness/api-gateway build
+      - name: Check OpenAPI and web types drift
+        run: pnpm contracts:check
+      - name: Check Kotlin contracts parity
+        run: pnpm contracts:check:kotlin
+      - name: Upload drift diff artifact on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contracts-drift-artifacts
+          path: |
+            docs/openapi/api-gateway.json
+            node_modules/.cache/contracts-check/
+            contracts-drift.diff
+          retention-days: 7
+          if-no-files-found: ignore
+
   e2e:
     name: E2E
     runs-on: ubuntu-latest
-    needs: quality
+    needs: [quality, contracts]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -184,4 +225,4 @@ jobs:
             -Dsonar.organization=coffeelovers
             -Dsonar.sources=apps/web
             -Dsonar.javascript.lcov.reportPaths=apps/web/coverage/lcov.info
-            -Dsonar.exclusions=apps/web/.next/**,apps/web/coverage/**,apps/web/playwright-report/**
+            -Dsonar.exclusions=apps/web/.next/**,apps/web/coverage/**,apps/web/playwright-report/**,apps/web/lib/generated/**

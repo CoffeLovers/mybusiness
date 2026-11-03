@@ -7,8 +7,13 @@ async function login(page: Page): Promise<void> {
   await page.goto('/login');
   await page.getByLabel('Correo electrónico').fill('ada@example.com');
   await page.getByLabel('Contraseña').fill('correct-password');
-  await page.getByRole('button', { name: 'Entrar' }).click();
+  await Promise.all([
+    page.waitForURL((url) => url.pathname === '/'),
+    page.getByRole('button', { name: 'Entrar' }).click(),
+  ]);
+  await page.waitForLoadState('load');
   await expect(page.getByRole('heading', { level: 1, name: 'Resumen' })).toBeVisible();
+  await expect(page.locator('div[data-hydrated="true"]')).toBeVisible();
 }
 
 test.describe('Dashboard de Flujo de Caja (Issue #50)', () => {
@@ -62,6 +67,7 @@ test.describe('Dashboard de Flujo de Caja (Issue #50)', () => {
 
     // Cambiar a "Últimos 90 días"
     const button90d = page.getByRole('button', { name: 'Últimos 90 días' });
+    await expect(button90d).toBeEnabled();
     await button90d.click();
 
     // La URL debe actualizarse con el rango de 90 días
@@ -74,8 +80,12 @@ test.describe('Dashboard de Flujo de Caja (Issue #50)', () => {
   test('selector de moneda conmuta divisas si hay más de una disponible', async ({ page }) => {
     await login(page);
 
+    // Esperar a que la página esté hidratada y muestre el balance inicial
+    await expect(page.getByText('45.000,00 €')).toBeVisible();
+
     const currencySelect = page.getByLabel('Moneda:');
     await expect(currencySelect).toBeVisible();
+    await expect(currencySelect).toBeEnabled();
     await currencySelect.selectOption('USD');
 
     await expect(page).toHaveURL(/currency=USD/);

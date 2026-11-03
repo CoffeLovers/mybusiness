@@ -1,0 +1,64 @@
+name: Load Test (k6)
+
+on:
+  workflow_dispatch:
+    inputs:
+      smoke:
+        description: 'Ejecutar en modo SMOKE reducido (10 segundos)'
+        type: boolean
+        required: false
+        default: false
+      base_url:
+        description: 'URL base del Gateway'
+        type: string
+        required: false
+        default: 'http://127.0.0.1:3200'
+
+jobs:
+  load-test:
+    name: Ingesta Masiva 50k Transacciones (k6)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Instalar pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Instalar k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69 || true
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install -y k6
+
+      - name: Iniciar Mock Gateway en segundo plano
+        run: |
+          node apps/web/e2e/mock-gateway.mjs &
+          sleep 3
+          curl -s http://127.0.0.1:3200/health || exit 1
+
+      - name: Ejecutar prueba de carga k6
+        env:
+          BASE_URL: ${{ inputs.base_url || 'http://127.0.0.1:3200' }}
+          SMOKE: ${{ inputs.smoke }}
+          AUTH_TOKEN: 'access-tenant-a'
+        run: |
+          k6 run tests/load/ingest-50k.js
+
+      - name: Subir artefactos de resumen k6
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-load-test-summary
+          path: tests/load/k6-summary.json
+          retention-days: 14

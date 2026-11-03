@@ -1,0 +1,279 @@
+{
+  "root_group": {
+    "id": "d41d8cd98f00b204e9800998ecf8427e",
+    "groups": [],
+    "checks": [
+      {
+        "name": "transacción aceptada (200 o 201)",
+        "path": "::transacción aceptada (200 o 201)",
+        "id": "b480842a9f60c46429e5c12ca5629347",
+        "passes": 125,
+        "fails": 0
+      },
+      {
+        "fails": 0,
+        "name": "tiempo de respuesta < 5000ms",
+        "path": "::tiempo de respuesta < 5000ms",
+        "id": "d16c22d1cc1582cce2f910255147c462",
+        "passes": 125
+      }
+    ],
+    "name": "",
+    "path": ""
+  },
+  "options": {
+    "summaryTrendStats": ["avg", "min", "med", "max", "p(90)", "p(95)", "p(99)"],
+    "summaryTimeUnit": "",
+    "noColor": false
+  },
+  "state": {
+    "isStdOutTTY": false,
+    "isStdErrTTY": false,
+    "testRunDurationMs": 10086.1613
+  },
+  "metrics": {
+    "http_reqs": {
+      "values": {
+        "rate": 12.69065566103925,
+        "count": 128
+      },
+      "type": "counter",
+      "contains": "default"
+    },
+    "http_req_connecting": {
+      "contains": "time",
+      "values": {
+        "min": 0,
+        "med": 0,
+        "max": 1.4828,
+        "p(90)": 0,
+        "p(95)": 0.46180999999999817,
+        "p(99)": 1.00276,
+        "avg": 0.060267968750000005
+      },
+      "type": "trend"
+    },
+    "http_req_receiving": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 0.07524296874999999,
+        "min": 0,
+        "med": 0,
+        "max": 0.9975,
+        "p(90)": 0.24319999999999917,
+        "p(95)": 0.51183,
+        "p(99)": 0.994865
+      }
+    },
+    "transactions_accepted": {
+      "values": {
+        "count": 125,
+        "rate": 12.393218418983642
+      },
+      "type": "counter",
+      "contains": "default"
+    },
+    "unique_transactions": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 115,
+        "rate": 11.40176094546495
+      }
+    },
+    "http_req_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "max": 9.5784,
+        "p(90)": 1.4000899999999998,
+        "p(95)": 1.8039049999999996,
+        "p(99)": 4.3967430000000025,
+        "avg": 0.902365625,
+        "min": 0,
+        "med": 0.7926
+      },
+      "thresholds": {
+        "p(95)<5000": {
+          "ok": true
+        }
+      }
+    },
+    "checks": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 1,
+        "passes": 250,
+        "fails": 0
+      }
+    },
+    "vus": {
+      "type": "gauge",
+      "contains": "default",
+      "values": {
+        "min": 0,
+        "max": 0,
+        "value": 0
+      }
+    },
+    "http_req_tls_handshaking": {
+      "contains": "time",
+      "values": {
+        "avg": 0,
+        "min": 0,
+        "med": 0,
+        "max": 0,
+        "p(90)": 0,
+        "p(95)": 0,
+        "p(99)": 0
+      },
+      "type": "trend"
+    },
+    "iteration_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "min": 0,
+        "med": 0.9945,
+        "max": 5.849,
+        "p(90)": 1.99868,
+        "p(95)": 2.3804799999999986,
+        "p(99)": 4.803856000000006,
+        "avg": 1.1483408
+      }
+    },
+    "iterations": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "rate": 12.393218418983642,
+        "count": 125
+      }
+    },
+    "data_sent": {
+      "values": {
+        "count": 56276,
+        "rate": 5579.526077973787
+      },
+      "type": "counter",
+      "contains": "data"
+    },
+    "http_req_waiting": {
+      "values": {
+        "med": 0.7658,
+        "max": 7.7898,
+        "p(90)": 1.2785599999999997,
+        "p(95)": 1.5779149999999995,
+        "p(99)": 4.3967430000000025,
+        "avg": 0.7877242187500003,
+        "min": 0
+      },
+      "type": "trend",
+      "contains": "time"
+    },
+    "http_req_sending": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 0.039398437499999994,
+        "min": 0,
+        "med": 0,
+        "max": 1.7886,
+        "p(90)": 0,
+        "p(95)": 0,
+        "p(99)": 1.190114000000001
+      }
+    },
+    "http_req_duration{expected_response:true}": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 0.902365625,
+        "min": 0,
+        "med": 0.7926,
+        "max": 9.5784,
+        "p(90)": 1.4000899999999998,
+        "p(95)": 1.8039049999999996,
+        "p(99)": 4.3967430000000025
+      }
+    },
+    "http_req_blocked": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "min": 0,
+        "med": 0,
+        "max": 2.0024,
+        "p(90)": 0.05933999999999952,
+        "p(95)": 0.9543999999999989,
+        "p(99)": 1.422860000000001,
+        "avg": 0.08997421875
+      }
+    },
+    "event_loss_rate": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 0,
+        "passes": 0,
+        "fails": 125
+      },
+      "thresholds": {
+        "rate==0": {
+          "ok": true
+        }
+      }
+    },
+    "http_req_failed": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "passes": 0,
+        "fails": 128,
+        "rate": 0
+      },
+      "thresholds": {
+        "rate<0.01": {
+          "ok": true
+        }
+      }
+    },
+    "data_received": {
+      "type": "counter",
+      "contains": "data",
+      "values": {
+        "count": 115896,
+        "rate": 11490.595535092225
+      }
+    },
+    "transactions_deduplicated": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 10,
+        "rate": 0.9914574735186913
+      }
+    },
+    "vus_max": {
+      "values": {
+        "value": 10,
+        "min": 10,
+        "max": 10
+      },
+      "type": "gauge",
+      "contains": "default"
+    }
+  },
+  "setup_data": {
+    "tenantId": "00000000-0000-0000-0000-000000000001",
+    "authToken": "access-tenant-a",
+    "bankAccountId": "00000000-0000-4000-8000-000000000001",
+    "baseUrl": "http://127.0.0.1:3200",
+    "connectionId": "11111111-1111-4111-8111-111111111111",
+    "initialCount": 0,
+    "isHealthy": true,
+    "startTime": "2026-11-03T19:42:08.354Z"
+  }
+}
