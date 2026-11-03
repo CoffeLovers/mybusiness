@@ -370,7 +370,7 @@ export class PlaidAdapter implements IBankAdapter {
   private async verifyPlaidWebhook(
     headers: Record<string, string> | undefined,
     rawBody: string | undefined,
-  ): Promise<void> {
+  ): Promise<{ issuedAt: Date }> {
     if (!rawBody) {
       throw new UnauthorizedException('Falta el cuerpo crudo del webhook.');
     }
@@ -439,6 +439,8 @@ export class PlaidAdapter implements IBankAdapter {
     if (received.length !== expected.length || !timingSafeEqual(received, expected)) {
       throw new UnauthorizedException('El cuerpo no coincide con la firma.');
     }
+
+    return { issuedAt: new Date(claims.iat * 1000) };
   }
 
   async handleWebhook(
@@ -446,7 +448,7 @@ export class PlaidAdapter implements IBankAdapter {
     headers?: Record<string, string>,
     rawBody?: string,
   ): Promise<WebhookResult> {
-    await this.verifyPlaidWebhook(headers, rawBody);
+    const { issuedAt } = await this.verifyPlaidWebhook(headers, rawBody);
 
     const webhookType = typeof payload.webhook_type === 'string' ? payload.webhook_type : null;
     if (!webhookType) {
@@ -466,6 +468,27 @@ export class PlaidAdapter implements IBankAdapter {
       webhookCode,
       providerItemId,
       rawPayload: payload,
+      occurredAt: this.resolveOccurredAt(payload, issuedAt),
     };
+  }
+
+  /**
+   * `occurredAt` se toma del payload cuando Plaid lo envía y, si no,
+   * del `iat` del JWT verificado. Así la guardia de orden funciona
+   * incluso con webhooks que no incluyen timestamp propio.
+   */
+  private resolveOccurredAt(payload: Record<string, unknown>, issuedAt: Date): Date {
+    const raw = payload.timestamp ?? payload.created_at ?? payload.occurred_at;
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+      // Plaid puede enviar segundos o milisegundos; normalizamos a ms.
+      return new Date(raw > 1_000_000_000_000 ? raw : raw * 1000);
+    }
+    if (typeof raw === 'string') {
+      const parsed = new Date(raw);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed;
+      }
+    }
+    return issuedAt;
   }
 }

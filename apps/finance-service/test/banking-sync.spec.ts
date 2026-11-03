@@ -185,10 +185,11 @@ describe('BankingSyncService.applyTransactionsSync', () => {
     });
 
     expect(counts).toEqual({ added: 0, modified: 1, removed: 1 });
-    expect(updates).toHaveLength(3);
+    expect(updates).toHaveLength(4);
     expect(updates[0]).toMatchObject({ amountMinor: 999n, name: 'Café corregido' });
     expect(updates[1].removedAt).toBeInstanceOf(Date);
-    expect(updates[2].lastSuccessfulSyncAt).toBeInstanceOf(Date);
+    expect(updates[2].lastSyncedAt).toBeInstanceOf(Date);
+    expect(updates[3].lastSuccessfulSyncAt).toBeInstanceOf(Date);
   });
 
   it('ignora modified de cuentas no mapeadas', async () => {
@@ -204,9 +205,10 @@ describe('BankingSyncService.applyTransactionsSync', () => {
     });
 
     expect(counts.modified).toBe(0);
-    // Sólo se actualiza bankConnections.lastSuccessfulSyncAt, no bankTransactions.
-    expect(updates).toHaveLength(1);
-    expect(updates[0].lastSuccessfulSyncAt).toBeInstanceOf(Date);
+    // Se actualiza lastSyncedAt de las cuentas y lastSuccessfulSyncAt de la conexión.
+    expect(updates).toHaveLength(2);
+    expect(updates[0].lastSyncedAt).toBeInstanceOf(Date);
+    expect(updates[1].lastSuccessfulSyncAt).toBeInstanceOf(Date);
   });
 
   it('guarda el cursor y deja initialSyncComplete=false cuando hasMore es true', async () => {
@@ -246,7 +248,8 @@ describe('BankingSyncService.applyTransactionsSync', () => {
 
     expect(inserts[0]).toMatchObject({ cursor: null, initialSyncComplete: true });
     expect(conflicts[0].set?.initialSyncComplete).toBe(true);
-    expect(updates[0].lastSuccessfulSyncAt).toBeInstanceOf(Date);
+    expect(updates[0].lastSyncedAt).toBeInstanceOf(Date);
+    expect(updates[1].lastSuccessfulSyncAt).toBeInstanceOf(Date);
   });
 });
 
@@ -310,6 +313,7 @@ describe('BankingSyncService.syncAccounts', () => {
       currentBalanceMinor: 100000n,
       availableBalanceMinor: 90000n,
       rawMetadata: {},
+      lastSyncedAt: expect.any(Date),
     });
     expect(saved[0].id).toBe('acc-new');
   });
@@ -328,6 +332,7 @@ describe('BankingSyncService.syncAccounts', () => {
       currentBalanceMinor: 500n,
       availableBalanceMinor: 500n,
       rawMetadata: { balances: { current: 1000 } },
+      lastSyncedAt: expect.any(Date),
     });
     expect(saved[0].id).toBe('acc-existing');
   });

@@ -1,15 +1,13 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
-import { ClientProxyFactory, Transport } from '@nestjs/microservices';
 import {
   RpcTenantContextInterceptor,
   RpcTenantGuard,
-  getMicroserviceRedisOptions,
   getRootEnvFilePaths,
 } from '@mybusiness/common';
 import { FinanceDatabaseModule } from './database/database.module';
-import { FINANCE_EVENT_BUS, DomainEventPublisher } from './events/domain-event.publisher';
+import { EventsModule } from './events/events.module';
 import { FinanceController } from './finance.controller';
 import { FinanceRepository } from './finance.repository';
 import { FinanceService } from './finance.service';
@@ -23,6 +21,7 @@ import { DocumentsModule } from './documents/documents.module';
       envFilePath: getRootEnvFilePaths(),
     }),
     FinanceDatabaseModule,
+    EventsModule,
     BankingModule,
     DocumentsModule,
   ],
@@ -30,16 +29,6 @@ import { DocumentsModule } from './documents/documents.module';
   providers: [
     FinanceService,
     FinanceRepository,
-    DomainEventPublisher,
-    {
-      provide: FINANCE_EVENT_BUS,
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) =>
-        ClientProxyFactory.create({
-          transport: Transport.REDIS,
-          options: getMicroserviceRedisOptions(config),
-        }),
-    },
     {
       provide: APP_GUARD,
       useClass: RpcTenantGuard,

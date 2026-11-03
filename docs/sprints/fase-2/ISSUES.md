@@ -213,12 +213,16 @@ Los webhooks son la vía principal de actualización. Deben fallar cerrado ante 
 
 ### Criterios de aceptación
 
-- [ ] Firma inválida → 401 y evento no encolado.
-- [ ] Duplicado → 200 y sin reprocesamiento (contador de auditoría sin cambios).
-- [ ] Evento fuera de orden no retrocede el estado de la cuenta.
-- [ ] Fallo de procesamiento reintenta con backoff y termina en `FAILED` visible.
-- [ ] Replay manual por ID funciona y queda auditado.
-- [ ] Tests de firma, dedupe, orden y reintentos.
+- [x] Firma inválida → 401 y evento no encolado.
+- [x] Duplicado → 200 y sin reprocesamiento (contador de auditoría sin cambios).
+- [x] Evento fuera de orden no retrocede el estado de la cuenta.
+- [x] Fallo de procesamiento reintenta con backoff y termina en `FAILED` visible.
+- [x] Replay manual por ID funciona y queda auditado.
+- [x] Tests de firma, dedupe, orden y reintentos.
+
+> **Deuda heredada de SF2-04:** Belvo sigue fail-closed (501/401). El flujo
+> completo de firma, idempotencia, BullMQ, orden y replay se implementó y
+> validó con Plaid. Ver [`docs/banking-webhooks.md`](../../banking-webhooks.md).
 
 ### Validación
 
