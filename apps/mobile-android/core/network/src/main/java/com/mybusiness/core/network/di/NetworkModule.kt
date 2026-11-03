@@ -3,6 +3,7 @@ package com.mybusiness.core.network.di
 import com.mybusiness.core.common.constants.Constants
 import com.mybusiness.core.network.BuildConfig
 import com.mybusiness.core.network.api.AuthApiService
+import com.mybusiness.core.network.api.BankingApiService
 import com.mybusiness.core.network.interceptor.AuthInterceptor
 import dagger.Module
 import dagger.Provides
@@ -79,5 +80,11 @@ object NetworkModule {
     @Singleton
     fun provideAuthApiService(retrofit: Retrofit): AuthApiService {
         return retrofit.create(AuthApiService::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideBankingApiService(retrofit: Retrofit): BankingApiService {
+        return retrofit.create(BankingApiService::class.java)
     }
 }

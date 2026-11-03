@@ -16,6 +16,18 @@ android {
             ?: System.getenv("API_BASE_URL")
             ?: "http://10.0.2.2:3000/api/v1/"
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
+
+        // URL web del proveedor de enlace bancario (Plaid/Belvo).
+        val bankLinkUrl = (project.findProperty("bank.link.url") as? String)
+            ?: System.getenv("BANK_LINK_URL")
+            ?: "https://app.mybusiness.local/banking/link"
+        buildConfigField("String", "BANK_LINK_URL", "\"$bankLinkUrl\"")
+
+        // Deep link al que el proveedor devuelve el control de la app.
+        val bankRedirectUri = (project.findProperty("bank.redirect.uri") as? String)
+            ?: System.getenv("BANK_REDIRECT_URI")
+            ?: "mybusiness://banking/return"
+        buildConfigField("String", "BANK_REDIRECT_URI", "\"$bankRedirectUri\"")
     }
 
     compileOptions {
