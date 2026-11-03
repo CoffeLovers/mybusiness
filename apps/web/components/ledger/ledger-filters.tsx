@@ -13,7 +13,6 @@
 import { useCallback, useState } from 'react';
 import type { ReactNode } from 'react';
 
-import { LedgerReconciliationStatus } from '@mybusiness/contracts';
 import type {
   LedgerQueryDto,
   LedgerRowResponse,
@@ -36,20 +35,26 @@ export const INPUT_CLASS =
 export const BUTTON_CLASS =
   'rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text transition-colors hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50';
 
-export const STATUS_LABELS: Record<LedgerReconciliationStatus, string> = {
-  [LedgerReconciliationStatus.UNMATCHED]: 'Sin conciliar',
-  [LedgerReconciliationStatus.AUTO_MATCHED]: 'Conciliado automático',
-  [LedgerReconciliationStatus.MANUAL_MATCHED]: 'Conciliado manual',
-  [LedgerReconciliationStatus.NEEDS_REVIEW]: 'Requiere revisión',
-  [LedgerReconciliationStatus.REJECTED]: 'Rechazado',
+/**
+ * Los estados se declaran aquí (no se importa el enum de `@mybusiness/contracts`)
+ * porque el barrel arrastra `class-validator`/`class-transformer` al bundle del
+ * cliente y rompe el render en servidor (`Reflect.getMetadata`). El tipo local
+ * es la misma unión de literales que valida el contrato.
+ */
+export const STATUS_LABELS: Record<LedgerStatus, string> = {
+  UNMATCHED: 'Sin conciliar',
+  AUTO_MATCHED: 'Conciliado automático',
+  MANUAL_MATCHED: 'Conciliado manual',
+  NEEDS_REVIEW: 'Requiere revisión',
+  REJECTED: 'Rechazado',
 };
 
-const STATUS_TONES: Record<LedgerReconciliationStatus, string> = {
-  [LedgerReconciliationStatus.UNMATCHED]: 'border-border text-text-muted',
-  [LedgerReconciliationStatus.AUTO_MATCHED]: 'border-income/40 text-income',
-  [LedgerReconciliationStatus.MANUAL_MATCHED]: 'border-primary/40 text-primary',
-  [LedgerReconciliationStatus.NEEDS_REVIEW]: 'border-alert/40 text-alert',
-  [LedgerReconciliationStatus.REJECTED]: 'border-expense/40 text-expense',
+const STATUS_TONES: Record<LedgerStatus, string> = {
+  UNMATCHED: 'border-border text-text-muted',
+  AUTO_MATCHED: 'border-income/40 text-income',
+  MANUAL_MATCHED: 'border-primary/40 text-primary',
+  NEEDS_REVIEW: 'border-alert/40 text-alert',
+  REJECTED: 'border-expense/40 text-expense',
 };
 
 export const STATUS_VALUES: readonly LedgerStatus[] = [
@@ -181,7 +186,7 @@ export function AmountCell({ row }: { row: LedgerRowResponse }) {
 }
 
 /** Chip de conciliación: siempre lleva texto, nunca depende sólo del color. */
-export function StatusChip({ status }: { status: LedgerReconciliationStatus }) {
+export function StatusChip({ status }: { status: LedgerStatus }) {
   return (
     <span
       className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium whitespace-nowrap ${STATUS_TONES[status]}`}

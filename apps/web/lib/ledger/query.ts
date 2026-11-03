@@ -54,6 +54,9 @@ const RECONCILIATION_STATUSES: readonly LedgerStatus[] = [
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
+/** UUID genérico (cualquier versión): sólo forma, no semántica. */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** Longitud máxima de los filtros de texto libre (alineada con el contrato). */
 const MAX_TEXT_LENGTH = 200;
 
@@ -170,7 +173,10 @@ export function parseLedgerQuery(params: RawParams): LedgerQuery {
     query.reconciliationStatus = reconciliationStatus;
   }
 
-  const accountId = toText(readParam(params, 'accountId'));
+  // `accountId` es un UUID en el contrato: una forma inválida no se reenvía.
+  const rawAccountId = toText(readParam(params, 'accountId'));
+  const accountId =
+    rawAccountId !== undefined && UUID_PATTERN.test(rawAccountId) ? rawAccountId : undefined;
 
   if (accountId !== undefined) {
     query.accountId = accountId;

@@ -19,6 +19,7 @@ export const dynamic = 'force-dynamic';
 
 const DEFAULT_CONTENT_TYPE = 'text/csv; charset=utf-8';
 const DEFAULT_CONTENT_DISPOSITION = 'attachment; filename="libro-mayor.csv"';
+const CSV_BOM = '\uFEFF';
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const session = await readSession();
@@ -35,7 +36,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       { accessToken: session.accessToken },
     );
 
-    return new NextResponse(body, {
+    // `Response.text()` descarta el BOM inicial; se garantiza de nuevo para que
+    // Excel y otras hojas de cálculo detecten UTF-8 al abrir el archivo.
+    const payload = body.startsWith(CSV_BOM) ? body : `${CSV_BOM}${body}`;
+
+    return new NextResponse(payload, {
       headers: {
         'content-type': contentType ?? DEFAULT_CONTENT_TYPE,
         'content-disposition': contentDisposition ?? DEFAULT_CONTENT_DISPOSITION,
