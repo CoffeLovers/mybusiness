@@ -12,6 +12,7 @@ import type {
   Span,
   ToolContext,
   ToolDefinition,
+  ToolResult,
 } from './types.ts';
 
 export interface OrchestratorOptions {
@@ -43,13 +44,8 @@ export class CustomAgentOrchestrator {
     tool: ToolDefinition,
     args: Record<string, unknown>,
     ctx: ToolContext,
-  ) {
-    const timeoutPromise = new Promise<{
-      success: false;
-      error: { code: 'TOOL_TIMEOUT'; message: string; retryable: true };
-      executionTimeMs: number;
-      citation: string;
-    }>((resolve) => {
+  ): Promise<ToolResult<unknown>> {
+    const timeoutPromise = new Promise<ToolResult<unknown>>((resolve) => {
       setTimeout(() => {
         resolve({
           success: false,
@@ -139,7 +135,7 @@ export class CustomAgentOrchestrator {
         const toolStart = Date.now();
 
         if (!toolDef) {
-          const errRes = {
+          const errRes: ToolResult<unknown> = {
             success: false,
             error: {
               code: 'TOOL_NOT_FOUND',

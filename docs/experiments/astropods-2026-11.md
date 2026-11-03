@@ -2,7 +2,7 @@
 
 - **Issue:** #71 ([SF3-01][Agent][Decision] Evaluación de Astropods y ADR de orquestación)
 - **Fecha de ejecución:** 2026-11-03
-- **Entorno:** Monorepo MyBusiness, Node.js v24.22.1, Windows / PowerShell
+- **Entorno:** Monorepo MyBusiness, Node.js v24.21.0, Linux (x86_64)
 - **Prototipo ejecutable:** [`scripts/experiments/agent-orchestration/`](../../scripts/experiments/agent-orchestration/)
 - **Documento normativo:** [ADR 007 — Orquestación de Agentes e Interfaz de Herramientas](../adr/007-orquestacion-agentes.md)
 
@@ -52,14 +52,16 @@ Mediciones obtenidas ejecutando `node scripts/experiments/agent-orchestration/be
 | **Tasa de Éxito / Degradación**       |       100% OK (35/0)       |         100% OK (35/0)          | 100% Degradado Seguro (0/35)  |
 | **Fallos no controlados (Crash 500)** |             0              |                0                |               0               |
 | **Herramientas por turno**            |            1.0             |               2.0               |              0.0              |
-| **Latencia p50**                      |        **31.0 ms**         |           **31.0 ms**           |          **15.0 ms**          |
-| **Latencia p90**                      |        **32.0 ms**         |           **46.0 ms**           |          **18.0 ms**          |
-| **Latencia p95**                      |        **32.0 ms**         |           **75.0 ms**           |          **22.0 ms**          |
-| **Latencia Promedio**                 |          30.97 ms          |            35.63 ms             |           15.74 ms            |
-| **Latencia Mín / Máx**                |       25 ms / 38 ms        |          29 ms / 93 ms          |         8 ms / 27 ms          |
+| **Latencia p50**                      |        **12.0 ms**         |           **17.0 ms**           |          **4.0 ms**           |
+| **Latencia p90**                      |        **13.0 ms**         |           **18.0 ms**           |          **5.0 ms**           |
+| **Latencia p95**                      |        **14.0 ms**         |           **19.0 ms**           |          **5.0 ms**           |
+| **Latencia Promedio**                 |          12.49 ms          |            16.83 ms             |            4.20 ms            |
+| **Latencia Mín / Máx**                |       11 ms / 14 ms        |          16 ms / 19 ms          |          4 ms / 5 ms          |
 | **Tokens Prompt (Promedio)**          |         798 tokens         |           954 tokens            |   0 tokens (fallo upstream)   |
 | **Tokens Completion (Promedio)**      |         93 tokens          |           211 tokens            |           0 tokens            |
 | **Coste Estimado / Turno (USD)**      |       **\$0.000176**       |         **\$0.000270**          |        **\$0.000000**         |
+
+Estos valores corresponden a una ejecución de referencia en ese entorno; el benchmark es determinista en tokens y herramienta, pero la latencia varía entre equipos. Reproducir con `node scripts/experiments/agent-orchestration/benchmark.ts`.
 
 _Nota sobre latencias:_ El benchmark utiliza el proveedor simulado con micro-latencia de red determinista (6-8 ms por llamada LLM). En un entorno real con OpenAI/Anthropic, la latencia agregada del LLM suele oscilar entre 400 ms y 1,200 ms, donde el overhead de la orquestación propia en memoria es despreciable (< 2 ms).
 
@@ -71,6 +73,7 @@ _Nota sobre latencias:_ El benchmark utiliza el proveedor simulado con micro-lat
 >
 > - **Fecha:** Noviembre 2026.
 > - **Motivo:** En el repositorio, entorno de ejecución y organización del proyecto **no se dispone de licencia comercial, suscripción activa, credenciales de API (API key / tenant id) ni acceso a un entorno sandbox o control plane provisto por Astropods**. Asimismo, no existe un paquete cliente abierto y verificable en registros públicos npm que pueda instalarse sin acuerdos propietarios.
+> - **Coste:** Sin contrato ni pricing público accesible en la fecha, **todas las cifras de coste de Astropods en este informe son estimaciones no verificadas** y no deben citarse como hechos.
 > - **Requisitos para una evaluación empírica futura:**
 >   1. Provisión de un tenant de pruebas corporativo en el control plane de Astropods.
 >   2. SDK cliente oficial para TypeScript / Node 20+ o especificación OpenAPI para integración HTTP.
@@ -82,23 +85,25 @@ _Nota sobre latencias:_ El benchmark utiliza el proveedor simulado con micro-lat
 
 Ante la imposibilidad de benchmark en vivo de Astropods, se contrastó el prototipo propio frente a la arquitectura pública y modelo operativo de Astropods / plataformas SaaS de control plane de agentes:
 
-| Dimensión                             | Orquestación Propia (`agent-service`)                                                                                                                                        | Astropods (Control Plane SaaS)                                                                                                        | Veredicto                             |
-| :------------------------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------ | :------------------------------------ |
-| **Dependencias en Producción**        | **0 paquetes nuevos**. Usa NestJS, TypeScript y Fetch/RxJS estándar del monorepo.                                                                                            | Requiere SDK propietario o agente sidecar en contenedor.                                                                              | **Gana Propia**                       |
-| **Complejidad de Código**             | **~230 LOC** para el motor de orquestación, tipado estricto y manejo de fallos.                                                                                              | ~180 LOC de adaptador + configuración en consola externa ajena al git repo.                                                           | **Gana Propia**                       |
-| **Privacidad y Soberanía Financiera** | **Aislamiento absoluto**. Datos de cuentas, transacciones y facturas nunca viajan a terceros intermediarios; residen en la BD y sólo se envían las cifras necesarias al LLM. | **Riesgo de fuga / Tercero de confianza**. El control plane SaaS intermedia prompts, tool results y contexto financiero confidencial. | **Gana Propia (Crítico en Finanzas)** |
-| **Coste Económico Directo**           | **Cero coste fijo**. Solo consumo directo de tokens de la API del modelo (\$0.00018 a \$0.00027 USD/turno).                                                                  | **Coste fijo elevado**: Licencia/asiento SaaS (\$200 - \$1,000/mes) + markup por invocación o sobrecoste de tokens.                   | **Gana Propia**                       |
-| **Latencia y Overhead de Red**        | **Minimizado**: Herramientas se resuelven internamente (in-memory / Redis RPC). Cero saltos HTTP externos intermedios.                                                       | **Doble salto WAN**: App $\to$ Astropods Cloud $\to$ Webhook a MyBusiness $\to$ Astropods Cloud $\to$ LLM $\to$ App.                  | **Gana Propia**                       |
-| **Observabilidad**                    | Integración nativa con OpenTelemetry (`agent.turn`, `agent.tool_call`, `agent.llm_call`) correlacionando `tenant_id` y `trace_id` (#77).                                     | Requiere exportar trazas desde su dashboard o integrar un conector propietario de telemetría.                                         | **Gana Propia**                       |
-| **Alineación con Estándares**         | Compatible 100% con **Model Context Protocol (MCP)** mediante contratos TypeScript puros.                                                                                    | Modelo propietario de conectores o soporte parcial de MCP dependiente de su roadmap.                                                  | **Gana Propia**                       |
+| Dimensión                             | Orquestación Propia (`agent-service`)                                                                                                                                        | Astropods (Control Plane SaaS)                                                                                                                                                                               | Veredicto                             |
+| :------------------------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------ |
+| **Dependencias en Producción**        | **0 paquetes nuevos**. Usa NestJS, TypeScript y Fetch/RxJS estándar del monorepo.                                                                                            | Requiere SDK propietario o agente sidecar en contenedor.                                                                                                                                                     | **Gana Propia**                       |
+| **Complejidad de Código**             | **~230 LOC** para el motor de orquestación, tipado estricto y manejo de fallos.                                                                                              | ~180 LOC de adaptador + configuración en consola externa ajena al git repo.                                                                                                                                  | **Gana Propia**                       |
+| **Privacidad y Soberanía Financiera** | **Aislamiento absoluto**. Datos de cuentas, transacciones y facturas nunca viajan a terceros intermediarios; residen en la BD y sólo se envían las cifras necesarias al LLM. | **Riesgo de fuga / Tercero de confianza**. El control plane SaaS intermedia prompts, tool results y contexto financiero confidencial.                                                                        | **Gana Propia (Crítico en Finanzas)** |
+| **Coste Económico Directo**           | **Cero coste fijo**. Solo consumo directo de tokens de la API del modelo (\$0.00018 a \$0.00027 USD/turno).                                                                  | **Coste fijo elevado (estimación no verificada)**: se estima una licencia/asiento SaaS de \$200 - \$1,000/mes (estimación, sin fuente pública verificada a 2026-11-03) más un posible markup por invocación. | **Gana Propia**                       |
+| **Latencia y Overhead de Red**        | **Minimizado**: Herramientas se resuelven internamente (in-memory / Redis RPC). Cero saltos HTTP externos intermedios.                                                       | **Doble salto WAN**: App $\to$ Astropods Cloud $\to$ Webhook a MyBusiness $\to$ Astropods Cloud $\to$ LLM $\to$ App.                                                                                         | **Gana Propia**                       |
+| **Observabilidad**                    | Integración nativa con OpenTelemetry (`agent.turn`, `agent.tool_call`, `agent.llm_call`) correlacionando `tenant_id` y `trace_id` (#77).                                     | Requiere exportar trazas desde su dashboard o integrar un conector propietario de telemetría.                                                                                                                | **Gana Propia**                       |
+| **Alineación con Estándares**         | Compatible 100% con **Model Context Protocol (MCP)** mediante contratos TypeScript puros.                                                                                    | Modelo propietario de conectores o soporte parcial de MCP dependiente de su roadmap.                                                                                                                         | **Gana Propia**                       |
 
 ---
 
 ## 6. Interfaz Estable de Herramientas (Tool Interface)
 
-Para garantizar la independencia absoluta entre el motor de orquestación y las herramientas financieras, se fija el siguiente contrato inmutable:
+El contrato canónico es el **MCP ya implementado** en `packages/contracts/src/mcp/mcp.dto.ts` (`McpToolDescriptor` / `McpCallToolResult`) y servido por el servidor MCP interno (#74). El orquestador (#72) no reimplementa herramientas: deriva su vista interna a partir de los descriptores MCP.
 
 ```ts
+import type { McpCallToolResult, McpToolDescriptor } from '@mybusiness/contracts';
+
 export interface ToolContext {
   tenantId: string;
   userId: string;
@@ -107,7 +112,8 @@ export interface ToolContext {
 }
 
 export interface ToolError {
-  code: string;
+  code:
+    'TOOL_INVALID_INPUT' | 'TOOL_FORBIDDEN' | 'TOOL_TIMEOUT' | 'TOOL_UNAVAILABLE' | 'RATE_LIMITED';
   message: string;
   retryable: boolean;
 }
@@ -116,10 +122,13 @@ export interface ToolResult<T = unknown> {
   success: boolean;
   data?: T;
   error?: ToolError;
+  /** Añadido por el orquestador: latencia medida de la llamada MCP. */
   executionTimeMs: number;
+  /** Añadido por el orquestador: `tool` + `schemaVersion` + ids de fila. */
   citation: string;
 }
 
+/** Vista interna derivada de `McpToolDescriptor` (inputSchema → parameters, version → schemaVersion). */
 export interface ToolDefinition {
   name: string;
   description: string;
@@ -129,13 +138,38 @@ export interface ToolDefinition {
     required?: string[];
     additionalProperties?: boolean;
   };
+  schemaVersion: string;
   timeoutMs: number;
   auditAction: string;
   execute: (args: Record<string, unknown>, ctx: ToolContext) => Promise<ToolResult>;
 }
+
+export function toToolDefinition(descriptor: McpToolDescriptor, timeoutMs: number): ToolDefinition {
+  return {
+    name: descriptor.name,
+    description: descriptor.description,
+    parameters: descriptor.inputSchema as ToolDefinition['parameters'],
+    schemaVersion: descriptor.version,
+    timeoutMs,
+    auditAction: 'mcp.tool.invoked',
+    execute: async (args, ctx) => {
+      const startedAt = Date.now();
+      const result = await callMcpTool(descriptor.name, args, ctx);
+      return toToolResult(result, Date.now() - startedAt, buildCitation(result));
+    },
+  };
+}
+
+export function toToolResult<T>(
+  result: McpCallToolResult<T>,
+  executionTimeMs: number,
+  citation: string,
+): ToolResult<T> {
+  return { success: true, data: result.data, executionTimeMs, citation };
+}
 ```
 
-Esta interfaz es la que implementará el **servidor MCP interno (#74)** y consumirá el **asistente determinista (#72)**. Si en el futuro se evaluara cualquier otro orquestador, las herramientas no requerirán modificación alguna.
+Si en el futuro se evaluara cualquier otro orquestador, bastará un adaptador sobre el contrato MCP: ni el servidor MCP (#74) ni las herramientas de dominio requerirán modificación.
 
 ---
 
@@ -153,6 +187,6 @@ La decisión de utilizar orquestación propia es **altamente reversible**:
 
 ## 8. Conclusión
 
-Con base en la evidencia empírica del prototipo (35/35 ejecuciones exitosas, cero crashes, latencia y costes mínimos) y las restricciones normativas de seguridad financiera multi-tenant (ADR-003, ADR-005), se concluye:
+Con base en la evidencia empírica del prototipo (35/35 ejecuciones exitosas en A y B, 35/35 degradaciones seguras en C, cero crashes, latencia y costes mínimos) y las restricciones normativas de seguridad financiera multi-tenant (ADR-003, ADR-005), se concluye:
 
 **DECISIÓN: DESCARTAR LA ADOPCIÓN DE ASTROPODS PARA LA FASE 3 E IMPLEMENTAR ORQUESTACIÓN PROPIA EN `agent-service`.**

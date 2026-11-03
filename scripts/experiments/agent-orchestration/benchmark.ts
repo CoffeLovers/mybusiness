@@ -1,6 +1,6 @@
 /**
  * Benchmark determinista de orquestación de agentes (SF3-01).
- * Ejecuta 30 repeticiones por cada uno de los 3 escenarios y calcula:
+ * Ejecuta 35 repeticiones por cada uno de los 3 escenarios y calcula:
  * - Latencias p50, p90, p95, avg, min, max
  * - Consumo de tokens (prompt / completion) y coste estimado USD
  * - Tasa de éxito, degradación y observabilidad (spans)
