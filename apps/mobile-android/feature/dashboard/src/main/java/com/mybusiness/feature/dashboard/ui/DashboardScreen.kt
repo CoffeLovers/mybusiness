@@ -56,6 +56,7 @@ import com.mybusiness.core.model.TransactionType
 @Composable
 fun DashboardScreen(
     onLogoutSuccess: () -> Unit,
+    onOpenBanking: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
@@ -72,6 +73,12 @@ fun DashboardScreen(
             MyBusinessTopAppBar(
                 title = "MyBusiness",
                 actions = {
+                    IconButton(onClick = onOpenBanking) {
+                        Icon(
+                            imageVector = Icons.Default.AccountBalance,
+                            contentDescription = "Cuentas bancarias"
+                        )
+                    }
                     IconButton(onClick = { viewModel.loadDashboard() }) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
