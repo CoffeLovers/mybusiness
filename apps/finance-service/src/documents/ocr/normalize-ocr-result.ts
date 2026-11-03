@@ -164,6 +164,7 @@ export function normalizeOcrExtraction(raw: Record<string, unknown>): OcrExtract
     issueDate: normalizeDate(fieldValue(source, 'date')),
     currency: normalizeCurrency(fieldValue(source, 'currency')),
     totalMinor: parseDecimalToMinor(fieldValue(source, 'total_amount')),
+    invoiceNumber: toText(fieldValue(source, 'invoice_number')),
     lineItems: normalizeLineItems(source.line_items),
     confidence: normalizeConfidence(fieldValue(source, 'confidence')),
     raw: source,

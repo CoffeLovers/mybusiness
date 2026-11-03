@@ -62,6 +62,30 @@ export const documentStatusEnum = pgEnum('document_status', [
 ]);
 
 /**
+ * Estados de coincidencia de conciliación bancaria.
+ */
+export const reconciliationMatchStatusEnum = pgEnum('reconciliation_match_status', [
+  'AUTO_MATCHED',
+  'NEEDS_REVIEW',
+  'MANUAL_MATCHED',
+  'REJECTED',
+]);
+
+/**
+ * Estados de ejecución del motor de conciliación.
+ */
+export const reconciliationRunStatusEnum = pgEnum('reconciliation_run_status', [
+  'RUNNING',
+  'COMPLETED',
+  'FAILED',
+]);
+
+/**
+ * Disparador de la ejecución de conciliación.
+ */
+export const reconciliationTriggerEnum = pgEnum('reconciliation_trigger', ['MANUAL', 'NIGHTLY']);
+
+/**
  * Tabla: bank_connections
  * Conexión unificada a agregadores bancarios (Plaid / Belvo).
  * Almacena credenciales de acceso cifradas (AES-256-GCM) sin exponerlas nunca en claro.
@@ -320,6 +344,7 @@ export const documents = pgTable(
     confidence: numeric('confidence', { precision: 4, scale: 3 }),
     providerName: varchar('provider_name', { length: 255 }),
     taxId: varchar('tax_id', { length: 50 }),
+    invoiceNumber: varchar('invoice_number', { length: 100 }),
     issueDate: date('issue_date'),
     currency: varchar('currency', { length: 3 }),
     totalMinor: bigint('total_minor', { mode: 'bigint' }),
@@ -406,6 +431,93 @@ export const invoices = pgTable(
   ],
 );
 
+/**
+ * Tabla: reconciliation_settings
+ * Configuración del motor de conciliación y del cron nocturno por tenant.
+ */
+export const reconciliationSettings = pgTable('reconciliation_settings', {
+  tenantId: uuid('tenant_id').primaryKey(),
+  dateWindowDays: integer('date_window_days').notNull().default(5),
+  autoMatchThresholdBps: integer('auto_match_threshold_bps').notNull().default(8500),
+  timezone: varchar('timezone', { length: 100 }).notNull().default('America/Bogota'),
+  lookbackDays: integer('lookback_days').notNull().default(30),
+  nightlyEnabled: boolean('nightly_enabled').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
+/**
+ * Tabla: reconciliation_matches
+ * Coincidencias entre movimientos bancarios (bank_transactions) y documentos (documents).
+ */
+export const reconciliationMatches = pgTable(
+  'reconciliation_matches',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    bankTransactionId: uuid('bank_transaction_id')
+      .notNull()
+      .references(() => bankTransactions.id, { onDelete: 'cascade' }),
+    documentId: uuid('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    invoiceId: uuid('invoice_id').references(() => invoices.id, { onDelete: 'set null' }),
+    status: reconciliationMatchStatusEnum('status').notNull().default('NEEDS_REVIEW'),
+    score: numeric('score', { precision: 4, scale: 3 }).notNull(),
+    rule: varchar('rule', { length: 100 }).notNull(),
+    evidence: jsonb('evidence').$type<Record<string, unknown>>().notNull(),
+    matchedBy: uuid('matched_by'),
+    matchedAt: timestamp('matched_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('reconciliation_matches_tenant_tx_doc_uq').on(
+      table.tenantId,
+      table.bankTransactionId,
+      table.documentId,
+    ),
+    uniqueIndex('reconciliation_matches_active_tx_uq')
+      .on(table.tenantId, table.bankTransactionId)
+      .where(sql`status IN ('AUTO_MATCHED', 'MANUAL_MATCHED')`),
+    uniqueIndex('reconciliation_matches_active_doc_uq')
+      .on(table.tenantId, table.documentId)
+      .where(sql`status IN ('AUTO_MATCHED', 'MANUAL_MATCHED')`),
+    index('reconciliation_matches_tenant_status_idx').on(table.tenantId, table.status),
+    index('reconciliation_matches_bank_tx_idx').on(table.bankTransactionId),
+    index('reconciliation_matches_doc_idx').on(table.documentId),
+  ],
+);
+
+/**
+ * Tabla: reconciliation_runs
+ * Registro histórico y auditoría de ejecuciones de conciliación por tenant.
+ */
+export const reconciliationRuns = pgTable(
+  'reconciliation_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    trigger: reconciliationTriggerEnum('trigger').notNull().default('MANUAL'),
+    status: reconciliationRunStatusEnum('status').notNull().default('RUNNING'),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+    processed: integer('processed').notNull().default(0),
+    autoMatched: integer('auto_matched').notNull().default(0),
+    needsReview: integer('needs_review').notNull().default(0),
+    errors: integer('errors').notNull().default(0),
+    errorMessage: text('error_message'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('reconciliation_runs_tenant_idx').on(table.tenantId, table.createdAt)],
+);
+
 export const bankConnectionsRelations = relations(bankConnections, ({ many, one }) => ({
   accounts: many(bankAccounts),
   syncState: one(bankTransactionSyncState, {
@@ -473,6 +585,21 @@ export const invoicesRelations = relations(invoices, ({ one }) => ({
   }),
 }));
 
+export const reconciliationMatchesRelations = relations(reconciliationMatches, ({ one }) => ({
+  bankTransaction: one(bankTransactions, {
+    fields: [reconciliationMatches.bankTransactionId],
+    references: [bankTransactions.id],
+  }),
+  document: one(documents, {
+    fields: [reconciliationMatches.documentId],
+    references: [documents.id],
+  }),
+  invoice: one(invoices, {
+    fields: [reconciliationMatches.invoiceId],
+    references: [invoices.id],
+  }),
+}));
+
 export type BankConnection = typeof bankConnections.$inferSelect;
 export type NewBankConnection = typeof bankConnections.$inferInsert;
 export type BankAccount = typeof bankAccounts.$inferSelect;
@@ -489,3 +616,9 @@ export type Invoice = typeof invoices.$inferSelect;
 export type NewInvoice = typeof invoices.$inferInsert;
 export type Document = typeof documents.$inferSelect;
 export type NewDocument = typeof documents.$inferInsert;
+export type ReconciliationSettings = typeof reconciliationSettings.$inferSelect;
+export type NewReconciliationSettings = typeof reconciliationSettings.$inferInsert;
+export type ReconciliationMatch = typeof reconciliationMatches.$inferSelect;
+export type NewReconciliationMatch = typeof reconciliationMatches.$inferInsert;
+export type ReconciliationRun = typeof reconciliationRuns.$inferSelect;
+export type NewReconciliationRun = typeof reconciliationRuns.$inferInsert;

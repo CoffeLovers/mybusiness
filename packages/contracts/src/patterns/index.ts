@@ -47,3 +47,4 @@ export const FinanceEvents = {
 export * from './banking.patterns';
 export * from './cashflow.patterns';
 export * from './documents.patterns';
+export * from './reconciliation.patterns';

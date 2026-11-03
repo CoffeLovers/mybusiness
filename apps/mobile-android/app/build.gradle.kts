@@ -56,10 +56,12 @@ dependencies {
     implementation(project(":core:datastore"))
     implementation(project(":core:network"))
     implementation(project(":core:di"))
+    implementation(project(":core:biometric"))
     implementation(project(":core:navigation"))
 
     implementation(project(":feature:auth"))
     implementation(project(":feature:dashboard"))
+    implementation(project(":feature:banking"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

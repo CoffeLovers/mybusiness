@@ -111,6 +111,7 @@ describe('normalizeOcrExtraction', () => {
           total_amount: '121.00',
         },
       ],
+      invoice_number: { value: 'FAC-2026-99' },
     });
 
     expect(extraction.providerName).toBe('ACME S.L.');
@@ -118,6 +119,7 @@ describe('normalizeOcrExtraction', () => {
     expect(extraction.issueDate).toBe('2026-10-01');
     expect(extraction.currency).toBe('EUR');
     expect(extraction.totalMinor).toBe('12100');
+    expect(extraction.invoiceNumber).toBe('FAC-2026-99');
     expect(extraction.confidence).toBe(0.95);
     expect(extraction.lineItems).toEqual([
       {
@@ -138,6 +140,7 @@ describe('normalizeOcrExtraction', () => {
     expect(extraction.issueDate).toBeNull();
     expect(extraction.currency).toBeNull();
     expect(extraction.totalMinor).toBeNull();
+    expect(extraction.invoiceNumber).toBeNull();
     expect(extraction.confidence).toBeNull();
     expect(extraction.lineItems).toEqual([]);
   });
@@ -159,6 +162,7 @@ describe('StubOcrProvider', () => {
       issueDate: '2026-10-01',
       currency: 'EUR',
       totalMinor: '121000',
+      invoiceNumber: 'FAC-DEMO-0001',
       lineItems: [
         {
           description: 'Consultoría',

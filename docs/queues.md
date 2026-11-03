@@ -6,14 +6,25 @@
 
 Redis Pub/Sub (transporte RPC/eventos) es _at-most-once_: si el consumidor está caído, el evento se pierde. BullMQ añade persistencia, reintentos con backoff, concurrencia y DLQ sobre el mismo Redis autenticado (ADR-002).
 
-## Colas
+## Colas y Workers Registrados
 
-| Cola             | Uso previsto                              | DLQ                  |
-| ---------------- | ----------------------------------------- | -------------------- |
-| `banking-sync`   | Sincronización incremental de agregadores | `banking-sync-dlq`   |
-| `ocr`            | Extracción de datos de facturas           | `ocr-dlq`            |
-| `reconciliation` | Conciliación bancaria                     | `reconciliation-dlq` |
-| `notifications`  | Envío de notificaciones                   | `notifications-dlq`  |
+| Cola             | Worker / Servicio                                  | Uso previsto                              | DLQ                  |
+| ---------------- | -------------------------------------------------- | ----------------------------------------- | -------------------- |
+| `banking-sync`   | `BankingWorker` (`finance-service`)                | Sincronización incremental de agregadores | `banking-sync-dlq`   |
+| `ocr`            | `OcrWorker` (`finance-service`)                    | Extracción de datos de facturas           | `ocr-dlq`            |
+| `reconciliation` | `ReconciliationWorker` (`finance-service`, SF2-11) | Sincronización previa y conciliación      | `reconciliation-dlq` |
+| `notifications`  | `notifications-service`                            | Envío de notificaciones                   | `notifications-dlq`  |
+
+### Worker de Conciliación (`reconciliation`)
+
+Registrado en `apps/finance-service/src/reconciliation/reconciliation.worker.ts`:
+
+- **Disparadores**: Cron nocturno a las 02:00 AM (`0 2 * * *` en la zona horaria del tenant, programado con `upsertJobScheduler`) o manual (`ReconciliationTrigger.MANUAL` / `NIGHTLY`).
+- **Flujo de ejecución**:
+  1. Identifica conexiones bancarias activas del tenant.
+  2. Ejecuta `BankingService.internalSyncConnection` para recuperar movimientos faltantes y actualizar `lastSyncedAt`.
+  3. Tolera fallos parciales por conexión (registra advertencias/errores y continúa con las demás). Si hubo fallos, relanza al final para que BullMQ reintente con backoff exponencial.
+  4. Ejecuta `runForTenant` de forma idempotente (lotes configurables vía `RECONCILIATION_BATCH_SIZE`).
 
 ## Contrato
 

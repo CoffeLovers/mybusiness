@@ -56,6 +56,7 @@ export interface DocumentResponse {
   currency: string | null;
   totalMinor: string | null;
   confidence: number | null;
+  invoiceNumber: string | null;
   requiresReview: boolean;
   createdAt: string;
   updatedAt: string;

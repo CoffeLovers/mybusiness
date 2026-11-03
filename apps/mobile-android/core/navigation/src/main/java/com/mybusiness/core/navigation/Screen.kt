@@ -12,4 +12,7 @@ sealed interface Screen {
 
     @Serializable
     data object Dashboard : Screen
+
+    @Serializable
+    data object Banking : Screen
 }
