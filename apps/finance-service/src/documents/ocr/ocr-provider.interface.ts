@@ -12,6 +12,7 @@ export interface OcrExtraction {
   issueDate: string | null;
   currency: string | null;
   totalMinor: string | null;
+  invoiceNumber: string | null;
   lineItems: OcrLineItem[];
   /** 0..1; el proveedor puede no informarlo (null). */
   confidence: number | null;

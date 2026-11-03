@@ -13,6 +13,7 @@ import { FinanceRepository } from './finance.repository';
 import { FinanceService } from './finance.service';
 import { BankingModule } from './banking/banking.module';
 import { DocumentsModule } from './documents/documents.module';
+import { ReconciliationModule } from './reconciliation/reconciliation.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { DocumentsModule } from './documents/documents.module';
     EventsModule,
     BankingModule,
     DocumentsModule,
+    ReconciliationModule,
   ],
   controllers: [FinanceController],
   providers: [
