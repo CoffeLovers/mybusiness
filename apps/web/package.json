@@ -14,12 +14,16 @@
     "test:install": "playwright install --with-deps chromium"
   },
   "dependencies": {
+    "@mybusiness/contracts": "workspace:*",
+    "echarts": "^6.1.0",
+    "echarts-for-react": "^3.0.6",
     "next": "^15.5.4",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "server-only": "^0.0.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@eslint/eslintrc": "^3.3.1",
     "@playwright/test": "^1.55.0",
     "@tailwindcss/postcss": "^4.1.13",

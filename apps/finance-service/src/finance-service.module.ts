@@ -12,6 +12,7 @@ import { FinanceController } from './finance.controller';
 import { FinanceRepository } from './finance.repository';
 import { FinanceService } from './finance.service';
 import { BankingModule } from './banking/banking.module';
+import { CashflowModule } from './cashflow/cashflow.module';
 import { DocumentsModule } from './documents/documents.module';
 
 @Module({
@@ -23,6 +24,7 @@ import { DocumentsModule } from './documents/documents.module';
     FinanceDatabaseModule,
     EventsModule,
     BankingModule,
+    CashflowModule,
     DocumentsModule,
   ],
   controllers: [FinanceController],
