@@ -15,6 +15,13 @@
       "when": 1793500000000,
       "tag": "0001_add_document_context_type",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793736246664,
+      "tag": "0002_aspiring_doctor_octopus",
+      "breakpoints": true
     }
   ]
 }
