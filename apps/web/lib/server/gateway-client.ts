@@ -20,7 +20,7 @@ export class GatewayError extends Error {
 }
 
 export interface GatewayRequestInit {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
   accessToken?: string;
   cookie?: string;
@@ -30,6 +30,13 @@ export interface GatewayRequestInit {
 export interface GatewayResponse<T> {
   data: T;
   setCookie: string[];
+}
+
+/** Respuesta no-JSON (exportaciones CSV) con sus cabeceras de entrega. */
+export interface GatewayTextResponse {
+  body: string;
+  contentType: string | null;
+  contentDisposition: string | null;
 }
 
 /** Extrae un código de error estable del cuerpo de una respuesta fallida. */
@@ -44,18 +51,8 @@ function readErrorCode(payload: unknown): string {
   return typeof candidate === 'string' && candidate.length > 0 ? candidate : 'gateway_error';
 }
 
-/**
- * Ejecuta una petición al gateway y devuelve el JSON tipado junto con las
- * cabeceras `set-cookie` que haya emitido (necesarias para rotar el refresh
- * token, que nunca sale del servidor).
- *
- * @throws GatewayError si la respuesta no es satisfactoria.
- */
-export async function gatewayFetchWithHeaders<T>(
-  path: string,
-  init?: GatewayRequestInit,
-): Promise<GatewayResponse<T>> {
-  const { gatewayUrl } = getServerEnv();
+/** Construye las cabeceras salientes a partir de `init`. */
+function buildHeaders(init?: GatewayRequestInit): Record<string, string> {
   const headers: Record<string, string> = {};
 
   if (init?.body !== undefined) {
@@ -70,9 +67,25 @@ export async function gatewayFetchWithHeaders<T>(
     headers['cookie'] = init.cookie;
   }
 
+  return headers;
+}
+
+/**
+ * Ejecuta una petición al gateway y devuelve el JSON tipado junto con las
+ * cabeceras `set-cookie` que haya emitido (necesarias para rotar el refresh
+ * token, que nunca sale del servidor).
+ *
+ * @throws GatewayError si la respuesta no es satisfactoria.
+ */
+export async function gatewayFetchWithHeaders<T>(
+  path: string,
+  init?: GatewayRequestInit,
+): Promise<GatewayResponse<T>> {
+  const { gatewayUrl } = getServerEnv();
+
   const response = await fetch(`${gatewayUrl}${path}`, {
     method: init?.method ?? 'GET',
-    headers,
+    headers: buildHeaders(init),
     body: init?.body === undefined ? undefined : JSON.stringify(init.body),
     signal: AbortSignal.timeout(TIMEOUT_MS),
     cache: 'no-store',
@@ -108,4 +121,47 @@ export async function gatewayFetch<T>(path: string, init?: GatewayRequestInit): 
   const { data } = await gatewayFetchWithHeaders<T>(path, init);
 
   return data;
+}
+
+/**
+ * Ejecuta una petición al gateway que devuelve texto (CSV) sin intentar
+ * parsearlo como JSON.
+ *
+ * Devuelve el cuerpo junto con las cabeceras de entrega para que el BFF pueda
+ * reenviarlas tal cual. En caso de error nunca se propaga el cuerpo del
+ * gateway: sólo un `GatewayError` con código estable.
+ *
+ * @throws GatewayError si la respuesta no es satisfactoria.
+ */
+export async function gatewayFetchText(
+  path: string,
+  init?: GatewayRequestInit,
+): Promise<GatewayTextResponse> {
+  const { gatewayUrl } = getServerEnv();
+
+  const response = await fetch(`${gatewayUrl}${path}`, {
+    method: init?.method ?? 'GET',
+    headers: buildHeaders(init),
+    body: init?.body === undefined ? undefined : JSON.stringify(init.body),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    let code = 'gateway_error';
+
+    try {
+      code = readErrorCode(await response.json());
+    } catch {
+      code = 'gateway_error';
+    }
+
+    throw new GatewayError(response.status, code);
+  }
+
+  return {
+    body: await response.text(),
+    contentType: response.headers.get('content-type'),
+    contentDisposition: response.headers.get('content-disposition'),
+  };
 }
