@@ -164,11 +164,12 @@ pnpm --filter @mybusiness/agent-service db:migrate
 
 ### Contexto
 
-El modelo no puede tocar la base de datos ni el gateway directamente. El servidor MCP interno es la única vía: expone herramientas acotadas, valida esquemas y deja rastro de cada invocación. Se apoya en el libro mayor y la conciliación de #51.
+El modelo no puede tocar la base de datos ni el gateway directamente. El servidor MCP interno es la única vía: expone herramientas acotadas, valida esquemas y deja rastro de cada invocación. Se apoya en el libro mayor y la conciliación de #51. Las herramientas de este sprint son de solo lectura; cualquier herramienta de escritura llegará con PayPal y el flujo de aprobación humana (HITL).
 
 ### Alcance
 
-- Endpoint MCP (JSON-RPC sobre stdio o HTTP, según ADR-008) con tres herramientas: `get_cashflow_summary`, `list_unreconciled_transactions`, `create_payment_link`.
+- Endpoint MCP (JSON-RPC sobre stdio o HTTP, según ADR-008) con dos herramientas: `get_cashflow_summary`, `list_unreconciled_transactions`.
+- `create_payment_link` se implementa en SF3-08, cuando exista la orden PayPal; hasta entonces el servidor no anuncia esa capacidad.
 - Validación de esquema de entrada y salida con Zod de `packages/contracts`; rechazo de campos desconocidos.
 - `tenantId` y `userId` inyectados desde el contexto firmado, nunca desde el payload del modelo.
 - Auditoría por invocación con `mcp.tool.invoked` (herramienta, argumentos minimizados, resultado, latencia).
@@ -178,15 +179,15 @@ El modelo no puede tocar la base de datos ni el gateway directamente. El servido
 
 ### Fuera de alcance
 
-- Herramientas de escritura distintas de `create_payment_link`.
+- Herramientas de escritura en general: este sprint solo expone lectura.
+- Herramienta `create_payment_link` (SF3-08).
 - Exposición del servidor MCP fuera de la red interna.
 - Orquestación del modelo (SF3-02).
 
 ### Criterios de aceptación
 
-- [ ] Las tres herramientas responden con datos reales del tenant y con esquema validado.
+- [ ] Las dos herramientas responden con datos reales del tenant y esquema validado.
 - [ ] Una entrada con campos extra o tipos incorrectos devuelve `TOOL_INVALID_INPUT` sin ejecutar la consulta.
-- [ ] `create_payment_link` no crea nada sin contexto de usuario autorizado (403 tipado).
 - [ ] Cada invocación, exitosa o fallida, genera exactamente un evento `mcp.tool.invoked`.
 - [ ] Un tenant no puede invocar herramientas sobre datos de otro, ni forzando argumentos.
 - [ ] La versión del esquema aparece en la respuesta de capacidades del servidor.
@@ -338,7 +339,7 @@ pnpm exec prettier --check docs/observability.md
 ## SF3-08 — [PayPal] Órdenes y enlaces de cobro
 
 **Labels:** `phase-3`, `sprint-6`, `backend`, `security`, `paypal`
-**Owner:** Backend 1 · **SP:** 8 · **Depende de:** #51
+**Owner:** Backend 1 · **SP:** 8 · **Depende de:** #51, SF3-04
 
 ### Contexto
 
@@ -351,6 +352,7 @@ El cobro empieza por una orden de PayPal asociada a una factura del libro mayor.
 - Idempotencia por clave de idempotencia del cliente, con persistencia de la respuesta original.
 - Persistencia de la orden y sus estados (`CREATED`, `APPROVED`, `CAPTURED`, `FAILED`, `REFUNDED`).
 - Devolución del enlace de checkout de PayPal.
+- Herramienta MCP `create_payment_link` (misma validación estricta, contexto firmado, auditoría `mcp.tool.invoked` y rate limit que SF3-04), que crea una orden PayPal y devuelve el link de checkout.
 - RBAC: sólo roles con permiso de cobro crean órdenes; aislamiento por tenant.
 - Tests con cliente PayPal stubbeado y casos de error del proveedor.
 
@@ -369,6 +371,7 @@ El cobro empieza por una orden de PayPal asociada a una factura del libro mayor.
 - [ ] La orden de un tenant no es visible ni utilizable desde otro.
 - [ ] Un error de PayPal devuelve código estable sin filtrar credenciales.
 - [ ] Cada creación genera auditoría con factura, importe y actor.
+- [ ] La herramienta MCP `create_payment_link` crea una orden idempotente y exige contexto autorizado; queda cubierta por contract tests y auditoría.
 
 ### Validación
 
