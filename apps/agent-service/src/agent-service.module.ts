@@ -11,6 +11,7 @@ import { AgentService } from './agent.service';
 import { AgentRepository } from './agent.repository';
 import { AgentDatabaseService } from './database/database.service';
 import { EmbeddingModule } from './embeddings';
+import { McpModule } from './mcp/mcp.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { EmbeddingModule } from './embeddings';
       envFilePath: getRootEnvFilePaths(),
     }),
     EmbeddingModule,
+    McpModule,
   ],
   controllers: [AgentController],
   providers: [

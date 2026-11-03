@@ -64,30 +64,30 @@ Materialización en GitHub: el equipo real son dos cuentas (`farid15berrio10-a11
 
 **Objetivo:** que el asistente responda con cifras del backend a través de herramientas MCP auditadas, con el gasto de tokens acotado por tenant y trazas visibles de extremo a extremo.
 
-| ID     | Issue                                                  | Owner      | SP  | Depende de     | Entregable verificable                                                            |
-| ------ | ------------------------------------------------------ | ---------- | --- | -------------- | --------------------------------------------------------------------------------- |
-| SF3-01 | Evaluación de Astropods y ADR de orquestación          | Backend 2  | 3   | —              | ADR-007 con decisión, escenarios comparados y criterio de reversibilidad.         |
-| SF3-02 | Asistente conversacional determinista sin streaming    | Backend 2  | 8   | SF3-01, SF3-04 | `agent.chat` responde citando herramientas y sin aritmética en el LLM.            |
-| SF3-03 | Gobernanza de tokens: presupuesto, caché y degradación | Backend 1  | 8   | —              | Un tenant que agota presupuesto recibe respuesta degradada y evento de auditoría. |
-| SF3-04 | Servidor MCP interno con herramientas auditadas        | Backend 1  | 8   | #51            | Tres herramientas invocables con esquema validado y auditoría por invocación.     |
-| SF3-05 | Panel de agente con chat, citas y presupuesto          | Frontend 2 | 8   | SF3-02         | `/agente` conversa con citas, muestra presupuesto y estados de error.             |
-| SF3-06 | Set dorado de cifras y contract tests MCP              | Backend 1  | 4   | SF3-02, SF3-04 | 30 preguntas con cifras esperadas al 100 % en CI y contratos MCP verificados.     |
-| SF3-07 | OpenTelemetry de extremo a extremo                     | Frontend 1 | 5   | —              | Una petición web aparece como traza única con `tenantId` y canal en Jaeger/Tempo. |
+| ID     | Issue                                                  | Owner      | SP  | Depende de     | Entregable verificable                                                                      |
+| ------ | ------------------------------------------------------ | ---------- | --- | -------------- | ------------------------------------------------------------------------------------------- |
+| SF3-01 | Evaluación de Astropods y ADR de orquestación          | Backend 2  | 3   | —              | ADR-007 con decisión, escenarios comparados y criterio de reversibilidad.                   |
+| SF3-02 | Asistente conversacional determinista sin streaming    | Backend 2  | 8   | SF3-01, SF3-04 | `agent.chat` responde citando herramientas y sin aritmética en el LLM.                      |
+| SF3-03 | Gobernanza de tokens: presupuesto, caché y degradación | Backend 1  | 8   | —              | Un tenant que agota presupuesto recibe respuesta degradada y evento de auditoría.           |
+| SF3-04 | Servidor MCP interno con herramientas auditadas        | Backend 1  | 8   | #51            | Dos herramientas de solo lectura invocables con esquema validado y auditoría por invocación |
+| SF3-05 | Panel de agente con chat, citas y presupuesto          | Frontend 2 | 8   | SF3-02         | `/agente` conversa con citas, muestra presupuesto y estados de error.                       |
+| SF3-06 | Set dorado de cifras y contract tests MCP              | Backend 1  | 4   | SF3-02, SF3-04 | 30 preguntas con cifras esperadas al 100 % en CI y contratos MCP verificados.               |
+| SF3-07 | OpenTelemetry de extremo a extremo                     | Frontend 1 | 5   | —              | Una petición web aparece como traza única con `tenantId` y canal en Jaeger/Tempo.           |
 
 **Demo del Sprint 5:** preguntar «¿cuál es mi flujo de caja de octubre?» en `/agente`, comprobar que la cifra coincide con `get_cashflow_summary` y con el SQL del set dorado, forzar el agotamiento del presupuesto de un tenant de prueba y ver la traza completa en Jaeger/Tempo con `tenantId`, `traceId` y canal.
 
 ## 6. Sprint 6 — Cobros y observabilidad
 
-**Objetivo:** cobrar por PayPal en sandbox con aprobación humana explícita y medir coste y latencia del asistente con dashboards operables.
+**Objetivo:** cobrar por PayPal en sandbox con aprobación humana explícita y medir coste y latencia del asistente con dashboards operables. La tercera herramienta MCP (`create_payment_link`) llega con PayPal, una vez existe la orden de cobro.
 
-| ID     | Issue                                               | Owner      | SP  | Depende de     | Entregable verificable                                                           |
-| ------ | --------------------------------------------------- | ---------- | --- | -------------- | -------------------------------------------------------------------------------- |
-| SF3-08 | Órdenes y enlaces de cobro PayPal                   | Backend 1  | 8   | #51            | `POST /payments/paypal/orders` devuelve link de checkout idempotente.            |
-| SF3-09 | Capturas, reembolsos y webhooks firmados            | Backend 1  | 8   | SF3-08         | Captura y reembolso concilian con la factura; webhook duplicado no reprocesa.    |
-| SF3-10 | Cobros PayPal en el portal con aprobación humana    | Frontend 1 | 8   | SF3-09         | Link creado desde factura, captura y reembolso con reautenticación explícita.    |
-| SF3-11 | Cobros y aprobación biométrica en Android           | Frontend 2 | 8   | SF3-08, #52    | Captura y reembolso exigen `BiometricPrompt` y el deep link de retorno funciona. |
-| SF3-12 | E2E de agentes, MCP y PayPal + carga conversacional | Backend 2  | 8   | SF3-02, SF3-09 | E2E multi-canal en verde y 50 conversaciones concurrentes dentro de umbral.      |
-| SF3-13 | Dashboards de coste de tokens y latencia            | Frontend 2 | 4   | SF3-03, SF3-07 | Paneles de tokens, coste, caché y p95 de chat con alerta al 80 % de presupuesto. |
+| ID     | Issue                                               | Owner      | SP  | Depende de     | Entregable verificable                                                                |
+| ------ | --------------------------------------------------- | ---------- | --- | -------------- | ------------------------------------------------------------------------------------- |
+| SF3-08 | Órdenes y enlaces de cobro PayPal                   | Backend 1  | 8   | #51            | Orden PayPal + herramienta MCP `create_payment_link` con link de checkout idempotente |
+| SF3-09 | Capturas, reembolsos y webhooks firmados            | Backend 1  | 8   | SF3-08         | Captura y reembolso concilian con la factura; webhook duplicado no reprocesa.         |
+| SF3-10 | Cobros PayPal en el portal con aprobación humana    | Frontend 1 | 8   | SF3-09         | Link creado desde factura, captura y reembolso con reautenticación explícita.         |
+| SF3-11 | Cobros y aprobación biométrica en Android           | Frontend 2 | 8   | SF3-08, #52    | Captura y reembolso exigen `BiometricPrompt` y el deep link de retorno funciona.      |
+| SF3-12 | E2E de agentes, MCP y PayPal + carga conversacional | Backend 2  | 8   | SF3-02, SF3-09 | E2E multi-canal en verde y 50 conversaciones concurrentes dentro de umbral.           |
+| SF3-13 | Dashboards de coste de tokens y latencia            | Frontend 2 | 4   | SF3-03, SF3-07 | Paneles de tokens, coste, caché y p95 de chat con alerta al 80 % de presupuesto.      |
 
 **Demo del Sprint 6:** crear un enlace de cobro desde una factura, pagar en el sandbox de PayPal, comprobar que el webhook firmado concilia la orden con la factura y que un reenvío del mismo evento no la duplica; emitir un reembolso parcial aprobado con biometría en Android y mostrar el dashboard de coste del tenant de demo.
 

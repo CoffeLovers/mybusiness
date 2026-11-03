@@ -11,3 +11,5 @@ export * from './dtos/cashflow.dto';
 export * from './dtos/document.dto';
 export * from './dtos/reconciliation.dto';
 export * from './dtos/ledger.dto';
+export * from './mcp/mcp.dto';
+export * from './mcp/mcp.patterns';
