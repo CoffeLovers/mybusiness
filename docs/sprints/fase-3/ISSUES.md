@@ -2,24 +2,25 @@
 
 > Las issues se crean en GitHub a partir de este documento; **este archivo es la fuente de verdad del alcance**.
 > Convención de ID: `SF3-NN`; el número de GitHub se conserva en la tabla de resumen cuando exista.
+> Epic: **#84** · Issues: **#71–#83**
 
 ## Resumen
 
 | ID     | Título                                                 | Labels                                     | Owner      | SP  | Sprint | GitHub |
 | ------ | ------------------------------------------------------ | ------------------------------------------ | ---------- | --- | ------ | ------ |
-| SF3-01 | Evaluación de Astropods y ADR de orquestación          | `agent`, `documentation`, `backend`        | Backend 2  | 3   | 5      | —      |
-| SF3-02 | Asistente conversacional determinista sin streaming    | `agent`, `backend`                         | Backend 2  | 8   | 5      | —      |
-| SF3-03 | Gobernanza de tokens: presupuesto, caché y degradación | `agent`, `backend`, `security`, `database` | Backend 1  | 8   | 5      | —      |
-| SF3-04 | Servidor MCP interno con herramientas auditadas        | `agent`, `backend`, `security`             | Backend 1  | 8   | 5      | —      |
-| SF3-05 | Panel de agente con chat, citas y presupuesto          | `web`, `frontend`, `agent`                 | Frontend 2 | 8   | 5      | —      |
-| SF3-06 | Set dorado de cifras y contract tests MCP              | `qa`, `agent`                              | Backend 1  | 4   | 5      | —      |
-| SF3-07 | OpenTelemetry de extremo a extremo                     | `devops`, `infrastructure`                 | Frontend 1 | 5   | 5      | —      |
-| SF3-08 | Órdenes y enlaces de cobro PayPal                      | `backend`, `security`, `paypal`            | Backend 1  | 8   | 6      | —      |
-| SF3-09 | Capturas, reembolsos y webhooks firmados               | `backend`, `security`, `paypal`            | Backend 1  | 8   | 6      | —      |
-| SF3-10 | Cobros PayPal en el portal con aprobación humana       | `web`, `frontend`, `paypal`, `security`    | Frontend 1 | 8   | 6      | —      |
-| SF3-11 | Cobros y aprobación biométrica en Android              | `mobile`, `security`, `paypal`             | Frontend 2 | 8   | 6      | —      |
-| SF3-12 | E2E de agentes, MCP y PayPal + carga conversacional    | `qa`, `backend`, `paypal`                  | Backend 2  | 8   | 6      | —      |
-| SF3-13 | Dashboards de coste de tokens y latencia               | `devops`, `observability`                  | Frontend 2 | 4   | 6      | —      |
+| SF3-01 | Evaluación de Astropods y ADR de orquestación          | `agent`, `documentation`, `backend`        | Backend 2  | 3   | 5      | #71    |
+| SF3-02 | Asistente conversacional determinista sin streaming    | `agent`, `backend`                         | Backend 2  | 8   | 5      | #72    |
+| SF3-03 | Gobernanza de tokens: presupuesto, caché y degradación | `agent`, `backend`, `security`, `database` | Backend 1  | 8   | 5      | #73    |
+| SF3-04 | Servidor MCP interno con herramientas auditadas        | `agent`, `backend`, `security`             | Backend 1  | 8   | 5      | #74    |
+| SF3-05 | Panel de agente con chat, citas y presupuesto          | `web`, `frontend`, `agent`                 | Frontend 2 | 8   | 5      | #75    |
+| SF3-06 | Set dorado de cifras y contract tests MCP              | `qa`, `agent`                              | Backend 1  | 4   | 5      | #76    |
+| SF3-07 | OpenTelemetry de extremo a extremo                     | `devops`, `infrastructure`                 | Frontend 1 | 5   | 5      | #77    |
+| SF3-08 | Órdenes y enlaces de cobro PayPal                      | `backend`, `security`, `paypal`            | Backend 1  | 8   | 6      | #78    |
+| SF3-09 | Capturas, reembolsos y webhooks firmados               | `backend`, `security`, `paypal`            | Backend 1  | 8   | 6      | #79    |
+| SF3-10 | Cobros PayPal en el portal con aprobación humana       | `web`, `frontend`, `paypal`, `security`    | Frontend 1 | 8   | 6      | #80    |
+| SF3-11 | Cobros y aprobación biométrica en Android              | `mobile`, `security`, `paypal`             | Frontend 2 | 8   | 6      | #81    |
+| SF3-12 | E2E de agentes, MCP y PayPal + carga conversacional    | `qa`, `backend`, `paypal`                  | Backend 2  | 8   | 6      | #82    |
+| SF3-13 | Dashboards de coste de tokens y latencia               | `devops`, `observability`                  | Frontend 2 | 4   | 6      | #83    |
 
 Todas las issues llevan además los labels `phase-3` y el correspondiente `sprint-5` o `sprint-6`.
 
