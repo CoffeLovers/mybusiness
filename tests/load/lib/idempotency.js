@@ -1,50 +1,85 @@
 /**
- * Generador de claves de idempotencia y payloads deterministas para la prueba de carga.
+ * Generador de claves de idempotencia y payloads deterministas para la prueba de carga del Issue #54.
  */
 
 /**
- * Genera una clave de idempotencia determinista para un tenant y secuencia dados.
- * @param {string} tenantId Identificador del tenant
- * @param {number} seq Número de secuencia secuencial o de iteración
- * @returns {string} Clave de idempotencia única y determinista
+ * Genera una clave de idempotencia única por corrida, VU e iteración.
+ * Formato: `idem-${runId}-tx-${vu.padStart(4,'0')}-${iter.padStart(8,'0')}`
+ *
+ * @param {string} runId Identificador único de la corrida
+ * @param {number|string} vu Identificador o índice del Virtual User (VU)
+ * @param {number|string} iter Número de iteración del VU
+ * @returns {string} Clave de idempotencia única y trazable
  */
-export function generateDeterministicIdempotencyKey(tenantId, seq) {
-  const padded = String(seq).padStart(8, '0');
-  return `idem-${tenantId.slice(0, 8)}-${padded}`;
+export function generateTransactionIdempotencyKey(runId, vu, iter) {
+  const vuStr = String(vu || 0).padStart(4, '0');
+  const iterStr = String(iter || 0).padStart(8, '0');
+  return `idem-${runId}-tx-${vuStr}-${iterStr}`;
 }
 
 /**
- * Genera un payload válido para `POST /api/v1/finance/transactions`.
- * Cada 20 transacciones (~5%) inyecta una clave de idempotencia duplicada
- * para verificar la deduplicación del sistema.
+ * Genera un payload para la ingesta masiva (50.000 transacciones únicas).
  *
- * @param {string} tenantId
+ * @param {string} runId
  * @param {string} bankAccountId
- * @param {number} iteration
- * @returns {{ payload: object, isDuplicate: boolean, idempotencyKey: string }}
+ * @param {string} currency
+ * @param {number|string} vu
+ * @param {number|string} iter
+ * @returns {{ idempotencyKey: string, payload: object }}
  */
-export function generateTransactionPayload(tenantId, bankAccountId, iteration) {
-  // Simulación de duplicados intencionales (cada 20 peticiones, repite la transacción previa)
-  const isDuplicate = iteration > 0 && iteration % 20 === 0;
-  const seq = isDuplicate ? iteration - 1 : iteration;
-  const idempotencyKey = generateDeterministicIdempotencyKey(tenantId, seq);
+export function generateTransactionPayload(runId, bankAccountId, currency, vu, iter) {
+  const idempotencyKey = generateTransactionIdempotencyKey(runId, vu, iter);
+  const numIter = Number(iter) || 0;
 
-  const amountMinor = String(1000 + ((iteration * 17) % 500000));
+  const amountMinor = String(1000 + ((numIter * 31 + Number(vu) * 7) % 500000));
   const types = ['INCOME', 'EXPENSE'];
-  const type = types[iteration % 2];
-  const categories = ['Operaciones', 'Ventas', 'Servicios', 'Nómina', 'Marketing', 'Infraestructura'];
-  const category = categories[iteration % categories.length];
+  const type = types[numIter % 2];
+  const categories = [
+    'Operaciones',
+    'Ventas',
+    'Servicios en la nube',
+    'Nómina',
+    'Marketing',
+    'Infraestructura',
+    'Oficina',
+  ];
+  const category = categories[numIter % categories.length];
 
   return {
-    isDuplicate,
     idempotencyKey,
     payload: {
-      bankAccountId: bankAccountId || '00000000-0000-4000-8000-000000000001',
+      bankAccountId,
       amountMinor,
-      currency: 'EUR',
+      currency: currency || 'COP',
       type,
-      description: `Carga transaccional #${iteration} [${idempotencyKey}]`,
+      description: `Ingesta transaccional VU:${vu} Iter:${iter} [${idempotencyKey}]`,
       category,
+      idempotencyKey,
+    },
+  };
+}
+
+/**
+ * Genera el payload para el probe de idempotencia (validación de replay y consistencia).
+ *
+ * @param {string} runId
+ * @param {string} bankAccountId
+ * @param {string} currency
+ * @param {string|number} amountMinor
+ * @returns {{ idempotencyKey: string, payload: object }}
+ */
+export function generateProbePayload(runId, bankAccountId, currency, amountMinor) {
+  const idempotencyKey = `idem-${runId}-probe-0001`;
+
+  return {
+    idempotencyKey,
+    payload: {
+      bankAccountId,
+      amountMinor: String(amountMinor || '12345'),
+      currency: currency || 'COP',
+      type: 'INCOME',
+      description: `Probe de idempotencia pre-carga [${idempotencyKey}]`,
+      category: 'Operaciones',
       idempotencyKey,
     },
   };

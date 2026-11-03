@@ -1,82 +1,129 @@
 import http from 'k6/http';
 
 /**
- * Configuración y preparación del entorno de carga.
+ * Configuración y preparación del entorno de carga real (o mock en modo compatibilidad).
  *
- * @param {string} baseUrl URL base del API Gateway o Mock
- * @param {string} authToken Token de autenticación Bearer
- * @param {string} tenantId Tenant objetivo
- * @returns {object} Contexto de configuración para el escenario k6
+ * @returns {{
+ *   baseUrl: string,
+ *   authToken: string,
+ *   tenantId: string,
+ *   bankAccountId: string,
+ *   currency: string,
+ *   runId: string,
+ *   startedAt: string
+ * }}
  */
-export function setupLoadEnvironment(baseUrl, authToken, tenantId) {
-  const headers = {
+export function setupLoadEnvironment() {
+  const baseUrl = __ENV.BASE_URL || 'http://127.0.0.1:3000';
+  const runId = __ENV.RUN_ID || `load54-${Date.now()}`;
+  const targetCurrency = __ENV.LOAD_CURRENCY || 'COP';
+  const startedAt = new Date().toISOString();
+
+  // 1. Health check del Gateway
+  const healthRes = http.get(`${baseUrl}/api/v1/health`);
+  if (healthRes.status !== 200) {
+    throw new Error(
+      `Health check falló en ${baseUrl}/api/v1/health: HTTP ${healthRes.status} - ${healthRes.body}`,
+    );
+  }
+
+  let authToken = __ENV.AUTH_TOKEN;
+  let tenantId = __ENV.TENANT_ID || '00000000-0000-0000-0000-000000000001';
+
+  // Modo compatibilidad: si se proporciona AUTH_TOKEN explícito, omitir login
+  if (!authToken) {
+    const email = __ENV.SEED_ADMIN_EMAIL;
+    const password = __ENV.SEED_ADMIN_PASSWORD;
+
+    if (!email || !password) {
+      throw new Error(
+        'Faltan variables SEED_ADMIN_EMAIL y/o SEED_ADMIN_PASSWORD para autenticación en stack real',
+      );
+    }
+
+    const loginRes = http.post(
+      `${baseUrl}/api/v1/auth/login`,
+      JSON.stringify({ email, password }),
+      { headers: { 'Content-Type': 'application/json' } },
+    );
+
+    if (loginRes.status !== 200 && loginRes.status !== 201) {
+      throw new Error(
+        `Login falló en ${baseUrl}/api/v1/auth/login: HTTP ${loginRes.status} - ${loginRes.body}`,
+      );
+    }
+
+    const loginBody = loginRes.json();
+    const session = loginBody.data ?? loginBody;
+    authToken = session.accessToken;
+    tenantId = session.user?.tenantId;
+
+    if (!authToken || !tenantId) {
+      throw new Error(`Respuesta de login inválida: ${JSON.stringify(loginBody)}`);
+    }
+  }
+
+  const authHeaders = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${authToken}`,
   };
 
-  const resolvedTenantId = tenantId || '00000000-0000-0000-0000-000000000001';
-  const defaultAccountId = '00000000-0000-4000-8000-000000000001';
-  const defaultConnectionId = '11111111-1111-4111-8111-111111111111';
+  // 2. Resolver o crear cuenta bancaria con la divisa solicitada
+  const accountsRes = http.get(`${baseUrl}/api/v1/finance/accounts`, { headers: authHeaders });
+  if (accountsRes.status !== 200) {
+    throw new Error(
+      `Consulta de cuentas falló: HTTP ${accountsRes.status} - ${accountsRes.body}`,
+    );
+  }
 
-  // 1. Verificar estado del servidor
-  const healthRes = http.get(`${baseUrl}/health`);
-  const isHealthy = healthRes.status === 200 || healthRes.status === 404; // 404 si el health está en otra ruta
+  const accountsBody = accountsRes.json();
+  const accountsList = Array.isArray(accountsBody)
+    ? accountsBody
+    : Array.isArray(accountsBody.data)
+      ? accountsBody.data
+      : [];
 
-  // 2. Consultar conteo inicial de transacciones
-  let initialCount = 0;
-  const countRes = http.get(`${baseUrl}/api/v1/finance/transactions`, { headers });
-  if (countRes.status === 200) {
-    try {
-      const data = JSON.parse(countRes.body);
-      initialCount = data.total ?? (Array.isArray(data) ? data.length : 0);
-    } catch {
-      initialCount = 0;
+  let matchedAccount = accountsList.find(
+    (acc) => acc.currency === targetCurrency && acc.status !== 'INACTIVE',
+  );
+
+  let bankAccountId;
+  let currency;
+
+  if (matchedAccount) {
+    bankAccountId = matchedAccount.id;
+    currency = matchedAccount.currency;
+  } else {
+    const createAccountPayload = JSON.stringify({
+      institutionName: 'Load Test Bank',
+      accountType: 'CHECKING',
+      accountNumberMasked: '******0054',
+      currency: targetCurrency,
+    });
+
+    const createRes = http.post(`${baseUrl}/api/v1/finance/accounts`, createAccountPayload, {
+      headers: authHeaders,
+    });
+
+    if (createRes.status !== 200 && createRes.status !== 201) {
+      throw new Error(
+        `Creación de cuenta bancaria falló: HTTP ${createRes.status} - ${createRes.body}`,
+      );
     }
+
+    const createdBody = createRes.json();
+    const accountData = createdBody.data ?? createdBody;
+    bankAccountId = accountData.id;
+    currency = accountData.currency || targetCurrency;
   }
 
   return {
     baseUrl,
     authToken,
-    tenantId: resolvedTenantId,
-    bankAccountId: defaultAccountId,
-    connectionId: defaultConnectionId,
-    initialCount,
-    isHealthy,
-    startTime: new Date().toISOString(),
-  };
-}
-
-/**
- * Verificación posterior a la ingesta masiva:
- * Compara las transacciones aceptadas únicas contra las persistidas para certificar pérdida = 0.
- *
- * @param {string} baseUrl
- * @param {string} authToken
- * @param {number} initialCount
- * @returns {{ finalCount: number, newlyPersisted: number }}
- */
-export function verifyPersistedCount(baseUrl, authToken, initialCount) {
-  const headers = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${authToken}`,
-  };
-
-  const countRes = http.get(`${baseUrl}/api/v1/finance/transactions`, { headers });
-  let finalCount = 0;
-
-  if (countRes.status === 200) {
-    try {
-      const data = JSON.parse(countRes.body);
-      finalCount = data.total ?? (Array.isArray(data) ? data.length : 0);
-    } catch {
-      finalCount = 0;
-    }
-  }
-
-  const newlyPersisted = Math.max(0, finalCount - (initialCount || 0));
-
-  return {
-    finalCount,
-    newlyPersisted,
+    tenantId,
+    bankAccountId,
+    currency,
+    runId,
+    startedAt,
   };
 }

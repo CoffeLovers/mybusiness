@@ -1,22 +1,32 @@
 name: Load Test (k6)
 
+# Este workflow ejecuta la prueba de carga k6.
+# NOTA DE QA (Issue #54):
+# - La ejecución de carga real (Opción A) requiere el stack completo (gateway, microservicios, Postgres y Redis).
+# - Cualquier ejecución contra el mock gateway es exclusivamente un smoke para validar el arnés k6 y no constituye evidencia de aceptación.
+
 on:
   workflow_dispatch:
     inputs:
+      base_url:
+        description: 'URL base del API Gateway real (ej. http://127.0.0.1:3000 o endpoint de staging)'
+        type: string
+        required: false
+        default: 'http://127.0.0.1:3000'
+      run_id:
+        description: 'Identificador único de la corrida (RUN_ID)'
+        type: string
+        required: false
+        default: ''
       smoke:
-        description: 'Ejecutar en modo SMOKE reducido (10 segundos)'
+        description: 'Modo SMOKE reducido para validar conectividad y arnés (10 segundos)'
         type: boolean
         required: false
         default: false
-      base_url:
-        description: 'URL base del Gateway'
-        type: string
-        required: false
-        default: 'http://127.0.0.1:3200'
 
 jobs:
   load-test:
-    name: Ingesta Masiva 50k Transacciones (k6)
+    name: Ingesta Masiva Transacciones k6 (Stack Real / Staging)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout del repositorio
@@ -41,24 +51,33 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y k6
 
-      - name: Iniciar Mock Gateway en segundo plano
+      - name: Ejecutar probe de idempotencia (pre-carga)
+        env:
+          BASE_URL: ${{ inputs.base_url || 'http://127.0.0.1:3000' }}
+          RUN_ID: ${{ inputs.run_id }}
+          SEED_ADMIN_EMAIL: ${{ secrets.SEED_ADMIN_EMAIL }}
+          SEED_ADMIN_PASSWORD: ${{ secrets.SEED_ADMIN_PASSWORD }}
+          LOAD_CURRENCY: 'COP'
         run: |
-          node apps/web/e2e/mock-gateway.mjs &
-          sleep 3
-          curl -s http://127.0.0.1:3200/health || exit 1
+          k6 run tests/load/idempotency-check.js
 
       - name: Ejecutar prueba de carga k6
         env:
-          BASE_URL: ${{ inputs.base_url || 'http://127.0.0.1:3200' }}
+          BASE_URL: ${{ inputs.base_url || 'http://127.0.0.1:3000' }}
+          RUN_ID: ${{ inputs.run_id }}
           SMOKE: ${{ inputs.smoke }}
-          AUTH_TOKEN: 'access-tenant-a'
+          SEED_ADMIN_EMAIL: ${{ secrets.SEED_ADMIN_EMAIL }}
+          SEED_ADMIN_PASSWORD: ${{ secrets.SEED_ADMIN_PASSWORD }}
+          LOAD_CURRENCY: 'COP'
         run: |
           k6 run tests/load/ingest-50k.js
 
-      - name: Subir artefactos de resumen k6
+      - name: Subir artefactos de resumen k6 y verificación
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: k6-load-test-summary
-          path: tests/load/k6-summary.json
+          name: k6-load-test-artifacts
+          path: |
+            tests/load/k6-summary.json
+            tests/load/verification-54.json
           retention-days: 14

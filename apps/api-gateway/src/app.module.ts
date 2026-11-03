@@ -46,26 +46,34 @@ import { ReconciliationModule } from './reconciliation/reconciliation.module';
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        throttlers: [
-          {
-            name: 'auth',
-            ttl: 60000,
-            limit: 5,
-          },
-          {
-            name: 'api',
-            ttl: 60000,
-            limit: 100,
-          },
-          {
-            name: 'heavy',
-            ttl: 60000,
-            limit: 10,
-          },
-        ],
-        storage: new ThrottlerStorageRedisService(getRedisConfig(config)),
-      }),
+      useFactory: (config: ConfigService) => {
+        const num = (key: string, fallback: number): number => {
+          const raw = config.get<string>(key);
+          const parsed = raw === undefined ? Number.NaN : Number(raw);
+          return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+        };
+
+        return {
+          throttlers: [
+            {
+              name: 'auth',
+              ttl: num('THROTTLE_AUTH_TTL_MS', 60000),
+              limit: num('THROTTLE_AUTH_LIMIT', 5),
+            },
+            {
+              name: 'api',
+              ttl: num('THROTTLE_API_TTL_MS', 60000),
+              limit: num('THROTTLE_API_LIMIT', 100),
+            },
+            {
+              name: 'heavy',
+              ttl: num('THROTTLE_HEAVY_TTL_MS', 60000),
+              limit: num('THROTTLE_HEAVY_LIMIT', 10),
+            },
+          ],
+          storage: new ThrottlerStorageRedisService(getRedisConfig(config)),
+        };
+      },
     }),
     ClientsModule.registerAsync([
       {

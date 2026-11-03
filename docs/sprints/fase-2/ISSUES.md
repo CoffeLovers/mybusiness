@@ -474,14 +474,27 @@ La fase introduce un segundo cliente. La paridad de contratos y el aislamiento p
 - [x] `web-ci` falla si OpenAPI y los tipos del cliente divergen.
 - [x] Los E2E cubren los cinco flujos críticos en verde.
 - [x] El test de aislamiento A/B pasa en todos los endpoints nuevos.
-- [x] La carga de 50.000 transacciones no pierde eventos y mantiene p95 < 5 s en ingesta.
+- [ ] La carga de 50.000 transacciones no pierde eventos y mantiene p95 < 5 s en ingesta. _(Bloqueado en host local por ausencia de Docker daemon; arnés k6 y verificación en Postgres 100% listos. Ver detalle en [docs/qa/load-report-54.md](docs/qa/load-report-54.md))_.
 - [x] El reporte de carga y los artefactos quedan adjuntos.
 
 ### Validación
 
 ```bash
-pnpm test:e2e
-k6 run tests/load/ingest-50k.js
+# 1. Verificación de contratos OpenAPI y modelos Kotlin
+pnpm contracts:check
+pnpm contracts:check:kotlin
+
+# 2. E2E Playwright de los cinco flujos críticos y aislamiento tenant
+pnpm --filter @mybusiness/web test
+
+# 3. Arnés k6 (Smoke test rápido contra mock gateway)
+k6 run -e SMOKE=true -e BASE_URL=http://127.0.0.1:3200 -e AUTH_TOKEN=access-tenant-a tests/load/ingest-50k.js
+
+# 4. Ingesta masiva 54k (30 min) y verificación en Postgres (requiere stack real con Docker)
+# Variables temporales de sesión: JWT_EXPIRES_IN=60m, THROTTLE_API_LIMIT=1000000
+k6 run -e BASE_URL=http://127.0.0.1:3000 -e RUN_ID=$RUN_ID -e SEED_ADMIN_EMAIL=$SEED_ADMIN_EMAIL -e SEED_ADMIN_PASSWORD=$SEED_ADMIN_PASSWORD tests/load/idempotency-check.js
+k6 run -e BASE_URL=http://127.0.0.1:3000 -e RUN_ID=$RUN_ID -e SEED_ADMIN_EMAIL=$SEED_ADMIN_EMAIL -e SEED_ADMIN_PASSWORD=$SEED_ADMIN_PASSWORD tests/load/ingest-50k.js
+node scripts/verify-load-54.mjs --run-id $RUN_ID --email $SEED_ADMIN_EMAIL --db-user $POSTGRES_USER
 ```
 
 ---

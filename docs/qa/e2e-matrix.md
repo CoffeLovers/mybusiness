@@ -23,7 +23,7 @@ Este documento describe la matriz de pruebas End-to-End (E2E) que cubre los **ci
 
 ### Decisión de QA
 
-En estricto cumplimiento con la directriz de **no construir pantallas de producto nuevas en una issue de infraestructura de calidad (QA)**, los flujos sin interfaz web se automatizan de extremo a extremo mediante el cliente de peticiones HTTP de Playwright (`page.request` / `request`) contra el Gateway, interactuando con los endpoints perimetrales reales.
+En estricto cumplimiento con la directriz de **no construir pantallas de producto nuevas en una issue de infraestructura de calidad (QA)**, los flujos sin interfaz web se automatizan de extremo a extremo mediante el cliente de peticiones HTTP de Playwright (`page.request` / `request`) contra el Gateway falso de pruebas (`apps/web/e2e/mock-gateway.mjs`), interactuando contra un mock que replica el contrato perimetral exacto de la API. Los reintentos y repeticiones de peticiones idempotentes devuelven consistentemente código HTTP `201 Created` preservando el mismo `id` y evitando mutaciones no autorizadas.
 
 Inmediatamente después de ejecutar la operación de backend, el test navega a las pantallas de producto existentes (Dashboard y Libro Mayor) y valida visualmente el impacto del cambio:
 

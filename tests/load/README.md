@@ -1,85 +1,129 @@
 # Pruebas de Carga de Ingesta Masiva de Transacciones (Issue #54 - SF2-12)
 
-Escenario de prueba de carga con [k6](https://k6.io/) para verificar la capacidad del sistema de procesar un flujo masivo de **50.000 transacciones en 30 minutos** con aislamiento por tenant, deduplicación por clave de idempotencia y cero pérdida de eventos.
+Escenario de prueba de carga con [k6](https://k6.io/) para verificar la capacidad del sistema de procesar un flujo masivo de **50.000 transacciones en 30 minutos** contra el stack real con aislamiento por tenant, deduplicación por clave de idempotencia y cero pérdida de eventos.
 
-## Métricas y Criterios de Aceptación (SLAs)
-
-| Métrica                | Umbral Exigido                | Propósito                                                                      |
-| :--------------------- | :---------------------------- | :----------------------------------------------------------------------------- |
-| **Volumen**            | 50.000 transacciones          | Ingesta masiva sostenida en 30 minutos (~27.8 req/s)                           |
-| **Latencia p95**       | `< 5.000 ms`                  | La latencia del 95% de las peticiones debe ser inferior a 5 segundos           |
-| **Tasa de Error HTTP** | `< 1%` (`rate < 0.01`)        | Resiliencia y disponibilidad del endpoint ante carga                           |
-| **Pérdida de Eventos** | `0%` (`event_loss_rate == 0`) | Todas las transacciones aceptadas deben ser persistidas/consultables           |
-| **Deduplicación**      | Clave Idempotente             | Claves repetidas (`idempotencyKey`) devuelven 200 sin generar filas duplicadas |
+> [!IMPORTANT]
+> **Distinción entre Stack Real y Mock**:
+>
+> - La aceptación formal de la issue #54 (Opción A) exige ejecutar la prueba de carga contra el **stack real** (`api-gateway`, `auth-service`, `finance-service`, `audit-service`, PostgreSQL y Redis).
+> - La ejecución contra el **mock gateway** (`apps/web/e2e/mock-gateway.mjs`) sirve **exclusivamente como smoke test del arnés k6** en entornos locales/CI sin infraestructura Docker, y **no constituye evidencia de aceptación de SLAs de producción**.
 
 ---
 
-## Prerrequisitos
+## 1. Métricas y Criterios de Aceptación (SLAs)
+
+| Métrica                | Umbral Exigido            | Verificación                                                          |
+| :--------------------- | :------------------------ | :-------------------------------------------------------------------- |
+| **Volumen Aceptado**   | `>= 50.000` transacciones | k6 counter `transactions_accepted >= 50000`                           |
+| **Volumen Persistido** | `>= 50.000` transacciones | PostgreSQL `finance_db.transactions` con `idem-<run>-tx-%`            |
+| **Latencia p95**       | `< 5.000 ms`              | k6 summary `http_req_duration.p(95) < 5000`                           |
+| **Tasa de Error HTTP** | `< 1%` (`rate < 0.01`)    | k6 summary `http_req_failed.rate < 0.01`                              |
+| **Peticiones 429**     | `count == 0`              | k6 counter `http_429 == 0`                                            |
+| **Iteraciones Caídas** | `count == 0`              | k6 metric `dropped_iterations == 0`                                   |
+| **Pérdida de Eventos** | `0%`                      | PostgreSQL `audit_logs` vs `finance_db.transactions` para el `RUN_ID` |
+| **Dead Letters**       | `0`                       | PostgreSQL `audit_dead_letters` en la ventana del run                 |
+| **Idempotencia**       | Clave única               | Replays devuelven HTTP 201 con el mismo `id` e importe inalterado     |
+
+---
+
+## 2. Prerrequisitos
 
 1. **k6 instalado**:
-   - Windows: Descargar binario standalone desde [k6 releases](https://github.com/grafana/k6/releases) o mediante winget/choco:
+   - Windows: Binario `k6.exe` (v0.50+) disponible en el `PATH` o instalado con:
      ```powershell
      winget install --id GrafanaLabs.k6 -e
      ```
-   - Linux / macOS:
+   - Linux:
      ```bash
-     brew install k6 # macOS
-     sudo apt-get install k6 # Debian/Ubuntu
+     sudo apt-get install k6
      ```
-2. **Servidor en ejecución**:
-   - Opción A (Mock Gateway E2E sin infraestructura externa):
-     ```bash
-     node apps/web/e2e/mock-gateway.mjs
+2. **Infraestructura Docker**:
+   - Docker Desktop / daemon en ejecución para PostgreSQL 16 y Redis 7 (`pnpm docker:up`).
+3. **Servicios del Stack Real**:
+   - Migraciones y seeds ejecutados:
+     ```powershell
+     pnpm --filter @mybusiness/auth-service db:migrate
+     pnpm --filter @mybusiness/finance-service db:migrate
+     pnpm --filter @mybusiness/audit-service db:migrate
+     pnpm --filter @mybusiness/auth-service db:seed
      ```
-   - Opción B (API Gateway y Microservicios reales con PostgreSQL/Redis):
-     ```bash
-     pnpm docker:up
-     pnpm dev:gateway
-     pnpm dev:finance
-     ```
+   - Microservicios en ejecución: `dev:auth`, `dev:finance`, `dev:audit` y `dev:gateway`.
 
 ---
 
-## Ejecución
+## 3. Variables de Entorno Configurables
 
-### 1. Verificación Rápida (Smoke Test ~10 segundos)
+| Variable              | Por Defecto             | Descripción                                                           |
+| :-------------------- | :---------------------- | :-------------------------------------------------------------------- |
+| `BASE_URL`            | `http://127.0.0.1:3000` | URL base del API Gateway real (puerto 3200 si es mock)                |
+| `RUN_ID`              | `load54-<timestamp>`    | Identificador único de corrida para trazabilidad e idempotencia       |
+| `SEED_ADMIN_EMAIL`    | _(requerido en real)_   | Email del usuario administrador para login real                       |
+| `SEED_ADMIN_PASSWORD` | _(requerido en real)_   | Contraseña del usuario administrador para login real                  |
+| `LOAD_CURRENCY`       | `COP`                   | Divisa de la cuenta bancaria para la carga                            |
+| `AUTH_TOKEN`          | _(opcional)_            | Token Bearer para bypass de login (solo modo compatibilidad con mock) |
+| `SMOKE`               | `false`                 | `true` ejecuta un smoke reducido (10 segundos)                        |
 
-Valida la conectividad, las aserciones, la deduplicación y la emisión del reporte JSON:
+---
 
-```bash
-k6 run -e SMOKE=true tests/load/ingest-50k.js
+## 4. Procedimiento de Ejecución Real
+
+### Paso 1: Configuración de Límites para la Prueba
+
+En las sesiones de los procesos o archivo `.env` temporal:
+
+```powershell
+$env:JWT_EXPIRES_IN      = '60m'
+$env:THROTTLE_API_LIMIT  = '1000000'
+$env:THROTTLE_AUTH_LIMIT = '100'
+$env:THROTTLE_HEAVY_LIMIT= '1000'
 ```
 
-### 2. Escenario Completo de Carga (50.000 Transacciones en 30 minutos)
+### Paso 2: Probe de Idempotencia Pre-Carga
 
-Ejecuta el perfil `ramping-arrival-rate` diseñado para 30 minutos:
+```powershell
+$env:RUN_ID = "load54-" + (Get-Date -Format "yyyyMMdd-HHmmss")
 
-- 2 minutos de rampa ascendente hasta 28 req/s
-- 26 minutos en tasa sostenida de 28 req/s
-- 2 minutos de rampa descendente
-
-```bash
-pnpm test:load
-# O directamente con k6:
-k6 run tests/load/ingest-50k.js
+k6 run `
+  -e BASE_URL=http://127.0.0.1:3000 `
+  -e RUN_ID=$env:RUN_ID `
+  -e SEED_ADMIN_EMAIL=$env:SEED_ADMIN_EMAIL `
+  -e SEED_ADMIN_PASSWORD=$env:SEED_ADMIN_PASSWORD `
+  -e LOAD_CURRENCY=COP `
+  tests/load/idempotency-check.js
 ```
 
+### Paso 3: Ingesta Masiva de 54.000 Transacciones (30 minutos)
+
+Ejecuta el escenario `constant-arrival-rate` a 30 req/s durante 30 minutos:
+
+```powershell
+k6 run `
+  -e BASE_URL=http://127.0.0.1:3000 `
+  -e RUN_ID=$env:RUN_ID `
+  -e SEED_ADMIN_EMAIL=$env:SEED_ADMIN_EMAIL `
+  -e SEED_ADMIN_PASSWORD=$env:SEED_ADMIN_PASSWORD `
+  -e LOAD_CURRENCY=COP `
+  tests/load/ingest-50k.js
+```
+
+### Paso 4: Verificación Automatizada en PostgreSQL
+
+```powershell
+node scripts/verify-load-54.mjs `
+  --run-id $env:RUN_ID `
+  --email $env:SEED_ADMIN_EMAIL `
+  --db-user $env:POSTGRES_USER
+```
+
+Este script evalúa los 11 criterios obligatorios en `finance_db` y `audit_db`, esperando la estabilización del consumidor asíncrono, y emite `tests/load/verification-54.json`.
+
 ---
 
-## Variables de Entorno Configurables
+## 5. Estructura de Archivos
 
-| Variable     | Por Defecto                            | Descripción                                                           |
-| :----------- | :------------------------------------- | :-------------------------------------------------------------------- |
-| `BASE_URL`   | `http://127.0.0.1:3200`                | URL base del Gateway                                                  |
-| `AUTH_TOKEN` | `access-tenant-a`                      | Token Bearer para autenticación de peticiones                         |
-| `TENANT_ID`  | `00000000-0000-0000-0000-000000000001` | Identificador del tenant para aislar la carga                         |
-| `SMOKE`      | `false`                                | Si se establece en `true`, ejecuta 10 segundos en lugar de 30 minutos |
-
----
-
-## Estructura de Archivos
-
-- `ingest-50k.js`: Script principal de k6 con escenarios de llegada continua, umbrales y aserciones.
-- `lib/setup.js`: Funciones de preparación del entorno, consulta de conteo inicial y verificación posterior de persistencia.
-- `lib/idempotency.js`: Generador determinista de payloads y claves de idempotencia con inyección periódica de duplicados.
-- `k6-summary.json`: Archivo con el resumen estructurado de métricas generado automáticamente tras la ejecución.
+- `ingest-50k.js`: Escenario de carga k6 a 30 req/s x 30 min (o smoke con `SMOKE=true`).
+- `idempotency-check.js`: Probe de idempotencia (1 VU / 1 iteración) para validar consistencia de replays HTTP 201.
+- `lib/setup.js`: Login real en gateway, resolución dinámica de tenant y cuenta bancaria.
+- `lib/idempotency.js`: Generador de claves deterministas `idem-${runId}-tx-${vu}-${iter}` y payloads probe.
+- `k6-summary.json`: Métricas generadas por k6 al finalizar la corrida.
+- `verification-54.json`: Resultado de la auditoría en base de datos generado por `verify-load-54.mjs`.

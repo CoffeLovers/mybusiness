@@ -1093,7 +1093,7 @@ async function handleCreateTransaction(request, response) {
   const tenantStore = TRANSACTIONS_STORE[tenantId];
   if (tenantStore.has(body.idempotencyKey)) {
     const existing = tenantStore.get(body.idempotencyKey);
-    sendJson(response, 200, existing);
+    sendJson(response, 201, existing);
     return;
   }
 
@@ -1135,7 +1135,7 @@ const server = createServer((request, response) => {
   const url = new URL(request.url ?? '/', `http://${HOST}:${PORT}`);
   const path = url.pathname;
 
-  if (method === 'GET' && path === '/health') {
+  if (method === 'GET' && (path === '/health' || path === '/healthz' || path === '/api/v1/health')) {
     sendJson(response, 200, { status: 'ok' });
     return;
   }
@@ -1265,6 +1265,39 @@ const server = createServer((request, response) => {
   if (method === 'GET' && path === '/api/v1/finance/reconciliation/metrics') {
     handleReconciliationMetrics(request, response);
     return;
+  }
+
+async function handleFinanceAccountsPost(request, response) {
+  const tenantId = getTenantIdFromRequest(request) || TENANT_A_ID;
+  const body = await readJson(request);
+  const accId = `acc-${Date.now()}`;
+  const newAcc = {
+    id: accId,
+    tenantId,
+    institutionName: body?.institutionName || 'Load Test Bank',
+    accountType: body?.accountType || 'CHECKING',
+    accountNumberMasked: body?.accountNumberMasked || '******0054',
+    currency: body?.currency || 'COP',
+    status: 'ACTIVE',
+    balanceMinor: '0',
+  };
+  if (!BANK_ACCOUNTS[tenantId]) BANK_ACCOUNTS[tenantId] = [];
+  BANK_ACCOUNTS[tenantId].push(newAcc);
+  sendJson(response, 201, { success: true, data: newAcc });
+}
+
+// Accounts endpoints (finance)
+  if (path === '/api/v1/finance/accounts') {
+    if (method === 'GET') {
+      const tenantId = getTenantIdFromRequest(request) || TENANT_A_ID;
+      const accounts = BANK_ACCOUNTS[tenantId] || [];
+      sendJson(response, 200, { success: true, data: accounts });
+      return;
+    }
+    if (method === 'POST') {
+      void handleFinanceAccountsPost(request, response);
+      return;
+    }
   }
 
   // Transactions endpoints (para ingest y pruebas de carga)
