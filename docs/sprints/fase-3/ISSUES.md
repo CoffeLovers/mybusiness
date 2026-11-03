@@ -51,13 +51,13 @@ Todas las issues llevan además los labels `phase-3` y el correspondiente `sprin
 
 ### Criterios de aceptación
 
-- [ ] El ADR-007 existe, sigue la plantilla de `docs/adr/` y declara una decisión explícita.
-- [ ] Los tres escenarios se ejecutan con orquestación propia y quedan documentados con resultados medidos.
-- [ ] Si Astropods se evalúa, los resultados se comparan con los mismos escenarios y dataset.
-- [ ] La comparación incluye latencia p95, coste estimado por conversación y esfuerzo de integración.
-- [ ] El ADR define la interfaz de herramientas que sobrevive a cualquier cambio de orquestador.
-- [ ] Existe criterio escrito de reversibilidad y de cuándo se revisaría la decisión.
-- [ ] Ninguna dependencia nueva de Astropods se añade al `package.json` de producción.
+- [x] El ADR-007 existe, sigue la plantilla de `docs/adr/` y declara una decisión explícita.
+- [x] Los tres escenarios se ejecutan con orquestación propia y quedan documentados con resultados medidos.
+- [x] Si Astropods se evalúa, los resultados se comparan con los mismos escenarios y dataset.
+- [x] La comparación incluye latencia p95, coste estimado por conversación y esfuerzo de integración.
+- [x] El ADR define la interfaz de herramientas que sobrevive a cualquier cambio de orquestador.
+- [x] Existe criterio escrito de reversibilidad y de cuándo se revisaría la decisión.
+- [x] Ninguna dependencia nueva de Astropods se añade al `package.json` de producción.
 
 ### Validación
 
