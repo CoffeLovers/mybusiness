@@ -20,6 +20,7 @@ import { DistributedThrottlerGuard, ThrottlerStorageRedisService } from './throt
 import { SecurityAuditFilter } from './security-audit.filter';
 import { BankingModule } from './banking/banking.module';
 import { DocumentsModule } from './documents/documents.module';
+import { LedgerModule } from './ledger/ledger.module';
 import { ReconciliationModule } from './reconciliation/reconciliation.module';
 
 @Module({
@@ -106,6 +107,7 @@ import { ReconciliationModule } from './reconciliation/reconciliation.module';
     ]),
     BankingModule,
     DocumentsModule,
+    LedgerModule,
     ReconciliationModule,
   ],
   controllers: [

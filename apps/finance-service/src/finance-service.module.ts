@@ -14,6 +14,7 @@ import { FinanceService } from './finance.service';
 import { BankingModule } from './banking/banking.module';
 import { CashflowModule } from './cashflow/cashflow.module';
 import { DocumentsModule } from './documents/documents.module';
+import { LedgerModule } from './ledger/ledger.module';
 import { ReconciliationModule } from './reconciliation/reconciliation.module';
 
 @Module({
@@ -27,6 +28,7 @@ import { ReconciliationModule } from './reconciliation/reconciliation.module';
     BankingModule,
     CashflowModule,
     DocumentsModule,
+    LedgerModule,
     ReconciliationModule,
   ],
   controllers: [FinanceController],
