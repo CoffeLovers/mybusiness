@@ -178,6 +178,7 @@ export class DocumentsService {
       issueDate: normalized.issueDate,
       currency: normalized.currency,
       totalMinor: normalized.totalMinor === null ? null : BigInt(normalized.totalMinor),
+      invoiceNumber: normalized.invoiceNumber,
       lineItems: normalized.lineItems,
       processedAt,
       failureReason: null,
@@ -356,6 +357,7 @@ export class DocumentsService {
       currency: row.currency,
       totalMinor: row.totalMinor === null ? null : row.totalMinor.toString(),
       confidence: row.confidence === null ? null : Number(row.confidence),
+      invoiceNumber: row.invoiceNumber ?? null,
       requiresReview: row.status === DocumentStatus.NEEDS_REVIEW,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
@@ -371,6 +373,7 @@ function buildEmbeddingText(extraction: OcrExtraction): string {
     extraction.issueDate ? `Fecha: ${extraction.issueDate}` : null,
     extraction.currency ? `Moneda: ${extraction.currency}` : null,
     extraction.totalMinor ? `Total (unidades menores): ${extraction.totalMinor}` : null,
+    extraction.invoiceNumber ? `Factura: ${extraction.invoiceNumber}` : null,
   ];
 
   const descriptions = extraction.lineItems

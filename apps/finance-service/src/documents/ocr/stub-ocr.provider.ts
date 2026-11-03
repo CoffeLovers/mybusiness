@@ -15,6 +15,7 @@ export class StubOcrProvider implements OcrProvider {
       issueDate: '2026-10-01',
       currency: 'EUR',
       totalMinor: '121000',
+      invoiceNumber: 'FAC-DEMO-0001',
       lineItems: [
         {
           description: 'Consultoría',
