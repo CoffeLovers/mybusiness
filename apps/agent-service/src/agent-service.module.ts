@@ -12,6 +12,7 @@ import { AgentRepository } from './agent.repository';
 import { AgentDatabaseService } from './database/database.service';
 import { EmbeddingModule } from './embeddings';
 import { McpModule } from './mcp/mcp.module';
+import { BudgetModule } from './budget/budget.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { McpModule } from './mcp/mcp.module';
     }),
     EmbeddingModule,
     McpModule,
+    BudgetModule,
   ],
   controllers: [AgentController],
   providers: [
@@ -36,6 +38,6 @@ import { McpModule } from './mcp/mcp.module';
       useClass: RpcTenantContextInterceptor,
     },
   ],
-  exports: [AgentService, AgentRepository],
+  exports: [AgentService, AgentRepository, BudgetModule],
 })
 export class AgentServiceModule {}
