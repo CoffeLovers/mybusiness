@@ -434,12 +434,12 @@ El objetivo de producto es superar el 90 % de conciliación automática en trans
 
 ### Criterios de aceptación
 
-- [ ] Sobre el dataset dorado con comprobantes legibles, el match automático supera el 90 %.
-- [ ] Un match manual deja evidencia y auditoría; uno automático también.
-- [ ] No se concilia dos veces la misma transacción ni el mismo documento.
-- [ ] El cron recupera movimientos perdidos y actualiza `lastSyncedAt`.
-- [ ] Un caso dudoso nunca se auto-concilia por debajo del umbral.
-- [ ] Reporte de métricas disponible para web y Android.
+- [x] Sobre el dataset dorado con comprobantes legibles, el match automático supera el 90 %.
+- [x] Un match manual deja evidencia y auditoría; uno automático también.
+- [x] No se concilia dos veces la misma transacción ni el mismo documento.
+- [x] El cron recupera movimientos perdidos y actualiza `lastSyncedAt`.
+- [x] Un caso dudoso nunca se auto-concilia por debajo del umbral.
+- [x] Reporte de métricas disponible para web y Android.
 
 ### Validación
 
