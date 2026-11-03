@@ -8,6 +8,7 @@ import com.mybusiness.core.network.dto.LinkTokenResponse
 import com.mybusiness.core.network.dto.SyncResponseDto
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Path
@@ -28,4 +29,7 @@ interface BankingApiService {
 
     @POST("banking/connections/{id}/sync")
     suspend fun syncConnection(@Path("id") connectionId: String): Response<SyncResponseDto>
+
+    @DELETE("banking/connections/{id}")
+    suspend fun disconnectConnection(@Path("id") connectionId: String): Response<Unit>
 }
