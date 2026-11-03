@@ -16,6 +16,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   BankProvider,
   ExchangeBankConnectionDto,
+  ReplayBankWebhookDto,
   StartBankConnectionDto,
   type UserContext,
 } from '@mybusiness/contracts';
@@ -107,5 +108,19 @@ export class BankingWebhooksController {
       headers,
       req.rawBody?.toString('utf8'),
     );
+  }
+
+  /**
+   * Replay manual y auditado de un evento `failed` o `ignored`.
+   * Requiere JWT: el tenant se valida en finance-service contra la conexión.
+   */
+  @ApiBearerAuth()
+  @Post(':id/replay')
+  replayWebhook(
+    @CurrentUser() user: UserContext,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReplayBankWebhookDto,
+  ) {
+    return this.bankingService.replayWebhook(user, id, dto.force ?? false);
   }
 }

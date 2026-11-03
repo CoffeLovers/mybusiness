@@ -84,4 +84,14 @@ export class BankingService {
       rawBody,
     });
   }
+
+  replayWebhook(user: UserContext, webhookId: string, force = false) {
+    return rpcSend(this.financeClient, BankingPatterns.REPLAY_WEBHOOK, {
+      webhookId,
+      force,
+      userId: user.userId,
+      tenantId: user.tenantId,
+      role: user.role,
+    });
+  }
 }

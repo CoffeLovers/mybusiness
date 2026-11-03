@@ -29,6 +29,13 @@
       "when": 1793479467707,
       "tag": "0003_panoramic_tomorrow_man",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793576643376,
+      "tag": "0004_yielding_pride",
+      "breakpoints": true
     }
   ]
 }

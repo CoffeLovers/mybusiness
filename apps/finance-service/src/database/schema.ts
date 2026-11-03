@@ -142,6 +142,7 @@ export const bankAccounts = pgTable(
     status: varchar('status', { length: 50 }).default('active'),
     metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
     rawMetadata: jsonb('raw_metadata').$type<Record<string, unknown>>().default({}),
+    lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .notNull()
@@ -243,8 +244,14 @@ export const bankWebhookEvents = pgTable(
       onDelete: 'set null',
     }),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
-    processingStatus: varchar('processing_status', { length: 50 }).notNull().default('pending'),
+    processingStatus: varchar('processing_status', { length: 50 }).notNull().default('received'),
     errorMessage: text('error_message'),
+    /** Momento en que ocurrió el evento según el proveedor; base para la guardia de orden. */
+    occurredAt: timestamp('occurred_at', { withTimezone: true }),
+    /** Intentos de procesamiento observados por el worker (informativo). */
+    attempts: integer('attempts').notNull().default(0),
+    /** Veces que un operador solicitó replay manual del evento. */
+    replayCount: integer('replay_count').notNull().default(0),
     receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
     processedAt: timestamp('processed_at', { withTimezone: true }),
   },
@@ -255,6 +262,7 @@ export const bankWebhookEvents = pgTable(
     ),
     index('bank_webhook_events_connection_id_idx').on(table.connectionId),
     index('bank_webhook_events_processing_status_idx').on(table.processingStatus),
+    index('bank_webhook_events_connection_occurred_idx').on(table.connectionId, table.occurredAt),
   ],
 );
 

@@ -1,4 +1,4 @@
-import { IsEnum, IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEnum, IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator';
 import { BankConnectionStatus, BankProvider, TransactionType } from '../enums';
 import type { RequestContext, WithContext } from './context.dto';
 
@@ -60,6 +60,8 @@ export interface BankAccountResponse {
   balanceCurrentMinor?: string | null;
   balanceAvailableMinor?: string | null;
   status?: string | null;
+  /** Última sincronización exitosa de esta cuenta (ISO 8601). */
+  lastSyncedAt?: string | null;
 }
 
 export interface BankTransactionResponse {
@@ -112,4 +114,31 @@ export interface BankWebhookRpcPayload {
   payload: Record<string, unknown>;
   headers?: Record<string, string>;
   rawBody?: string;
+}
+
+/**
+ * Payload del job de la cola `banking-sync` para procesar un webhook recibido.
+ * `force` permite reprocesar eventos ignorados por llegar fuera de orden.
+ */
+export interface BankWebhookJobData {
+  eventId: string;
+  connectionId: string;
+  provider: BankProvider;
+  force?: boolean;
+}
+
+export class ReplayBankWebhookDto {
+  /** Permite reprocesar un evento `ignored` (p. ej. descartado por orden). */
+  @IsBoolean()
+  @IsOptional()
+  force?: boolean;
+}
+
+export type ReplayBankWebhookRpcPayload = WithContext<ReplayBankWebhookDto & { webhookId: string }>;
+
+export interface ReplayBankWebhookResponse {
+  eventId: string;
+  status: string;
+  enqueued: boolean;
+  replayCount: number;
 }

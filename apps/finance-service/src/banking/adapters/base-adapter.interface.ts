@@ -86,6 +86,12 @@ export interface WebhookResult {
   webhookCode?: string;
   providerItemId?: string;
   rawPayload: Record<string, unknown>;
+  /**
+   * Momento del evento según el proveedor. Se usa para descartar eventos
+   * fuera de orden. Si el proveedor no lo envía, el adaptador puede derivarlo
+   * de la firma (p. ej. `iat` del JWT de Plaid).
+   */
+  occurredAt?: Date | null;
 }
 
 /**

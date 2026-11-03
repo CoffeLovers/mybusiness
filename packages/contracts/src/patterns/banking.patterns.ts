@@ -6,4 +6,5 @@ export const BankingPatterns = {
   SYNC_CONNECTION: 'banking.connection.sync',
   DISCONNECT_CONNECTION: 'banking.connection.disconnect',
   HANDLE_WEBHOOK: 'banking.webhook.handle',
+  REPLAY_WEBHOOK: 'banking.webhook.replay',
 } as const;

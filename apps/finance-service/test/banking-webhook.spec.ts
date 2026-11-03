@@ -1,24 +1,23 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   BadRequestException,
-  InternalServerErrorException,
+  ConflictException,
+  NotFoundException,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { BankProvider } from '@mybusiness/contracts';
+import { BankProvider, UserRole } from '@mybusiness/contracts';
 import { BankingWebhookService } from '../src/banking/banking-webhook.service';
 import type { BankingAggregatorService } from '../src/banking/banking-aggregator.service';
-import type { BankingService } from '../src/banking/banking.service';
 import type { FinanceDatabaseService } from '../src/database/database.service';
 import type { WebhookResult } from '../src/banking/adapters/base-adapter.interface';
 
 type Row = Record<string, unknown>;
 
 interface WebhookDbOptions {
-  /** Filas devueltas por cada select en orden: dedup, conexión. */
+  /** Filas devueltas por cada select en orden: dedupe/conexión/evento/conexión. */
   selectRows?: Row[][];
-  /** Si es true, la primera llamada a update().set().where() rechaza. */
-  failFirstUpdate?: boolean;
-  /** Fila devuelta por el insert del evento. */
+  /** Fila devuelta por el insert del evento (null = condición de carrera). */
   insertedEvent?: Row | null;
 }
 
@@ -54,14 +53,7 @@ function createWebhookDatabaseMock(options: WebhookDbOptions = {}) {
     update: vi.fn(() => ({
       set: vi.fn((values: Row) => {
         updates.push(values);
-        return {
-          where: vi.fn(() => {
-            if (options.failFirstUpdate && updates.length === 1) {
-              return Promise.reject(new Error('DB connection drop'));
-            }
-            return Promise.resolve([]);
-          }),
-        };
+        return { where: vi.fn(() => Promise.resolve([])) };
       }),
     })),
   };
@@ -72,6 +64,7 @@ function createWebhookDatabaseMock(options: WebhookDbOptions = {}) {
 function createService(
   dbMock: ReturnType<typeof createWebhookDatabaseMock>,
   webhookResult: WebhookResult | Error,
+  options: { enqueueError?: Error } = {},
 ) {
   const adapter = {
     provider: BankProvider.PLAID,
@@ -85,22 +78,20 @@ function createService(
   const aggregator = {
     getAdapter: vi.fn(() => adapter),
   } as unknown as BankingAggregatorService;
-  const internalSyncConnection = vi.fn().mockResolvedValue({
-    connectionId: 'conn-1',
-    added: 0,
-    modified: 0,
-    removed: 0,
-    hasMore: false,
-    nextCursor: null,
-  });
-  const banking = { internalSyncConnection } as unknown as BankingService;
   const database = { db: dbMock.db } as unknown as FinanceDatabaseService;
+  const queue = {
+    add: options.enqueueError
+      ? vi.fn().mockRejectedValue(options.enqueueError)
+      : vi.fn().mockResolvedValue({ id: 'job-1' }),
+  };
+  const events = { publish: vi.fn().mockResolvedValue(undefined) };
 
   return {
-    service: new BankingWebhookService(database, aggregator, banking),
+    service: new BankingWebhookService(database, aggregator, queue as never, events as never),
     adapter,
     aggregator,
-    internalSyncConnection,
+    queue,
+    events,
   };
 }
 
@@ -111,16 +102,23 @@ function plaidEvent(overrides: Partial<WebhookResult> = {}): WebhookResult {
     webhookCode: 'SYNC_UPDATES_AVAILABLE',
     providerItemId: 'item-1',
     rawPayload: {},
+    occurredAt: new Date('2026-10-01T12:00:00.000Z'),
     ...overrides,
   };
 }
 
+const ctx = {
+  tenantId: 'tenant-1',
+  userId: 'user-1',
+  role: UserRole.TENANT_ADMIN,
+};
+
 describe('BankingWebhookService.handleIncomingWebhook', () => {
-  it('procesa un evento nuevo de Plaid y dispara el sync de la conexión', async () => {
+  it('registra el evento como received y lo encola sin sincronizar inline', async () => {
     const dbMock = createWebhookDatabaseMock({
       selectRows: [[], [{ id: 'conn-1' }]],
     });
-    const { service, internalSyncConnection } = createService(dbMock, plaidEvent());
+    const { service, queue } = createService(dbMock, plaidEvent());
 
     const result = await service.handleIncomingWebhook(
       BankProvider.PLAID,
@@ -129,24 +127,29 @@ describe('BankingWebhookService.handleIncomingWebhook', () => {
       'raw-body',
     );
 
-    expect(result).toEqual({ status: 'processed', eventId: 'event-1' });
+    expect(result).toEqual({ status: 'received', eventId: 'event-1' });
     expect(dbMock.inserts[0]).toMatchObject({
       provider: BankProvider.PLAID,
       providerEventKey: 'event-key-1',
       webhookType: 'TRANSACTIONS',
       webhookCode: 'SYNC_UPDATES_AVAILABLE',
       connectionId: 'conn-1',
-      processingStatus: 'pending',
+      processingStatus: 'received',
+      occurredAt: new Date('2026-10-01T12:00:00.000Z'),
     });
-    expect(internalSyncConnection).toHaveBeenCalledWith('conn-1');
-    expect(dbMock.updates[0]).toMatchObject({ processingStatus: 'processed' });
+    expect(queue.add).toHaveBeenCalledWith(
+      'banking-sync',
+      expect.objectContaining({ eventId: 'event-1', connectionId: 'conn-1', force: false }),
+      expect.objectContaining({ jobId: expect.any(String) }),
+    );
+    expect(dbMock.updates).toHaveLength(0);
   });
 
-  it('devuelve already_processed sin insertar cuando el evento ya existe', async () => {
+  it('devuelve already_processed sin insertar ni encolar cuando el evento ya fue procesado', async () => {
     const dbMock = createWebhookDatabaseMock({
-      selectRows: [[{ id: 'existing-event' }]],
+      selectRows: [[{ id: 'existing-event', processingStatus: 'processed' }]],
     });
-    const { service, internalSyncConnection } = createService(dbMock, plaidEvent());
+    const { service, queue } = createService(dbMock, plaidEvent());
 
     const result = await service.handleIncomingWebhook(
       BankProvider.PLAID,
@@ -157,7 +160,22 @@ describe('BankingWebhookService.handleIncomingWebhook', () => {
 
     expect(result).toEqual({ status: 'already_processed', eventId: 'existing-event' });
     expect(dbMock.db.insert).not.toHaveBeenCalled();
-    expect(internalSyncConnection).not.toHaveBeenCalled();
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it('reintenta el encolado de un duplicado que quedó en received', async () => {
+    const dbMock = createWebhookDatabaseMock({
+      selectRows: [
+        [{ id: 'existing-event', processingStatus: 'received', connectionId: 'conn-1' }],
+      ],
+    });
+    const { service, queue } = createService(dbMock, plaidEvent());
+
+    const result = await service.handleIncomingWebhook(BankProvider.PLAID, {}, {}, 'raw');
+
+    expect(result).toEqual({ status: 'already_processed', eventId: 'existing-event' });
+    expect(dbMock.db.insert).not.toHaveBeenCalled();
+    expect(queue.add).toHaveBeenCalledTimes(1);
   });
 
   it('propaga UnauthorizedException del adapter sin persistir nada (fail-closed)', async () => {
@@ -188,37 +206,11 @@ describe('BankingWebhookService.handleIncomingWebhook', () => {
     expect(dbMock.db.insert).not.toHaveBeenCalled();
   });
 
-  it('registra el error y propaga 5xx si falla la actualización de estado', async () => {
-    const dbMock = createWebhookDatabaseMock({
-      selectRows: [[], [{ id: 'conn-1' }]],
-      failFirstUpdate: true,
-    });
-    const { service } = createService(dbMock, plaidEvent());
-
-    await expect(
-      service.handleIncomingWebhook(
-        BankProvider.PLAID,
-        { webhook_type: 'TRANSACTIONS' },
-        {},
-        'raw',
-      ),
-    ).rejects.toThrow(InternalServerErrorException);
-
-    // El segundo update (catch) persiste el estado failed con el mensaje de error.
-    // Nota: el servicio relanza 5xx para forzar el reintento del proveedor; no devuelve
-    // { status: 'failed' } como respuesta HTTP.
-    expect(dbMock.updates).toHaveLength(2);
-    expect(dbMock.updates[1]).toMatchObject({
-      processingStatus: 'failed',
-      errorMessage: 'DB connection drop',
-    });
-  });
-
-  it('registra webhooks no soportados sin disparar sincronización', async () => {
+  it('marca ignored sin encolar cuando el evento no es accionable', async () => {
     const dbMock = createWebhookDatabaseMock({
       selectRows: [[], [{ id: 'conn-1' }]],
     });
-    const { service, internalSyncConnection } = createService(
+    const { service, queue } = createService(
       dbMock,
       plaidEvent({ webhookType: 'AUTH', webhookCode: 'AUTOMATICALLY_VERIFIED' }),
     );
@@ -230,8 +222,219 @@ describe('BankingWebhookService.handleIncomingWebhook', () => {
       'raw',
     );
 
-    expect(result.status).toBe('processed');
-    expect(internalSyncConnection).not.toHaveBeenCalled();
-    expect(dbMock.updates[0]).toMatchObject({ processingStatus: 'processed' });
+    expect(result).toEqual({ status: 'ignored', eventId: 'event-1' });
+    expect(queue.add).not.toHaveBeenCalled();
+    expect(dbMock.updates[0]).toMatchObject({
+      processingStatus: 'ignored',
+      errorMessage: 'evento_no_accionable',
+    });
+  });
+
+  it('marca ignored cuando no se encuentra la conexión del item', async () => {
+    const dbMock = createWebhookDatabaseMock({ selectRows: [[], []] });
+    const { service, queue } = createService(dbMock, plaidEvent());
+
+    const result = await service.handleIncomingWebhook(BankProvider.PLAID, {}, {}, 'raw');
+
+    expect(result).toEqual({ status: 'ignored', eventId: 'event-1' });
+    expect(queue.add).not.toHaveBeenCalled();
+    expect(dbMock.updates[0]).toMatchObject({
+      processingStatus: 'ignored',
+      errorMessage: 'conexion_no_encontrada',
+    });
+  });
+
+  it('si el encolado falla marca failed y responde 503', async () => {
+    const dbMock = createWebhookDatabaseMock({
+      selectRows: [[], [{ id: 'conn-1' }]],
+    });
+    const { service } = createService(dbMock, plaidEvent(), {
+      enqueueError: new Error('Redis down'),
+    });
+
+    await expect(
+      service.handleIncomingWebhook(
+        BankProvider.PLAID,
+        { webhook_type: 'TRANSACTIONS' },
+        {},
+        'raw',
+      ),
+    ).rejects.toThrow(ServiceUnavailableException);
+
+    expect(dbMock.updates[0]).toMatchObject({
+      processingStatus: 'failed',
+      errorMessage: 'Redis down',
+    });
+  });
+
+  it('si el insert pierde la carrera devuelve already_processed', async () => {
+    const dbMock = createWebhookDatabaseMock({
+      selectRows: [[], [{ id: 'conn-1' }]],
+      insertedEvent: null,
+    });
+    const { service, queue } = createService(dbMock, plaidEvent());
+
+    const result = await service.handleIncomingWebhook(BankProvider.PLAID, {}, {}, 'raw');
+
+    expect(result).toEqual({ status: 'already_processed' });
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+});
+
+describe('BankingWebhookService.replayWebhook', () => {
+  function replayService(selectRows: Row[][], enqueueError?: Error) {
+    const dbMock = createWebhookDatabaseMock({ selectRows });
+    const result = createService(dbMock, plaidEvent(), enqueueError ? { enqueueError } : {});
+    return { ...result, dbMock };
+  }
+
+  it('reencola un evento failed, incrementa replayCount y audita la acción', async () => {
+    const { service, queue, events, dbMock } = replayService([
+      [
+        {
+          id: 'event-1',
+          connectionId: 'conn-1',
+          provider: 'plaid',
+          processingStatus: 'failed',
+          replayCount: 0,
+        },
+      ],
+      [{ id: 'conn-1' }],
+    ]);
+
+    const result = await service.replayWebhook(ctx, 'event-1');
+
+    expect(result).toEqual({
+      eventId: 'event-1',
+      status: 'received',
+      enqueued: true,
+      replayCount: 1,
+    });
+    expect(dbMock.updates[0]).toMatchObject({
+      processingStatus: 'received',
+      replayCount: 1,
+      processedAt: null,
+    });
+    expect(queue.add).toHaveBeenCalledWith(
+      'banking-sync',
+      expect.objectContaining({ eventId: 'event-1', connectionId: 'conn-1', force: false }),
+      expect.objectContaining({ jobId: expect.any(String) }),
+    );
+    expect(events.publish).toHaveBeenCalledWith(
+      'audit.log_event',
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+        action: 'banking.webhook.replay',
+        entityId: 'event-1',
+        oldValues: expect.objectContaining({ processingStatus: 'failed' }),
+        newValues: expect.objectContaining({ processingStatus: 'received', force: false }),
+      }),
+    );
+  });
+
+  it('permite reprocesar un ignored sólo con force=true', async () => {
+    const ignoredEvent = {
+      id: 'event-1',
+      connectionId: 'conn-1',
+      provider: 'plaid',
+      processingStatus: 'ignored',
+      errorMessage: 'evento_fuera_de_orden',
+      replayCount: 1,
+    };
+
+    const withoutForce = replayService([[ignoredEvent], [{ id: 'conn-1' }]]);
+    await expect(withoutForce.service.replayWebhook(ctx, 'event-1')).rejects.toThrow(
+      ConflictException,
+    );
+    expect(withoutForce.queue.add).not.toHaveBeenCalled();
+
+    const withForce = replayService([[ignoredEvent], [{ id: 'conn-1' }]]);
+    const result = await withForce.service.replayWebhook(ctx, 'event-1', true);
+
+    expect(result.replayCount).toBe(2);
+    expect(withForce.queue.add).toHaveBeenCalledWith(
+      'banking-sync',
+      expect.objectContaining({ force: true }),
+      expect.objectContaining({ jobId: expect.any(String) }),
+    );
+  });
+
+  it.each(['processed', 'received'])('rechaza el replay de un evento %s', async (status) => {
+    const { service } = replayService([
+      [{ id: 'event-1', connectionId: 'conn-1', provider: 'plaid', processingStatus: status }],
+      [{ id: 'conn-1' }],
+    ]);
+
+    await expect(service.replayWebhook(ctx, 'event-1')).rejects.toThrow(ConflictException);
+  });
+
+  it('no permite replay de un ignored que no fue descartado por orden', async () => {
+    const { service, queue } = replayService([
+      [
+        {
+          id: 'event-1',
+          connectionId: 'conn-1',
+          provider: 'plaid',
+          processingStatus: 'ignored',
+          errorMessage: 'evento_no_accionable',
+          replayCount: 0,
+        },
+      ],
+      [{ id: 'conn-1' }],
+    ]);
+
+    await expect(service.replayWebhook(ctx, 'event-1', true)).rejects.toThrow(ConflictException);
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it('oculta eventos de otro tenant como 404', async () => {
+    const { service, queue } = replayService([
+      [
+        {
+          id: 'event-1',
+          connectionId: 'conn-1',
+          provider: 'plaid',
+          processingStatus: 'failed',
+          replayCount: 0,
+        },
+      ],
+      [],
+    ]);
+
+    await expect(service.replayWebhook(ctx, 'event-1')).rejects.toThrow(NotFoundException);
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it('devuelve 404 si el evento no existe', async () => {
+    const { service } = replayService([[]]);
+
+    await expect(service.replayWebhook(ctx, 'missing')).rejects.toThrow(NotFoundException);
+  });
+
+  it('si el reencolado falla, deja el evento en failed y responde 503', async () => {
+    const { service, dbMock } = replayService(
+      [
+        [
+          {
+            id: 'event-1',
+            connectionId: 'conn-1',
+            provider: 'plaid',
+            processingStatus: 'failed',
+            replayCount: 0,
+          },
+        ],
+        [{ id: 'conn-1' }],
+      ],
+      new Error('Redis down'),
+    );
+
+    await expect(service.replayWebhook(ctx, 'event-1')).rejects.toThrow(
+      ServiceUnavailableException,
+    );
+    expect(dbMock.updates.at(-1)).toMatchObject({
+      processingStatus: 'failed',
+      errorMessage: 'Redis down',
+    });
   });
 });

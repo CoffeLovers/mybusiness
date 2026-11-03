@@ -121,6 +121,22 @@ describe('Banking Gateway Unit Tests', () => {
         }),
       );
     });
+
+    it('replayWebhook debe enviar el ID y el contexto del tenant al RPC', async () => {
+      const validId = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+      await webhooksController.replayWebhook(mockUser, validId, { force: true });
+
+      expect(mockClientProxy.send).toHaveBeenCalledWith(
+        BankingPatterns.REPLAY_WEBHOOK,
+        expect.objectContaining({
+          webhookId: validId,
+          force: true,
+          userId: 'user-uuid-123',
+          tenantId: 'tenant-uuid-456',
+          role: UserRole.TENANT_ADMIN,
+        }),
+      );
+    });
   });
 
   describe('BankingWebhooksController', () => {

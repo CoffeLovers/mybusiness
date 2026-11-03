@@ -4,9 +4,9 @@ import { ConfigService } from '@nestjs/config';
 import {
   BadRequestException,
   ConflictException,
-  InternalServerErrorException,
   NotFoundException,
   NotImplementedException,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { BankProvider, TransactionType } from '@mybusiness/contracts';
@@ -593,7 +593,12 @@ describe('Banking Module Unit Tests', () => {
         getAdapter: vi.fn().mockReturnValue(failingAdapter),
       } as any;
 
-      const service = new BankingWebhookService(mockDbService, mockAggregator, {} as any);
+      const service = new BankingWebhookService(
+        mockDbService,
+        mockAggregator,
+        { add: vi.fn().mockResolvedValue({}) } as any,
+        { publish: vi.fn().mockResolvedValue(undefined) } as any,
+      );
 
       await expect(
         service.handleIncomingWebhook(BankProvider.PLAID, {}, {}, 'bad-body'),
@@ -616,7 +621,12 @@ describe('Banking Module Unit Tests', () => {
         getAdapter: vi.fn().mockReturnValue(adapterWithoutWebhook),
       } as any;
 
-      const service = new BankingWebhookService(mockDbService, mockAggregator, {} as any);
+      const service = new BankingWebhookService(
+        mockDbService,
+        mockAggregator,
+        { add: vi.fn().mockResolvedValue({}) } as any,
+        { publish: vi.fn().mockResolvedValue(undefined) } as any,
+      );
 
       await expect(
         service.handleIncomingWebhook(BankProvider.PLAID, {}, {}, 'body'),
@@ -649,7 +659,12 @@ describe('Banking Module Unit Tests', () => {
         getAdapter: vi.fn().mockReturnValue(adapter),
       } as any;
 
-      const service = new BankingWebhookService(mockDbService, mockAggregator, {} as any);
+      const service = new BankingWebhookService(
+        mockDbService,
+        mockAggregator,
+        { add: vi.fn().mockResolvedValue({}) } as any,
+        { publish: vi.fn().mockResolvedValue(undefined) } as any,
+      );
 
       const res = await service.handleIncomingWebhook(
         BankProvider.PLAID,
@@ -692,7 +707,12 @@ describe('Banking Module Unit Tests', () => {
         getAdapter: vi.fn().mockReturnValue(adapter),
       } as any;
 
-      const service = new BankingWebhookService(mockDbService, mockAggregator, {} as any);
+      const service = new BankingWebhookService(
+        mockDbService,
+        mockAggregator,
+        { add: vi.fn().mockResolvedValue({}) } as any,
+        { publish: vi.fn().mockResolvedValue(undefined) } as any,
+      );
 
       const res = await service.handleIncomingWebhook(
         BankProvider.PLAID,
@@ -704,21 +724,26 @@ describe('Banking Module Unit Tests', () => {
       expect(res.status).toBe('already_processed');
     });
 
-    it('si el enrutamiento o procesamiento falla, actualiza a status=failed y relanza InternalServerErrorException (5xx)', async () => {
-      const mockUpdate = vi.fn().mockReturnValue({
-        set: vi.fn().mockReturnValue({
-          where: vi.fn().mockResolvedValue([]),
-        }),
-      });
+    it('si el encolado falla, marca el evento como failed y responde 503', async () => {
+      const updates: Record<string, unknown>[] = [];
 
       const mockDb = {
-        select: vi.fn().mockReturnValue({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockReturnValue({
-              limit: vi.fn().mockResolvedValue([]),
+        select: vi
+          .fn()
+          .mockReturnValueOnce({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn().mockResolvedValue([]), // dedupe: no existe
+              }),
+            }),
+          })
+          .mockReturnValueOnce({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn().mockResolvedValue([{ id: 'conn-1' }]), // conexión asociada
+              }),
             }),
           }),
-        }),
         insert: vi.fn().mockReturnValue({
           values: vi.fn().mockReturnValue({
             onConflictDoNothing: vi.fn().mockReturnValue({
@@ -726,7 +751,12 @@ describe('Banking Module Unit Tests', () => {
             }),
           }),
         }),
-        update: mockUpdate,
+        update: vi.fn().mockReturnValue({
+          set: vi.fn((values: Record<string, unknown>) => {
+            updates.push(values);
+            return { where: vi.fn().mockResolvedValue([]) };
+          }),
+        }),
       };
       const mockDbService = { db: mockDb } as any;
 
@@ -735,20 +765,22 @@ describe('Banking Module Unit Tests', () => {
         handleWebhook: vi.fn().mockResolvedValue({
           providerEventKey: 'key-fail-test',
           webhookType: 'TRANSACTIONS',
+          webhookCode: 'SYNC_UPDATES_AVAILABLE',
+          providerItemId: 'item-1',
         }),
       };
       const mockAggregator = {
         getAdapter: vi.fn().mockReturnValue(adapter),
       } as any;
 
-      // Simulamos que al actualizar a processed falla la base de datos
-      mockUpdate.mockReturnValueOnce({
-        set: vi.fn().mockReturnValueOnce({
-          where: vi.fn().mockRejectedValueOnce(new Error('DB connection drop')),
-        }),
-      });
+      const queue = { add: vi.fn().mockRejectedValue(new Error('Redis down')) };
 
-      const service = new BankingWebhookService(mockDbService, mockAggregator, {} as any);
+      const service = new BankingWebhookService(
+        mockDbService,
+        mockAggregator,
+        queue as any,
+        { publish: vi.fn().mockResolvedValue(undefined) } as any,
+      );
 
       await expect(
         service.handleIncomingWebhook(
@@ -757,7 +789,11 @@ describe('Banking Module Unit Tests', () => {
           {},
           'raw',
         ),
-      ).rejects.toThrow(InternalServerErrorException);
+      ).rejects.toThrow(ServiceUnavailableException);
+
+      expect(updates).toContainEqual(
+        expect.objectContaining({ processingStatus: 'failed', errorMessage: 'Redis down' }),
+      );
     });
   });
 

@@ -399,6 +399,7 @@ export class BankingService {
           ? a.balanceAvailable.toString()
           : a.availableBalanceMinor.toString(),
       status: a.status,
+      lastSyncedAt: a.lastSyncedAt ? a.lastSyncedAt.toISOString() : null,
     };
   }
 }

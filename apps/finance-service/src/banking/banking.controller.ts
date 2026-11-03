@@ -8,6 +8,7 @@ import {
   ExchangeBankConnectionRpcPayload,
   GetBankConnectionAccountsRpcPayload,
   GetBankConnectionsRpcPayload,
+  ReplayBankWebhookRpcPayload,
   StartBankConnectionDto,
   StartBankConnectionRpcPayload,
   SyncBankConnectionRpcPayload,
@@ -72,5 +73,12 @@ export class BankingController {
       data.headers,
       data.rawBody,
     );
+  }
+
+  @MessagePattern(BankingPatterns.REPLAY_WEBHOOK)
+  replayWebhook(@Payload() data: ReplayBankWebhookRpcPayload) {
+    const ctx = extractRpcContext(data);
+    const dto = stripRpcContext(data) as { webhookId: string; force?: boolean };
+    return this.webhookService.replayWebhook(ctx, dto.webhookId, dto.force ?? false);
   }
 }

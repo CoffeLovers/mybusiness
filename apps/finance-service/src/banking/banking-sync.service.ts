@@ -65,6 +65,7 @@ export class BankingSyncService {
             currentBalanceMinor: balanceCurrentMinor,
             availableBalanceMinor: balanceAvailableMinor,
             rawMetadata: acc.rawMetadata || {},
+            lastSyncedAt: new Date(),
             updatedAt: new Date(),
           })
           .where(eq(bankAccounts.id, existing[0].id))
@@ -93,6 +94,7 @@ export class BankingSyncService {
             syncStatus: 'SYNCED',
             status: 'active',
             rawMetadata: acc.rawMetadata || {},
+            lastSyncedAt: new Date(),
           })
           .returning();
 
@@ -250,13 +252,24 @@ export class BankingSyncService {
           },
         });
 
-      // 6. Actualizar timestamp de última sincronización en la conexión SÓLO si completó todas las páginas
+      // 6. Actualizar timestamp de última sincronización por cuenta y en la conexión
+      //    SÓLO si completó todas las páginas.
       if (!syncResult.hasMore) {
+        const now = new Date();
+
+        await tx
+          .update(bankAccounts)
+          .set({
+            lastSyncedAt: now,
+            updatedAt: now,
+          })
+          .where(eq(bankAccounts.connectionId, connection.id));
+
         await tx
           .update(bankConnections)
           .set({
-            lastSuccessfulSyncAt: new Date(),
-            updatedAt: new Date(),
+            lastSuccessfulSyncAt: now,
+            updatedAt: now,
           })
           .where(eq(bankConnections.id, connection.id));
       }
