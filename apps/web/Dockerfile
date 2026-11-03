@@ -9,7 +9,7 @@ RUN apt-get update \
 WORKDIR /repo
 
 FROM base AS deps
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json ./
 COPY packages ./packages
 COPY apps/web/package.json ./apps/web/package.json
 RUN pnpm install --frozen-lockfile --filter @mybusiness/web...

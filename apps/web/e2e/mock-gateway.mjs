@@ -128,9 +128,107 @@ function handleLogoutAll(request, response) {
   sendJson(response, 200, { success: true, revoked: 2 });
 }
 
+function handleCashflowSummary(request, response, url) {
+  const authorization = request.headers.authorization ?? '';
+
+  if (!/^Bearer access-[A-Za-z0-9._-]+$/.test(authorization)) {
+    sendError(response, 401, 'unauthorized');
+    return;
+  }
+
+  const from = url.searchParams.get('from') || '2026-10-01';
+  const to = url.searchParams.get('to') || '2026-10-30';
+  const currency = url.searchParams.get('currency') || 'EUR';
+
+  // Escenario de error simulado
+  if (currency === 'ERROR' || from.includes('error')) {
+    sendError(response, 500, 'Error interno del servicio de finanzas');
+    return;
+  }
+
+  // Escenario de datos vacíos (empty state)
+  if (currency === 'EMPTY' || from.includes('empty') || from === '2020-01-01') {
+    sendJson(response, 200, {
+      hasData: false,
+      currency,
+      availableCurrencies: ['EUR', 'USD'],
+      period: { from, to },
+      balanceMinor: null,
+      incomeMinor: null,
+      expenseMinor: null,
+      burnRateMinor: null,
+      runwayMonths: null,
+      previousPeriod: null,
+      series: [],
+      categories: [],
+    });
+    return;
+  }
+
+  // Si el rango es mayor a 60 días (ej. 90 días o ytd), devolvemos valores acumulados distintos
+  const fromTime = new Date(`${from}T00:00:00Z`).getTime();
+  const toTime = new Date(`${to}T00:00:00Z`).getTime();
+  const diffDays = Math.round((toTime - fromTime) / 86400000) + 1;
+
+  if (diffDays > 60) {
+    sendJson(response, 200, {
+      hasData: true,
+      currency,
+      availableCurrencies: ['EUR', 'USD'],
+      period: { from, to },
+      balanceMinor: '4500000',
+      incomeMinor: '3850000',
+      expenseMinor: '2460000',
+      burnRateMinor: '820000',
+      runwayMonths: 5.5,
+      previousPeriod: {
+        incomeMinor: '3200000',
+        expenseMinor: '2100000',
+      },
+      series: [
+        { bucketStart: `${from.slice(0, 7)}-01`, incomeMinor: '1850000', expenseMinor: '1200000' },
+        { bucketStart: `${to.slice(0, 7)}-01`, incomeMinor: '2000000', expenseMinor: '1260000' },
+      ],
+      categories: [
+        { category: 'Servicios en la nube', amountMinor: '1350000', share: 0.5488 },
+        { category: 'Nómina', amountMinor: '750000', share: 0.3049 },
+        { category: 'Oficina', amountMinor: '360000', share: 0.1463 },
+      ],
+    });
+    return;
+  }
+
+  // Respuesta estándar para 30 días
+  sendJson(response, 200, {
+    hasData: true,
+    currency,
+    availableCurrencies: ['EUR', 'USD'],
+    period: { from, to },
+    balanceMinor: '4500000',
+    incomeMinor: '1250000',
+    expenseMinor: '820000',
+    burnRateMinor: '820000',
+    runwayMonths: 5.5,
+    previousPeriod: {
+      incomeMinor: '1100000',
+      expenseMinor: '790000',
+    },
+    series: [
+      { bucketStart: from, incomeMinor: '500000', expenseMinor: '300000' },
+      { bucketStart: to, incomeMinor: '750000', expenseMinor: '520000' },
+    ],
+    categories: [
+      { category: 'Servicios en la nube', amountMinor: '450000', share: 0.5488 },
+      { category: 'Nómina', amountMinor: '250000', share: 0.3049 },
+      { category: 'Oficina', amountMinor: '120000', share: 0.1463 },
+    ],
+  });
+}
+
 const server = createServer((request, response) => {
   const method = request.method ?? 'GET';
-  const path = new URL(request.url ?? '/', `http://${HOST}:${PORT}`).pathname;
+  const url = new URL(request.url ?? '/', `http://${HOST}:${PORT}`);
+  const path = url.pathname;
 
   if (method === 'GET' && path === '/health') {
     sendJson(response, 200, { status: 'ok' });
@@ -154,6 +252,11 @@ const server = createServer((request, response) => {
 
   if (method === 'POST' && path === '/api/v1/auth/logout-all') {
     handleLogoutAll(request, response);
+    return;
+  }
+
+  if (method === 'GET' && path === '/api/v1/finance/cashflow/summary') {
+    handleCashflowSummary(request, response, url);
     return;
   }
 

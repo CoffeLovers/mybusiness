@@ -7,5 +7,6 @@ export * from './dtos/agent.dto';
 export * from './dtos/audit.dto';
 export * from './dtos/context.dto';
 export * from './dtos/banking.dto';
+export * from './dtos/cashflow.dto';
 export * from './dtos/document.dto';
 export * from './dtos/reconciliation.dto';
