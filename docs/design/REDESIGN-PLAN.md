@@ -1,5 +1,7 @@
 # Plan de rediseño — web y Android
 
+> Epic: **#98** · Issues: **#90–#97**
+
 ## 1. Objetivo
 
 Elevar la **calidad percibida** y la **usabilidad** de MyBusiness sin cambiar reglas de negocio, contratos de API ni modelo de datos. Se persigue:
@@ -64,16 +66,16 @@ Cierra el ciclo con verificación automatizada y proceso.
 
 ## 5. Issues
 
-| ID    | Título                                       | Labels                      | SP  | Depende de                        | Entregable verificable                                                                                                                     |
-| ----- | -------------------------------------------- | --------------------------- | --- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| RD-01 | `[Design]` Auditoría UI y contrato de tokens | `design`, `ux`, `redesign`  | 5   | —                                 | `docs/design/tokens.md` con jerarquía global→semántico→componente, inventario de usos actuales y script de contraste ejecutable            |
-| RD-02 | `[Web]` Primitivas de UI accesibles          | `design`, `web`, `frontend` | 8   | RD-01                             | `Button`, `IconButton`, `Field`, `Select`, `Card`, `Chip`, `Dialog`, `Table shell`, `Skeleton`, `EmptyState` con todos sus estados y tests |
-| RD-03 | `[Web]` Shell y navegación                   | `ux`, `web`                 | 5   | RD-02                             | Trunk test aprobado, drawer móvil, migas de pan y búsqueda/atajo                                                                           |
-| RD-04 | `[Web]` Dashboard                            | `ux`, `web`                 | 5   | RD-02                             | Jerarquía de KPIs, los 5 estados y `prefers-reduced-motion` respetado                                                                      |
-| RD-05 | `[Web]` Libro mayor y formularios            | `ux`, `web`                 | 8   | RD-02                             | Densidad conmutable, tabla sticky, edición inline con feedback y operable por teclado                                                      |
-| RD-06 | `[Android]` Tokens y tema                    | `design`, `mobile`          | 5   | RD-01                             | Paridad de tokens con web, dark theme completo y tipografía alineada                                                                       |
-| RD-07 | `[Android]` Pantallas clave                  | `ux`, `mobile`              | 8   | RD-06                             | Login, dashboard y bancos con los 5 estados, targets de 48 dp y motion                                                                     |
-| RD-08 | `[QA]` Accesibilidad y regresión visual      | `qa`, `accessibility`       | 5   | RD-03, RD-04, RD-05, RD-06, RD-07 | `axe` en CI, capturas base versionadas y checklist TalkBack                                                                                |
+| ID    | Título                                       | Labels                      | SP  | Depende de                        | Entregable verificable                                                                                                                     | GitHub |
+| ----- | -------------------------------------------- | --------------------------- | --- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
+| RD-01 | `[Design]` Auditoría UI y contrato de tokens | `design`, `ux`, `redesign`  | 5   | —                                 | `docs/design/tokens.md` con jerarquía global→semántico→componente, inventario de usos actuales y script de contraste ejecutable            | #90    |
+| RD-02 | `[Web]` Primitivas de UI accesibles          | `design`, `web`, `frontend` | 8   | RD-01                             | `Button`, `IconButton`, `Field`, `Select`, `Card`, `Chip`, `Dialog`, `Table shell`, `Skeleton`, `EmptyState` con todos sus estados y tests | #91    |
+| RD-03 | `[Web]` Shell y navegación                   | `ux`, `web`                 | 5   | RD-02                             | Trunk test aprobado, drawer móvil, migas de pan y búsqueda/atajo                                                                           | #92    |
+| RD-04 | `[Web]` Dashboard                            | `ux`, `web`                 | 5   | RD-02                             | Jerarquía de KPIs, los 5 estados y `prefers-reduced-motion` respetado                                                                      | #93    |
+| RD-05 | `[Web]` Libro mayor y formularios            | `ux`, `web`                 | 8   | RD-02                             | Densidad conmutable, tabla sticky, edición inline con feedback y operable por teclado                                                      | #94    |
+| RD-06 | `[Android]` Tokens y tema                    | `design`, `mobile`          | 5   | RD-01                             | Paridad de tokens con web, dark theme completo y tipografía alineada                                                                       | #95    |
+| RD-07 | `[Android]` Pantallas clave                  | `ux`, `mobile`              | 8   | RD-06                             | Login, dashboard y bancos con los 5 estados, targets de 48 dp y motion                                                                     | #96    |
+| RD-08 | `[QA]` Accesibilidad y regresión visual      | `qa`, `accessibility`       | 5   | RD-03, RD-04, RD-05, RD-06, RD-07 | `axe` en CI, capturas base versionadas y checklist TalkBack                                                                                | #97    |
 
 **Total: 49 SP.**
 
