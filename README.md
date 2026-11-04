@@ -359,6 +359,17 @@ Las contribuciones siguen el estándar de [Conventional Commits](https://www.con
 
 ---
 
+## Contribuir
+
+- Abre toda PR **contra `develop`** (`gh pr create --base develop`); las PRs contra `main` se cierran y reabren contra `develop`.
+- Usa **Conventional Commits** (`feat|fix|docs|test|refactor|chore(scope): mensaje`) y referencia la issue.
+- Los hooks de Husky + lint-staged son obligatorios: prohibido `--no-verify`.
+- Guía completa: [CONTRIBUTING.md](CONTRIBUTING.md).
+
+`main` solo recibe fast-forward desde `develop`.
+
+---
+
 ## 📄 Licencia
 
 Este proyecto está bajo la licencia [MIT](LICENSE).
