@@ -109,7 +109,7 @@ Los componentes **solo** consumen nivel 2 o 3. Nunca nivel 1, nunca literales.
 | `alert`          | advertencia y error de estado                        |
 | `focus-ring`     | anillo de foco (≥ 3:1 contra superficies adyacentes) |
 
-> En web el token de texto sobre `primary` se llama hoy `primary-contrast`; debe converger a `on-primary` en RD-01. En Android ya existe `onPrimary`.
+> En web el token de texto sobre primary es on-primary (clase text-on-primary); el alias primary-contrast se eliminó en RD-02 (#91). En Android ya existe onPrimary.
 
 ### Reglas duras
 
