@@ -19,11 +19,15 @@ const __dirname = dirname(__filename);
 const rootDir = resolve(__dirname, '..');
 
 // 1. Variables de entorno dummy para bootstrap sin servicios externos
+//    REDIS_PASSWORD es requerida por getRedisConfig() en @mybusiness/common y falla de forma
+//    temprana si no existe. En CI no hay archivo .env, por lo que se debe asignar aquí
+//    un valor dummy que no se usará para ninguna conexión real (el bootstrap es estático).
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'dummy_jwt_secret_for_contract_generation_32_chars_long';
 process.env.JWT_ISSUER = process.env.JWT_ISSUER || 'mybusiness';
 process.env.JWT_AUDIENCE = process.env.JWT_AUDIENCE || 'mybusiness-api';
 process.env.REDIS_HOST = process.env.REDIS_HOST || '127.0.0.1';
 process.env.REDIS_PORT = process.env.REDIS_PORT || '6379';
+process.env.REDIS_PASSWORD = process.env.REDIS_PASSWORD || 'dummy_redis_password_for_contract_generation';
 process.env.CORS_ORIGINS = process.env.CORS_ORIGINS || 'http://localhost:3000';
 process.env.TRUST_PROXY_HOPS = process.env.TRUST_PROXY_HOPS || '1';
 process.env.NODE_ENV = 'test';
@@ -390,7 +394,9 @@ export async function generateOpenApi(targetPath) {
   const { AppModule } = require(resolve(rootDir, 'apps/api-gateway/dist/app.module.js'));
   const { setupGatewayApp } = require(resolve(rootDir, 'apps/api-gateway/dist/setup.js'));
 
-  const app = await NestFactory.create(AppModule, { logger: false });
+  // abortOnError: false → NestJS lanzará la excepción al llamador en lugar de hacer process.exit(1)
+  // silencioso, lo que permite capturar y registrar correctamente el stack trace en CI.
+  const app = await NestFactory.create(AppModule, { logger: false, abortOnError: false });
   setupGatewayApp(app);
 
   const config = new DocumentBuilder()

@@ -67,10 +67,17 @@ async function main() {
   await generateOpenApi(tmpSpecPath);
 
   // 2. Regenerar tipos web en temporal
-  execSync(
-    `pnpm --filter @mybusiness/web exec openapi-typescript "${tmpSpecPath}" -o "${tmpTypesPath}" --alphabetize`,
-    { cwd: rootDir, stdio: 'pipe' },
-  );
+  try {
+    execSync(
+      `pnpm --filter @mybusiness/web exec openapi-typescript "${tmpSpecPath}" -o "${tmpTypesPath}" --alphabetize`,
+      { cwd: rootDir, stdio: 'pipe' },
+    );
+  } catch (err) {
+    console.error('❌ Error al regenerar los tipos TypeScript con openapi-typescript:');
+    if (err.stdout) console.error(err.stdout.toString());
+    if (err.stderr) console.error(err.stderr.toString());
+    process.exit(1);
+  }
 
   const versionedSpec = readFileSync(versionedSpecPath, 'utf8').replace(/\r\n/g, '\n');
   const tempSpec = readFileSync(tmpSpecPath, 'utf8').replace(/\r\n/g, '\n');
