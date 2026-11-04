@@ -1,12 +1,15 @@
-import { Body, Controller, Get, Inject, Post } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Post, Query } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
 import { ApiTags } from '@nestjs/swagger';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import {
+  CashflowPatterns,
+  CashflowSummaryQueryDto,
   CreateBankAccountDto,
   CreateInvoiceDto,
   CreateTransactionDto,
   FinancePatterns,
+  PayInvoiceDto,
   type UserContext,
   UserRole,
 } from '@mybusiness/contracts';
@@ -18,6 +21,19 @@ import { CurrentUser, Roles, rpcSend } from '@mybusiness/common';
 @Controller('finance')
 export class FinanceGatewayController {
   constructor(@Inject('FINANCE_SERVICE') private readonly financeClient: ClientProxy) {}
+
+  @Get('cashflow/summary')
+  getCashflowSummary(@CurrentUser() user: UserContext, @Query() query: CashflowSummaryQueryDto) {
+    return rpcSend(this.financeClient, CashflowPatterns.SUMMARY, {
+      from: query.from,
+      to: query.to,
+      currency: query.currency,
+      compare: query.compare,
+      tenantId: user.tenantId,
+      userId: user.userId,
+      role: user.role,
+    });
+  }
 
   @Get('accounts')
   getAccounts(@CurrentUser() user: UserContext) {
@@ -72,6 +88,17 @@ export class FinanceGatewayController {
   @Post('invoices')
   createInvoice(@CurrentUser() user: UserContext, @Body() dto: CreateInvoiceDto) {
     return rpcSend(this.financeClient, FinancePatterns.CREATE_INVOICE, {
+      ...dto,
+      tenantId: user.tenantId,
+      userId: user.userId,
+      role: user.role,
+    });
+  }
+
+  @Roles(UserRole.ACCOUNTANT, UserRole.TENANT_ADMIN, UserRole.SUPER_ADMIN)
+  @Post('invoices/pay')
+  payInvoice(@CurrentUser() user: UserContext, @Body() dto: PayInvoiceDto) {
+    return rpcSend(this.financeClient, FinancePatterns.PAY_INVOICE, {
       ...dto,
       tenantId: user.tenantId,
       userId: user.userId,

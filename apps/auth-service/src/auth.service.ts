@@ -191,6 +191,17 @@ export class AuthService {
     return { success: true };
   }
 
+  async logoutAll(context: UserContext): Promise<{ success: true; revoked: number }> {
+    if (!context.userId) {
+      throw new UnauthorizedException('Usuario no válido.');
+    }
+
+    const revoked = await this.repository.revokeAllForUser(context.userId);
+    this.logger.log(`Sesiones revocadas para usuario ${context.userId}: ${revoked}`);
+
+    return { success: true, revoked };
+  }
+
   async getProfile(context: UserContext) {
     const record = await this.repository.findUserById(context.userId);
 

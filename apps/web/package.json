@@ -1,0 +1,42 @@
+{
+  "name": "@mybusiness/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3001",
+    "build": "pnpm --filter @mybusiness/contracts build && next build",
+    "start": "next start",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "pnpm --filter @mybusiness/contracts build && tsc --noEmit",
+    "test": "pnpm --filter @mybusiness/contracts build && playwright test",
+    "test:unit": "pnpm --filter @mybusiness/contracts build && vitest run",
+    "test:cov": "pnpm --filter @mybusiness/contracts build && vitest run --coverage",
+    "test:install": "playwright install --with-deps chromium"
+  },
+  "dependencies": {
+    "@mybusiness/contracts": "workspace:*",
+    "@tanstack/react-table": "^8.21.3",
+    "@tanstack/react-virtual": "^3.13.12",
+    "echarts": "^6.1.0",
+    "echarts-for-react": "^3.0.6",
+    "next": "^15.5.4",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@eslint/eslintrc": "^3.3.1",
+    "@playwright/test": "^1.55.0",
+    "@tailwindcss/postcss": "^4.1.13",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@vitest/coverage-v8": "^5.0.5",
+    "eslint": "^9.16.0",
+    "eslint-config-next": "^15.5.4",
+    "tailwindcss": "^4.1.13",
+    "typescript": "^5.7.2",
+    "vitest": "^5.0.5"
+  }
+}

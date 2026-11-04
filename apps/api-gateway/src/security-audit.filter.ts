@@ -8,9 +8,16 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
+import { randomUUID } from 'node:crypto';
 import { AuditEvents, type CreateAuditLogEvent } from '@mybusiness/contracts';
 import { GlobalExceptionFilter } from '@mybusiness/common';
 import type { Request } from 'express';
+
+/**
+ * Tenant centinela para eventos de seguridad sin identidad (401/403 antes del login).
+ * Debe ser un UUID válido porque `audit_logs.tenant_id` es uuid NOT NULL.
+ */
+export const UNAUTHENTICATED_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 interface SecurityAuditRequest extends Request {
   user?: {
@@ -67,9 +74,10 @@ export class SecurityAuditFilter extends GlobalExceptionFilter {
     const reason = exception instanceof Error ? exception.message : String(exception);
 
     const event: CreateAuditLogEvent = {
+      eventId: randomUUID(),
       // Un 401 puede ocurrir antes de identificar al tenant; se usa un valor
       // explícito para que el evento siga siendo auditable sin inventar un tenant.
-      tenantId: user?.tenantId || 'unauthenticated',
+      tenantId: user?.tenantId || UNAUTHENTICATED_TENANT_ID,
       userId: user?.userId,
       role: user?.role,
       action: `SECURITY_${status}_${request?.method ?? 'UNKNOWN'}`,

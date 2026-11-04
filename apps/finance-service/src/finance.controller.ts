@@ -6,6 +6,7 @@ import {
   type CreateInvoiceRpcPayload,
   type CreateTransactionRpcPayload,
   type FinanceTenantPayload,
+  type PayInvoiceRpcPayload,
 } from '@mybusiness/contracts';
 import { extractRpcContext, stripRpcContext } from '@mybusiness/common';
 import { FinanceService } from './finance.service';
@@ -45,5 +46,11 @@ export class FinanceController {
   createInvoice(@Payload() data: CreateInvoiceRpcPayload) {
     const ctx = extractRpcContext(data);
     return this.financeService.createInvoice(ctx, stripRpcContext(data));
+  }
+
+  @MessagePattern(FinancePatterns.PAY_INVOICE)
+  payInvoice(@Payload() data: PayInvoiceRpcPayload) {
+    const ctx = extractRpcContext(data);
+    return this.financeService.payInvoice(ctx, stripRpcContext(data));
   }
 }

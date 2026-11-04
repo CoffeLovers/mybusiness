@@ -7,7 +7,7 @@
     "build": "nest build",
     "start": "node dist/main",
     "pretest": "pnpm --filter @mybusiness/contracts build && pnpm --filter @mybusiness/common build",
-    "test": "vitest run test/*.spec.ts",
+    "test": "vitest run test --exclude \"**/*.e2e-spec.ts\"",
     "test:e2e": "vitest run test/*.e2e-spec.ts",
     "test:all": "vitest run",
     "test:cov": "vitest run test/*.spec.ts --coverage"
@@ -28,6 +28,7 @@
     "cookie-parser": "^1.4.7",
     "helmet": "^8.0.0",
     "ioredis": "^6.0.0",
+    "multer": "^2.5.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },
@@ -36,6 +37,7 @@
     "@nestjs/testing": "^11.0.0",
     "@types/cookie-parser": "^1.4.8",
     "@types/express": "^5.0.0",
+    "@types/multer": "^2.3.0",
     "@types/node": "^22.10.0",
     "@types/supertest": "^6.0.2",
     "supertest": "^7.0.0",

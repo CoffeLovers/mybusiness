@@ -18,6 +18,10 @@ import { FinanceGatewayController } from './finance/finance-gateway.controller';
 import { AgentGatewayController } from './agent/agent-gateway.controller';
 import { DistributedThrottlerGuard, ThrottlerStorageRedisService } from './throttler';
 import { SecurityAuditFilter } from './security-audit.filter';
+import { BankingModule } from './banking/banking.module';
+import { DocumentsModule } from './documents/documents.module';
+import { LedgerModule } from './ledger/ledger.module';
+import { ReconciliationModule } from './reconciliation/reconciliation.module';
 
 @Module({
   imports: [
@@ -101,6 +105,10 @@ import { SecurityAuditFilter } from './security-audit.filter';
         }),
       },
     ]),
+    BankingModule,
+    DocumentsModule,
+    LedgerModule,
+    ReconciliationModule,
   ],
   controllers: [
     HealthController,

@@ -8,6 +8,11 @@ import {
 } from '@mybusiness/common';
 import { AgentController } from './agent.controller';
 import { AgentService } from './agent.service';
+import { AgentRepository } from './agent.repository';
+import { AgentDatabaseService } from './database/database.service';
+import { EmbeddingModule } from './embeddings';
+import { McpModule } from './mcp/mcp.module';
+import { BudgetModule } from './budget/budget.module';
 
 @Module({
   imports: [
@@ -15,9 +20,14 @@ import { AgentService } from './agent.service';
       isGlobal: true,
       envFilePath: getRootEnvFilePaths(),
     }),
+    EmbeddingModule,
+    McpModule,
+    BudgetModule,
   ],
   controllers: [AgentController],
   providers: [
+    AgentDatabaseService,
+    AgentRepository,
     AgentService,
     {
       provide: APP_GUARD,
@@ -28,5 +38,6 @@ import { AgentService } from './agent.service';
       useClass: RpcTenantContextInterceptor,
     },
   ],
+  exports: [AgentService, AgentRepository, BudgetModule],
 })
 export class AgentServiceModule {}

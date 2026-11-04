@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.mybusiness.core.common.constants.Constants
+import com.mybusiness.core.datastore.security.SessionCipher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
@@ -38,7 +39,8 @@ interface UserSessionDataStore {
 
 @Singleton
 class UserSessionDataStoreImpl @Inject constructor(
-    private val context: Context
+    private val context: Context,
+    private val cipher: SessionCipher
 ) : UserSessionDataStore {
 
     private object PreferencesKeys {
@@ -55,13 +57,13 @@ class UserSessionDataStoreImpl @Inject constructor(
         .catch { exception ->
             if (exception is IOException) emit(emptyPreferences()) else throw exception
         }
-        .map { preferences -> preferences[PreferencesKeys.ACCESS_TOKEN] }
+        .map { preferences -> decryptOrNull(preferences[PreferencesKeys.ACCESS_TOKEN]) }
 
     override val refreshToken: Flow<String?> = dataStore.data
         .catch { exception ->
             if (exception is IOException) emit(emptyPreferences()) else throw exception
         }
-        .map { preferences -> preferences[PreferencesKeys.REFRESH_TOKEN] }
+        .map { preferences -> decryptOrNull(preferences[PreferencesKeys.REFRESH_TOKEN]) }
 
     override val userId: Flow<String?> = dataStore.data
         .catch { exception ->
@@ -86,9 +88,11 @@ class UserSessionDataStoreImpl @Inject constructor(
     }
 
     override suspend fun saveTokens(accessToken: String, refreshToken: String) {
+        val encryptedAccess = cipher.encrypt(accessToken)
+        val encryptedRefresh = cipher.encrypt(refreshToken)
         dataStore.edit { preferences ->
-            preferences[PreferencesKeys.ACCESS_TOKEN] = accessToken
-            preferences[PreferencesKeys.REFRESH_TOKEN] = refreshToken
+            preferences[PreferencesKeys.ACCESS_TOKEN] = encryptedAccess
+            preferences[PreferencesKeys.REFRESH_TOKEN] = encryptedRefresh
         }
     }
 
@@ -99,11 +103,15 @@ class UserSessionDataStoreImpl @Inject constructor(
         tenantId: String,
         email: String
     ) {
+        val encryptedAccess = cipher.encrypt(accessToken)
+        val encryptedRefresh = cipher.encrypt(refreshToken)
         dataStore.edit { preferences ->
-            preferences[PreferencesKeys.ACCESS_TOKEN] = accessToken
-            preferences[PreferencesKeys.REFRESH_TOKEN] = refreshToken
+            preferences[PreferencesKeys.ACCESS_TOKEN] = encryptedAccess
+            preferences[PreferencesKeys.REFRESH_TOKEN] = encryptedRefresh
             preferences[PreferencesKeys.USER_ID] = userId
             preferences[PreferencesKeys.TENANT_ID] = tenantId
+            // El email se guarda en claro: no es un token ni un secreto reutilizable, y se
+            // necesita para mostrarlo en UI/telemetría sin desbloquear la clave.
             preferences[PreferencesKeys.USER_EMAIL] = email
         }
     }
@@ -112,5 +120,18 @@ class UserSessionDataStoreImpl @Inject constructor(
         dataStore.edit { preferences ->
             preferences.clear()
         }
+    }
+
+    /**
+     * Descifra un valor persistido. Devuelve null si el valor no se puede descifrar (sesión
+     * legada guardada en claro o clave rotada).
+     *
+     * No se limpia la sesión aquí porque `map` no puede invocar `edit`; el flujo emite null,
+     * `isLoggedIn` pasa a false y el `AuthInterceptor` limpia la sesión al recibir el 401
+     * derivado de la petición sin token.
+     */
+    private fun decryptOrNull(value: String?): String? {
+        if (value.isNullOrBlank()) return null
+        return cipher.decrypt(value)
     }
 }

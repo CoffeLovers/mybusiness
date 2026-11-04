@@ -6,8 +6,16 @@ import {
   RpcTenantGuard,
   getRootEnvFilePaths,
 } from '@mybusiness/common';
+import { FinanceDatabaseModule } from './database/database.module';
+import { EventsModule } from './events/events.module';
 import { FinanceController } from './finance.controller';
+import { FinanceRepository } from './finance.repository';
 import { FinanceService } from './finance.service';
+import { BankingModule } from './banking/banking.module';
+import { CashflowModule } from './cashflow/cashflow.module';
+import { DocumentsModule } from './documents/documents.module';
+import { LedgerModule } from './ledger/ledger.module';
+import { ReconciliationModule } from './reconciliation/reconciliation.module';
 
 @Module({
   imports: [
@@ -15,10 +23,18 @@ import { FinanceService } from './finance.service';
       isGlobal: true,
       envFilePath: getRootEnvFilePaths(),
     }),
+    FinanceDatabaseModule,
+    EventsModule,
+    BankingModule,
+    CashflowModule,
+    DocumentsModule,
+    LedgerModule,
+    ReconciliationModule,
   ],
   controllers: [FinanceController],
   providers: [
     FinanceService,
+    FinanceRepository,
     {
       provide: APP_GUARD,
       useClass: RpcTenantGuard,

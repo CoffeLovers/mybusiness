@@ -8,6 +8,27 @@
       "when": 1793089627499,
       "tag": "0000_empty_sentinels",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793500000000,
+      "tag": "0001_add_document_context_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793736246664,
+      "tag": "0002_aspiring_doctor_octopus",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793739283477,
+      "tag": "0003_usage_correlation",
+      "breakpoints": true
     }
   ]
 }
