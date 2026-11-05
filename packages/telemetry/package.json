@@ -1,0 +1,31 @@
+﻿{
+  "name": "@mybusiness/telemetry",
+  "version": "1.0.0",
+  "description": "Bootstrap OpenTelemetry (SDK, propagadores W3C y exportador OTLP) compartido para los servicios MyBusiness",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/microservices": "^11.0.0",
+    "@opentelemetry/api": "^1.10.0",
+    "@opentelemetry/core": "3.0.0",
+    "@opentelemetry/exporter-trace-otlp-grpc": "0.300.0",
+    "@opentelemetry/exporter-trace-otlp-http": "0.300.0",
+    "@opentelemetry/instrumentation-http": "0.300.0",
+    "@opentelemetry/instrumentation-undici": "0.34.0",
+    "@opentelemetry/resources": "3.0.0",
+    "@opentelemetry/sdk-node": "0.300.0",
+    "@opentelemetry/sdk-trace": "3.0.0",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^5.0.5"
+  }
+}
