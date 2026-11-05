@@ -65,7 +65,7 @@ test.describe('Shell y navegación (Issue #92)', () => {
 
     // Los ítems sin ruta no navegan y nunca son el ítem activo.
     await expect(mainNav.getByText('Facturas')).toHaveAttribute('aria-disabled', 'true');
-    await expect(mainNav.getByText('Bancos')).toHaveAttribute('aria-disabled', 'true');
+    await expect(mainNav.getByRole('link', { name: 'Bancos' })).toHaveAttribute('href', '/bancos');
     await expect(mainNav.getByText('Agente')).toHaveAttribute('aria-disabled', 'true');
   });
 

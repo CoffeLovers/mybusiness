@@ -16,7 +16,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { id: 'resumen', label: 'Resumen', href: '/resumen' },
   { id: 'libro-mayor', label: 'Libro mayor', href: '/libro-mayor' },
   { id: 'facturas', label: 'Facturas', href: null },
-  { id: 'bancos', label: 'Bancos', href: null },
+  { id: 'bancos', label: 'Bancos', href: '/bancos' },
   { id: 'agente', label: 'Agente', href: null },
 ];
 

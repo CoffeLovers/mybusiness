@@ -6,6 +6,7 @@
  * Sin dependencias: `node:http` y nada más.
  */
 
+import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 
 const HOST = '127.0.0.1';
@@ -435,8 +436,21 @@ function getLedgerRowsForTenant(tenantId) {
 /* Estado en memoria multi-tenant: Banking & Reconciliation                  */
 /* ------------------------------------------------------------------------- */
 
+const BANK_DEFAULT_CONNECTION_A_ID = '11111111-1111-4111-8111-111111111111';
+
 const BANK_CONNECTIONS = {
-  [TENANT_A_ID]: [],
+  [TENANT_A_ID]: [
+    {
+      id: BANK_DEFAULT_CONNECTION_A_ID,
+      tenantId: TENANT_A_ID,
+      provider: 'plaid',
+      institutionName: 'Banco Andino Central',
+      status: 'active',
+      lastSuccessfulSyncAt: '2026-10-30T09:00:00.000Z',
+      createdAt: '2026-09-01T09:00:00.000Z',
+      updatedAt: '2026-10-30T09:00:00.000Z',
+    },
+  ],
   [TENANT_B_ID]: [
     {
       id: 'conn-b-default-001',
@@ -452,7 +466,40 @@ const BANK_CONNECTIONS = {
 };
 
 const BANK_ACCOUNTS = {
-  [TENANT_A_ID]: [],
+  [TENANT_A_ID]: [
+    {
+      id: '22222222-2222-4222-8222-222222222221',
+      tenantId: TENANT_A_ID,
+      connectionId: BANK_DEFAULT_CONNECTION_A_ID,
+      providerAccountId: 'provider-acc-a-001',
+      name: 'Cuenta Corriente Principal',
+      officialName: 'Cuenta Corriente Principal',
+      type: 'depository',
+      subtype: 'checking',
+      mask: '1234',
+      isoCurrencyCode: 'EUR',
+      balanceCurrentMinor: '125050',
+      balanceAvailableMinor: '120000',
+      status: 'active',
+      lastSyncedAt: '2026-10-30T09:00:00.000Z',
+    },
+    {
+      id: '22222222-2222-4222-8222-222222222222',
+      tenantId: TENANT_A_ID,
+      connectionId: BANK_DEFAULT_CONNECTION_A_ID,
+      providerAccountId: 'provider-acc-a-002',
+      name: 'Cuenta de Ahorro Nómina',
+      officialName: 'Cuenta de Ahorro Nómina',
+      type: 'depository',
+      subtype: 'savings',
+      mask: '9876',
+      isoCurrencyCode: 'EUR',
+      balanceCurrentMinor: '830075',
+      balanceAvailableMinor: '830075',
+      status: 'active',
+      lastSyncedAt: '2026-10-29T18:30:00.000Z',
+    },
+  ],
   [TENANT_B_ID]: [
     {
       id: 'acc-b-default-001',
@@ -512,11 +559,11 @@ async function handleBankingExchange(request, response) {
     return;
   }
   const body = await readJson(request);
-  const connId = `conn-${tenantId === TENANT_B_ID ? 'b' : 'a'}-${Date.now()}`;
+  const connId = randomUUID();
   const conn = {
     id: connId,
     tenantId,
-    provider: body?.provider || 'PLAID',
+    provider: body?.provider || 'plaid',
     institutionName: body?.institution || 'Banco Santander Empresas',
     status: 'ACTIVE',
     lastSuccessfulSyncAt: new Date().toISOString(),
@@ -525,7 +572,7 @@ async function handleBankingExchange(request, response) {
   };
   BANK_CONNECTIONS[tenantId].push(conn);
 
-  const accId = `acc-${tenantId === TENANT_B_ID ? 'b' : 'a'}-${Date.now()}`;
+  const accId = randomUUID();
   const acc = {
     id: accId,
     tenantId,
@@ -586,6 +633,26 @@ function handleBankingConnectionSync(request, response, connectionId) {
     removed: 0,
     hasMore: false,
   });
+}
+
+function handleBankingConnectionDelete(request, response, connectionId) {
+  const tenantId = getTenantIdFromRequest(request);
+  if (!tenantId) {
+    sendError(response, 401, 'unauthorized');
+    return;
+  }
+  const connections = BANK_CONNECTIONS[tenantId] || [];
+  const index = connections.findIndex((c) => c.id === connectionId);
+  if (index < 0) {
+    sendError(response, 404, 'connection_not_found');
+    return;
+  }
+  connections.splice(index, 1);
+  BANK_ACCOUNTS[tenantId] = (BANK_ACCOUNTS[tenantId] || []).filter(
+    (account) => account.connectionId !== connectionId,
+  );
+  response.writeHead(204, { 'cache-control': 'no-store' });
+  response.end();
 }
 
 function handleReconciliationSettings(request, response) {
@@ -1241,6 +1308,12 @@ const server = createServer((request, response) => {
   const syncMatch = /^\/api\/v1\/banking\/connections\/([^/]+)\/sync$/.exec(path);
   if (method === 'POST' && syncMatch !== null) {
     handleBankingConnectionSync(request, response, decodeURIComponent(syncMatch[1]));
+    return;
+  }
+
+  const connectionMatch = /^\/api\/v1\/banking\/connections\/([^/]+)$/.exec(path);
+  if (method === 'DELETE' && connectionMatch !== null) {
+    handleBankingConnectionDelete(request, response, decodeURIComponent(connectionMatch[1]));
     return;
   }
 
