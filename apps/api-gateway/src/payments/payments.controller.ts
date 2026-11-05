@@ -12,6 +12,9 @@ import {
 } from '@mybusiness/contracts';
 import { CurrentUser, Roles, rpcSend } from '@mybusiness/common';
 
+/** Límite de longitud de la clave de idempotencia (columna varchar(255)). */
+const IDEMPOTENCY_KEY_MAX_LENGTH = 255;
+
 /**
  * BFF de pagos (SF3-08): validación de entrada, RBAC de cobro y reenvío RPC a
  * finance-service. Los detalles del proveedor PayPal no deben cruzar la capa;
@@ -38,6 +41,12 @@ export class PaymentsGatewayController {
   ): Observable<PayPalOrderView> {
     if (!idempotencyKey || idempotencyKey.trim().length === 0) {
       throw new BadRequestException('El header Idempotency-Key es obligatorio.');
+    }
+
+    if (idempotencyKey.length > IDEMPOTENCY_KEY_MAX_LENGTH) {
+      throw new BadRequestException(
+        `El header Idempotency-Key no debe exceder ${IDEMPOTENCY_KEY_MAX_LENGTH} caracteres.`,
+      );
     }
 
     return rpcSend(this.financeClient, PaymentsPatterns.PAYPAL_CREATE_ORDER, {

@@ -97,6 +97,21 @@ describe('PaymentsGatewayController (SF3-08, BFF -> RPC)', () => {
     expect(guard.canActivate(allowed)).toBe(true);
   });
 
+  it('rechaza con 400 temprano un Idempotency-Key mayor a 255 caracteres', async () => {
+    const act = (idempotencyKey: string): Promise<unknown> => {
+      try {
+        return Promise.resolve(
+          firstValueFrom(controller.createPayPalOrder(USER, idempotencyKey, dto())),
+        );
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    };
+
+    await expect(act('k'.repeat(256))).rejects.toBeInstanceOf(BadRequestException);
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it('el request HTTP nunca acepta idempotencyKey en el body (canal autorizado: header)', () => {
     // El DTO no declara idempotencyKey: con whitelist+forbidNonWhitelisted el
     // pipe global lo rechaza antes del handler. La prueba documenta el contrato.
