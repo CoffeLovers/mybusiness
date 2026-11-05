@@ -10,7 +10,7 @@
     "test": "vitest run test --exclude \"**/*.e2e-spec.ts\"",
     "test:e2e": "vitest run test/*.e2e-spec.ts",
     "test:all": "vitest run",
-    "test:cov": "vitest run test/*.spec.ts --coverage"
+    "test:cov": "vitest run test --exclude \"**/*.e2e-spec.ts\" --coverage"
   },
   "dependencies": {
     "@mybusiness/common": "workspace:*",
