@@ -643,7 +643,9 @@ async function handleReconciliationRun(request, response) {
         totalMinor: targetRow.amountMinor,
       },
     };
-    const existingIdx = (RECONCILIATION_REVIEWS[tenantId] || []).findIndex((r) => r.id === reviewId);
+    const existingIdx = (RECONCILIATION_REVIEWS[tenantId] || []).findIndex(
+      (r) => r.id === reviewId,
+    );
     if (existingIdx >= 0) {
       RECONCILIATION_REVIEWS[tenantId][existingIdx] = reviewItem;
     } else {
@@ -754,7 +756,8 @@ function handleReconciliationMetrics(request, response) {
     needsReview,
     rejected,
     autoMatchRate: total > 0 ? Number((autoMatched / total).toFixed(4)) : 0,
-    reviewCount: (RECONCILIATION_REVIEWS[tenantId] || []).filter((r) => r.status === 'NEEDS_REVIEW').length,
+    reviewCount: (RECONCILIATION_REVIEWS[tenantId] || []).filter((r) => r.status === 'NEEDS_REVIEW')
+      .length,
   });
 }
 
@@ -978,10 +981,11 @@ function handleLedgerExport(request, response, url) {
   const tenantId = getTenantIdFromRequest(request);
   const rowsPool = getLedgerRowsForTenant(tenantId);
   const filters = parseLedgerFilters(url);
-  const rows = sortLedgerRows(filterLedgerRows(filters, rowsPool), filters.sortBy, filters.sortDir).slice(
-    0,
-    LEDGER_EXPORT_LIMIT,
-  );
+  const rows = sortLedgerRows(
+    filterLedgerRows(filters, rowsPool),
+    filters.sortBy,
+    filters.sortDir,
+  ).slice(0, LEDGER_EXPORT_LIMIT);
 
   const lines = ['\uFEFFfecha,descripcion,comercio,importe,moneda,categoria,conciliacion,cuenta'];
 
@@ -1135,7 +1139,10 @@ const server = createServer((request, response) => {
   const url = new URL(request.url ?? '/', `http://${HOST}:${PORT}`);
   const path = url.pathname;
 
-  if (method === 'GET' && (path === '/health' || path === '/healthz' || path === '/api/v1/health')) {
+  if (
+    method === 'GET' &&
+    (path === '/health' || path === '/healthz' || path === '/api/v1/health')
+  ) {
     sendJson(response, 200, { status: 'ok' });
     return;
   }
@@ -1207,7 +1214,10 @@ const server = createServer((request, response) => {
   }
 
   // Banking endpoints
-  if (method === 'POST' && (path === '/api/v1/banking/connect' || path === '/api/v1/banking/link-token')) {
+  if (
+    method === 'POST' &&
+    (path === '/api/v1/banking/connect' || path === '/api/v1/banking/link-token')
+  ) {
     void handleBankingConnect(request, response);
     return;
   }
@@ -1250,13 +1260,17 @@ const server = createServer((request, response) => {
     return;
   }
 
-  const reviewConfirmMatch = /^\/api\/v1\/finance\/reconciliation\/review\/([^/]+)\/confirm$/.exec(path);
+  const reviewConfirmMatch = /^\/api\/v1\/finance\/reconciliation\/review\/([^/]+)\/confirm$/.exec(
+    path,
+  );
   if (method === 'POST' && reviewConfirmMatch !== null) {
     handleReconciliationReviewConfirm(request, response, decodeURIComponent(reviewConfirmMatch[1]));
     return;
   }
 
-  const reviewRejectMatch = /^\/api\/v1\/finance\/reconciliation\/review\/([^/]+)\/reject$/.exec(path);
+  const reviewRejectMatch = /^\/api\/v1\/finance\/reconciliation\/review\/([^/]+)\/reject$/.exec(
+    path,
+  );
   if (method === 'POST' && reviewRejectMatch !== null) {
     handleReconciliationReviewReject(request, response, decodeURIComponent(reviewRejectMatch[1]));
     return;
@@ -1267,26 +1281,26 @@ const server = createServer((request, response) => {
     return;
   }
 
-async function handleFinanceAccountsPost(request, response) {
-  const tenantId = getTenantIdFromRequest(request) || TENANT_A_ID;
-  const body = await readJson(request);
-  const accId = `acc-${Date.now()}`;
-  const newAcc = {
-    id: accId,
-    tenantId,
-    institutionName: body?.institutionName || 'Load Test Bank',
-    accountType: body?.accountType || 'CHECKING',
-    accountNumberMasked: body?.accountNumberMasked || '******0054',
-    currency: body?.currency || 'COP',
-    status: 'ACTIVE',
-    balanceMinor: '0',
-  };
-  if (!BANK_ACCOUNTS[tenantId]) BANK_ACCOUNTS[tenantId] = [];
-  BANK_ACCOUNTS[tenantId].push(newAcc);
-  sendJson(response, 201, { success: true, data: newAcc });
-}
+  async function handleFinanceAccountsPost(request, response) {
+    const tenantId = getTenantIdFromRequest(request) || TENANT_A_ID;
+    const body = await readJson(request);
+    const accId = `acc-${Date.now()}`;
+    const newAcc = {
+      id: accId,
+      tenantId,
+      institutionName: body?.institutionName || 'Load Test Bank',
+      accountType: body?.accountType || 'CHECKING',
+      accountNumberMasked: body?.accountNumberMasked || '******0054',
+      currency: body?.currency || 'COP',
+      status: 'ACTIVE',
+      balanceMinor: '0',
+    };
+    if (!BANK_ACCOUNTS[tenantId]) BANK_ACCOUNTS[tenantId] = [];
+    BANK_ACCOUNTS[tenantId].push(newAcc);
+    sendJson(response, 201, { success: true, data: newAcc });
+  }
 
-// Accounts endpoints (finance)
+  // Accounts endpoints (finance)
   if (path === '/api/v1/finance/accounts') {
     if (method === 'GET') {
       const tenantId = getTenantIdFromRequest(request) || TENANT_A_ID;

@@ -173,7 +173,7 @@ export function LandingPage() {
         <MissionSection />
         <StepsSection />
         <BenefitsSection />
-        <TestimonialsSection />
+        <UseCasesSection />
         <FinalCtaSection />
       </main>
 
@@ -472,7 +472,6 @@ const MISSION_METRICS = [
   { value: '4 pasos', detail: 'Registro guiado' },
   { value: '3 monedas', detail: 'COP, USD y EUR' },
   { value: 'AA 4.5:1', detail: 'Contraste de texto' },
-  { value: '100% auditado', detail: 'Movimientos registrados' },
 ] as const;
 
 function PhoneMockup() {
@@ -559,7 +558,7 @@ function MissionSection() {
           </p>
         </div>
 
-        <dl className="mt-12 grid grid-cols-2 gap-6 border-border border-y py-8 sm:grid-cols-4">
+        <dl className="mt-12 grid grid-cols-2 gap-6 border-border border-y py-8 sm:grid-cols-3">
           {MISSION_METRICS.map((metric) => (
             <div key={metric.value} className="flex flex-col gap-1">
               <dt className="text-2xl font-semibold text-text tabular-nums sm:text-3xl">
@@ -942,77 +941,64 @@ function BenefitsSection() {
   );
 }
 
-/* ------------------------------ Testimonios ------------------------------ */
+/* ------------------------------- Casos de uso ----------------------------- */
 
-const TESTIMONIALS = [
+const USE_CASES = [
   {
-    quote:
-      'Antes cerrábamos el mes con tres hojas de cálculo. Ahora la conciliación está lista el mismo día y todo el equipo mira el mismo número.',
-    name: 'María P.',
-    role: 'Gerente de operaciones',
-    initials: 'MP',
+    title: 'Cierre de mes sin hojas de cálculo',
+    detail:
+      'El equipo concilia los movimientos bancarios con el libro mayor el mismo día y consulta una única cifra consolidada.',
+    tag: 'Operaciones',
   },
   {
-    quote:
-      'La auditoría inmutable nos ahorró discusiones internas: cada ajuste queda con su responsable y su fecha.',
-    name: 'Carlos R.',
-    role: 'Contador',
-    initials: 'CR',
+    title: 'Auditoría con responsable y fecha',
+    detail:
+      'Cada ajuste conserva quién lo registró y cuándo, de modo que la revisión no depende de correos ni de memoria.',
+    tag: 'Contabilidad',
   },
   {
-    quote:
-      'Trabajamos en pesos y en dólares. Tener el saldo consolidado en un solo panel cambió la forma de decidir.',
-    name: 'Ana L.',
-    role: 'Fundadora',
-    initials: 'AL',
+    title: 'Operaciones en COP, USD y EUR',
+    detail:
+      'Los saldos de cada moneda se mantienen separados y se consolidan en un mismo panel con el tipo de cambio registrado.',
+    tag: 'Dirección',
   },
 ] as const;
 
-function TestimonialsSection() {
-  const [activeTestimonial, setActiveTestimonial] = useState(0);
-  const testimonial = TESTIMONIALS[activeTestimonial] ?? TESTIMONIALS[0];
-  const lastIndex = TESTIMONIALS.length - 1;
+function UseCasesSection() {
+  const [activeCase, setActiveCase] = useState(0);
+  const useCase = USE_CASES[activeCase] ?? USE_CASES[0];
+  const lastIndex = USE_CASES.length - 1;
 
   function showPrevious() {
-    setActiveTestimonial((current) => (current === 0 ? lastIndex : current - 1));
+    setActiveCase((current) => (current === 0 ? lastIndex : current - 1));
   }
 
   function showNext() {
-    setActiveTestimonial((current) => (current === lastIndex ? 0 : current + 1));
+    setActiveCase((current) => (current === lastIndex ? 0 : current + 1));
   }
 
   return (
-    <section aria-labelledby="testimonios-titulo" className="border-border border-t bg-surface">
+    <section aria-labelledby="casos-titulo" className="border-border border-t bg-surface">
       <div className="mx-auto w-full max-w-6xl px-4 py-16">
-        <div className="flex flex-wrap items-center gap-3">
-          <h2
-            id="testimonios-titulo"
-            className="text-3xl font-semibold tracking-tight text-text sm:text-4xl"
-          >
-            Lo que dicen los equipos
-          </h2>
-          <span className="rounded-full border border-border px-3 py-1 text-xs text-text-muted">
-            Contenido de demostración
-          </span>
-        </div>
+        <h2
+          id="casos-titulo"
+          className="text-3xl font-semibold tracking-tight text-text sm:text-4xl"
+        >
+          Casos de uso
+        </h2>
+        <p className="mt-4 max-w-prose text-base text-text-muted">
+          Escenarios que el producto resuelve; no son testimonios de clientes.
+        </p>
 
         <figure className="mt-8 max-w-3xl">
           <div aria-live="polite">
-            <blockquote className="text-xl leading-relaxed text-text sm:text-2xl">
-              “{testimonial.quote}”
-            </blockquote>
-            <div className="mt-6 flex items-center gap-3">
-              <span
-                aria-hidden="true"
-                className="flex size-11 items-center justify-center rounded-full bg-surface-raised text-sm font-semibold text-text"
-              >
-                {testimonial.initials}
+            <p className="text-xl leading-relaxed text-text sm:text-2xl">{useCase.title}</p>
+            <p className="mt-4 max-w-prose text-base text-text-muted">{useCase.detail}</p>
+            <p className="mt-6">
+              <span className="rounded-full border border-border px-3 py-1 text-xs text-text-muted">
+                {useCase.tag}
               </span>
-              <span className="flex flex-col">
-                <span className="text-sm font-semibold text-text">{testimonial.name}</span>
-                <span className="text-xs text-text-muted">{testimonial.role}</span>
-              </span>
-            </div>
+            </p>
           </div>
 
           <div className="mt-8 flex items-center gap-3">
@@ -1031,7 +1017,7 @@ function TestimonialsSection() {
               Siguiente
             </button>
             <span className="ml-1 font-mono text-xs text-text-muted tabular-nums">
-              {activeTestimonial + 1} / {TESTIMONIALS.length}
+              {activeCase + 1} / {USE_CASES.length}
             </span>
           </div>
         </figure>
@@ -1112,14 +1098,6 @@ function SiteFooter() {
               >
                 Iniciar sesión
               </Link>
-            </li>
-            <li>
-              <a
-                href="#"
-                className="inline-flex min-h-11 items-center rounded-md px-3 text-sm text-text-muted transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
-              >
-                Privacidad
-              </a>
             </li>
           </ul>
         </nav>
