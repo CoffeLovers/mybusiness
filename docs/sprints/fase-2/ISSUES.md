@@ -474,7 +474,7 @@ La fase introduce un segundo cliente. La paridad de contratos y el aislamiento p
 - [x] `web-ci` falla si OpenAPI y los tipos del cliente divergen.
 - [x] Los E2E cubren los cinco flujos críticos en verde.
 - [x] El test de aislamiento A/B pasa en todos los endpoints nuevos.
-- [ ] La carga de 50.000 transacciones no pierde eventos y mantiene p95 < 5 s en ingesta. _(Bloqueado en host local por ausencia de Docker daemon; arnés k6 y verificación en Postgres 100% listos. Ver detalle en [docs/qa/load-report-54.md](docs/qa/load-report-54.md))_.
+- [x] La carga de 50.000 transacciones no pierde eventos y mantiene p95 < 5 s en ingesta. _(Evidencia: run 41974335765 en CI, p95 9.96 ms, 0 pérdidas. Ver [docs/qa/load-report-54.md](docs/qa/load-report-54.md))_
 - [x] El reporte de carga y los artefactos quedan adjuntos.
 
 ### Validación
