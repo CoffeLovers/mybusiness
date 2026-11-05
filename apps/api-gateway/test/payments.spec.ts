@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadRequestException, HttpException, HttpStatus } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import type { RawBodyRequest } from '@nestjs/common';
+import type { Request } from 'express';
 import { firstValueFrom, of, throwError } from 'rxjs';
 import {
   CreatePayPalOrderDto,
@@ -9,7 +11,10 @@ import {
 } from '@mybusiness/contracts';
 import type { UserContext } from '@mybusiness/contracts';
 import { ROLES_KEY, RolesGuard } from '@mybusiness/common';
-import { PaymentsGatewayController } from '../src/payments/payments.controller';
+import {
+  PayPalWebhooksGatewayController,
+  PaymentsGatewayController,
+} from '../src/payments/payments.controller';
 
 const USER: UserContext = {
   userId: 'user-1',
@@ -142,5 +147,110 @@ describe('PaymentsGatewayController (SF3-08, BFF -> RPC)', () => {
     expect(((error as HttpException).getResponse() as Record<string, unknown>).error).toBe(
       'PAYMENT_PROVIDER_UNAVAILABLE',
     );
+  });
+});
+
+// ─── SF3-09: capturas, reembolsos y webhook firmado ──────────────────────────
+
+describe('PaymentsGatewayController SF3-09 (BFF -> RPC)', () => {
+  const ORDER_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  let send: ReturnType<typeof vi.fn>;
+  let controller: PaymentsGatewayController;
+
+  beforeEach(() => {
+    send = vi.fn().mockReturnValue(of({}));
+    controller = new PaymentsGatewayController({ send } as never);
+  });
+
+  it('proxea la captura al patrón RPC con importe y contexto autenticado', async () => {
+    const response = await firstValueFrom(
+      controller.capturePayPalOrder(USER, ORDER_ID, { amountMinor: '1000' }),
+    );
+
+    expect(send).toHaveBeenCalledTimes(1);
+    const [pattern, payload] = send.mock.calls[0];
+    expect(pattern).toBe(PaymentsPatterns.PAYPAL_CAPTURE);
+    expect(payload).toEqual({
+      amountMinor: '1000',
+      orderId: ORDER_ID,
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      role: 'ACCOUNTANT',
+    });
+    expect(response).toEqual({});
+  });
+
+  it('proxea la captura total (sin body) como monto indefinido', async () => {
+    await firstValueFrom(controller.capturePayPalOrder(USER, ORDER_ID));
+
+    const [, payload] = send.mock.calls[0];
+    expect(payload).toEqual({
+      orderId: ORDER_ID,
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      role: 'ACCOUNTANT',
+    });
+  });
+
+  it('proxea el reembolso al patrón RPC con motivo obligatorio del body', async () => {
+    await firstValueFrom(
+      controller.refundPayPalOrder({ ...USER, userId: 'user-9' }, ORDER_ID, {
+        reason: 'Servicio no prestado',
+        amountMinor: '1000',
+      }),
+    );
+
+    const [pattern, payload] = send.mock.calls[0];
+    expect(pattern).toBe(PaymentsPatterns.PAYPAL_REFUND);
+    expect(payload).toEqual({
+      reason: 'Servicio no prestado',
+      amountMinor: '1000',
+      orderId: ORDER_ID,
+      tenantId: 'tenant-1',
+      userId: 'user-9',
+      role: 'ACCOUNTANT',
+    });
+  });
+
+  function requestOf(rawBody?: string): RawBodyRequest<Request> {
+    return { rawBody: rawBody ? Buffer.from(rawBody) : Buffer.alloc(0) } as RawBodyRequest<Request>;
+  }
+
+  it('el webhook de PayPal es público/firmado y reenvía raw body + cabeceras por RPC', async () => {
+    const webhookController = new PayPalWebhooksGatewayController({ send } as never);
+    send.mockReturnValueOnce(of({ status: 'processed', eventId: 'WH-1' }));
+
+    const response = await firstValueFrom(
+      webhookController.handleWebhook(
+        { id: 'WH-1', event_type: 'PAYMENT.CAPTURE.COMPLETED' },
+        { 'paypal-auth-algo': 'SHA256withRSA' },
+        requestOf('{"id":"WH-1"}'),
+      ),
+    );
+
+    const [pattern, payload] = send.mock.calls[0];
+    expect(pattern).toBe(PaymentsPatterns.PAYPAL_HANDLE_WEBHOOK);
+    expect(payload).toMatchObject({
+      headers: { 'paypal-auth-algo': 'SHA256withRSA' },
+      rawBody: '{"id":"WH-1"}',
+    });
+    expect(response).toEqual({ status: 'processed', eventId: 'WH-1' });
+  });
+
+  it('el webhook rechaza con 413 un cuerpo mayor a 256 KB sin tocar el RPC', async () => {
+    const webhookController = new PayPalWebhooksGatewayController({ send } as never);
+
+    let error: unknown = null;
+    try {
+      await firstValueFrom(
+        webhookController.handleWebhook({}, {}, requestOf('x'.repeat(256 * 1024 + 1))),
+      );
+    } catch (caught: unknown) {
+      error = caught;
+    }
+
+    expect(error).toBeInstanceOf(HttpException);
+    expect((error as HttpException).getStatus()).toBe(HttpStatus.PAYLOAD_TOO_LARGE);
+    expect(send).not.toHaveBeenCalled();
   });
 });
