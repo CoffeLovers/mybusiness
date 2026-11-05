@@ -56,6 +56,12 @@
   image: mcr.microsoft.com/playwright:v1.64.1-noble
   # La imagen ya trae Chromium y sus dependencias del sistema: se omite
   # `playwright install --with-deps` para no penalizar el tiempo de arranque.
+  # Además, desde la v1.64 la imagen ya no incluye `corepack`, así que pnpm se
+  # instala con npm (misma versión que fija `packageManager`).
+  before_script:
+    - npm install -g pnpm@12.9.1
+    - pnpm config set store-dir "$PNPM_STORE_DIR" --global
+    - pnpm install --frozen-lockfile
 
 # ---------------------------------------------------------------------------
 # validate
