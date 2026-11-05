@@ -1,6 +1,7 @@
 import { HttpException, HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ClientProxy } from '@nestjs/microservices';
+import { randomUUID } from 'node:crypto';
 import { TimeoutError, firstValueFrom } from 'rxjs';
 import {
   CashflowPatterns,
@@ -201,6 +202,18 @@ export class McpToolsService {
       );
     }
 
+    const providedKey =
+      typeof args.idempotencyKey === 'string' && args.idempotencyKey.length > 0
+        ? args.idempotencyKey
+        : undefined;
+    if (providedKey && providedKey.length > 255) {
+      throw new McpToolError(
+        McpErrorCodes.TOOL_INVALID_INPUT,
+        'La clave de idempotencia no debe exceder 255 caracteres',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
     const order = await firstValueFrom(
       rpcSend<PayPalOrderView, Record<string, unknown>>(
         this.financeClient,
@@ -213,10 +226,14 @@ export class McpToolsService {
             typeof args.description === 'string' && args.description.length > 0
               ? args.description
               : 'Cobro mediante enlace de pago',
-          idempotencyKey:
-            typeof args.idempotencyKey === 'string' && args.idempotencyKey.length > 0
-              ? args.idempotencyKey
-              : `mcp:${ctx.requestId}`,
+          /**
+           * Sin clave del agente se genera un UUID por invocación, nunca una
+           * clave derivada del `id` JSON-RPC: ese id es un contador por
+           * conexión y dos sesiones podrían colisionar en el índice
+           * UNIQUE (tenant_id, idempotency_key) causando replay de una orden
+           * ajena (otra factura/importe). ADR 003 §4.
+           */
+          idempotencyKey: providedKey ?? randomUUID(),
           tenantId: ctx.tenantId,
           userId: ctx.userId,
           role: ctx.role,
