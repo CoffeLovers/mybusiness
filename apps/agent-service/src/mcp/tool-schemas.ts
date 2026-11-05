@@ -5,6 +5,8 @@ import type { McpToolDescriptor, McpToolName } from '@mybusiness/contracts';
 export const CASHFLOW_TOOL_VERSION = '1.0.0';
 /** Versión del contrato de la herramienta de transacciones sin conciliar. */
 export const LEDGER_TOOL_VERSION = '1.0.0';
+/** Versión del contrato de la herramienta de enlaces de cobro PayPal. */
+export const PAYMENT_LINK_TOOL_VERSION = '1.0.0';
 /** Versión global del esquema de herramientas expuesto por el servidor MCP. */
 export const MCP_SCHEMA_VERSION = '1.0.0';
 
@@ -64,10 +66,36 @@ const ListUnreconciledSchema = z
   })
   .strict();
 
+/**
+ * Importe estrictamente positivo en unidad mínima: siempre string entero
+ * (nunca `number` ni decimales); la conversión a decimal del proveedor ocurre
+ * en finance-service vía `minorToPayPalDecimal` (ADR 003).
+ */
+const positiveAmountMinor = z
+  .string()
+  .regex(/^[1-9]\d*$/, 'Debe ser un entero positivo en unidad mínima (sin decimales ni signo)')
+  .max(19, 'Excede el límite de dígitos monetarios');
+
+const CreatePaymentLinkSchema = z
+  .object({
+    amountMinor: positiveAmountMinor,
+    currency: currencyCode,
+    description: z.string().trim().min(1).max(127).optional(),
+    invoiceId: accountId,
+    idempotencyKey: z
+      .string()
+      .trim()
+      .min(8, 'La clave de idempotencia es muy corta')
+      .max(255)
+      .optional(),
+  })
+  .strict();
+
 /** Nombres de herramienta alineados con `McpToolName` del paquete de contratos. */
 const MCP_TOOL_NAME_VALUES = [
   'get_cashflow_summary',
   'list_unreconciled_transactions',
+  'create_payment_link',
 ] as const satisfies readonly McpToolName[];
 
 export const McpToolNameSchema = z.enum(MCP_TOOL_NAME_VALUES);
@@ -130,6 +158,43 @@ const LEDGER_INPUT_SCHEMA: Record<string, unknown> = {
   required: [],
 };
 
+const PAYMENT_LINK_INPUT_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    amountMinor: {
+      type: 'string',
+      pattern: '^[1-9][0-9]*$',
+      description:
+        'Importe entero estrictamente positivo en unidad mínima de la moneda (centavos), como string. Nunca un número flotante ni un valor decimal.',
+    },
+    currency: {
+      type: 'string',
+      pattern: '^[A-Za-z]{3}$',
+      description: 'Código ISO 4217 de la moneda (3 letras).',
+    },
+    description: {
+      type: 'string',
+      minLength: 1,
+      maxLength: 127,
+      description: 'Descripción visible para el pagador (opcional, máx. 127 caracteres).',
+    },
+    invoiceId: {
+      type: 'string',
+      format: 'uuid',
+      description: 'Identificador de la factura del libro mayor que respalda el cobro.',
+    },
+    idempotencyKey: {
+      type: 'string',
+      minLength: 8,
+      maxLength: 255,
+      description:
+        'Clave opcional de idempotencia; si se omita usa el identificador de la invocación.',
+    },
+  },
+  required: ['amountMinor', 'currency', 'invoiceId'],
+};
+
 /** Catálogo de herramientas de solo lectura expuesto por `tools/list`. */
 export const MCP_TOOLS: McpToolDescriptor[] = [
   {
@@ -146,11 +211,19 @@ export const MCP_TOOLS: McpToolDescriptor[] = [
       'Lista paginada de transacciones del mayor pendientes de conciliar (estado UNMATCHED). Solo lectura.',
     inputSchema: LEDGER_INPUT_SCHEMA,
   },
+  {
+    name: 'create_payment_link',
+    version: PAYMENT_LINK_TOOL_VERSION,
+    description:
+      'Crea una orden PayPal idempotente asociada a una factura y devuelve el enlace de checkout (rel=approve). Requiere permiso de cobro (payments:write).',
+    inputSchema: PAYMENT_LINK_INPUT_SCHEMA,
+  },
 ];
 
 const TOOL_SCHEMAS: Record<McpToolName, z.ZodType> = {
   get_cashflow_summary: GetCashflowSummarySchema,
   list_unreconciled_transactions: ListUnreconciledSchema,
+  create_payment_link: CreatePaymentLinkSchema,
 };
 
 function formatIssue(issue: z.ZodIssue): string {
