@@ -100,7 +100,9 @@ async function main() {
   const droppedIterations = metrics.dropped_iterations?.values?.count ?? 0;
   const http429Count = metrics.http_429?.values?.count ?? 0;
 
-  console.log(`✓ Métricas k6: aceptadas=${transactionsAccepted}, p95=${p95.toFixed(2)}ms, fallos=${(httpReqFailedRate * 100).toFixed(2)}%, 429=${http429Count}`);
+  console.log(
+    `✓ Métricas k6: aceptadas=${transactionsAccepted}, p95=${p95.toFixed(2)}ms, fallos=${(httpReqFailedRate * 100).toFixed(2)}%, 429=${http429Count}`,
+  );
 
   // 3. Consultar finance_db
   console.log('3. Consultando transacciones en finance_db...');
@@ -145,17 +147,21 @@ async function main() {
   const maxRetries = 40; // 40 * 15s = 10 minutos máx
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    // Tolerancia de ±5 minutos: el evento de auditoría de la última transacción se publica
+    // DESPUÉS del insert de su fila, por lo que su timestamp puede superar maxCreatedAt.
     const auditSql = `
       SELECT count(*) FROM audit_logs
       WHERE tenant_id = '${tenantId}'
         AND action = 'finance.transaction.created'
         AND entity_name = 'Transaction'
-        AND timestamp >= '${minCreatedAt}'
-        AND timestamp <= '${maxCreatedAt}';
+        AND timestamp >= ('${minCreatedAt}'::timestamptz - interval '5 minutes')
+        AND timestamp <= ('${maxCreatedAt}'::timestamptz + interval '5 minutes');
     `;
     auditForRun = parseInt(runSql(dbUser, 'audit_db', auditSql) || '0', 10);
 
-    console.log(`  Intento ${attempt}/${maxRetries}: audit_logs=${auditForRun} (esperadas: ${transactionsForRun})`);
+    console.log(
+      `  Intento ${attempt}/${maxRetries}: audit_logs=${auditForRun} (esperadas: ${transactionsForRun})`,
+    );
 
     if (auditForRun === transactionsForRun) {
       console.log('✓ Se alcanzó paridad exacta: audit_for_run == transactions_for_run.');
@@ -165,7 +171,9 @@ async function main() {
     if (auditForRun === lastAuditCount) {
       stableCount++;
       if (stableCount >= 3) {
-        console.log(`✓ Lecturas estabilizadas en ${auditForRun} eventos tras 3 iteraciones idénticas.`);
+        console.log(
+          `✓ Lecturas estabilizadas en ${auditForRun} eventos tras 3 iteraciones idénticas.`,
+        );
         break;
       }
     } else {
@@ -182,6 +190,60 @@ async function main() {
     WHERE tenant_id = '${tenantId}' AND failed_at >= '${minCreatedAt}';
   `;
   const deadLetters = parseInt(runSql(dbUser, 'audit_db', dlSql) || '0', 10);
+
+  // Diagnóstico de límites: eventos incluidos solo por la tolerancia de ±5 minutos
+  // (fuera de la ventana original [minCreatedAt, maxCreatedAt]). La DB es efímera y
+  // contiene únicamente datos de esta corrida, por lo que no hay contaminación cruzada.
+  const auditFilter = `tenant_id = '${tenantId}' AND action = 'finance.transaction.created' AND entity_name = 'Transaction'`;
+  const minTsExpr = `'${minCreatedAt}'::timestamptz`;
+  const maxTsExpr = `'${maxCreatedAt}'::timestamptz`;
+
+  const beforeWindowSql = `
+    SELECT count(*) FROM audit_logs
+    WHERE ${auditFilter}
+      AND timestamp >= (${minTsExpr} - interval '5 minutes')
+      AND timestamp < ${minTsExpr};
+  `;
+  const afterWindowSql = `
+    SELECT count(*) FROM audit_logs
+    WHERE ${auditFilter}
+      AND timestamp > ${maxTsExpr}
+      AND timestamp <= (${maxTsExpr} + interval '5 minutes');
+  `;
+  const eventsBeforeWindow = parseInt(runSql(dbUser, 'audit_db', beforeWindowSql) || '0', 10);
+  const eventsAfterWindow = parseInt(runSql(dbUser, 'audit_db', afterWindowSql) || '0', 10);
+  console.log(
+    `Eventos fuera de ventana por tolerancia: inicio=${eventsBeforeWindow} fin=${eventsAfterWindow}`,
+  );
+
+  if (eventsBeforeWindow > 0) {
+    const beforeTsSql = `
+      SELECT timestamp FROM audit_logs
+      WHERE ${auditFilter}
+        AND timestamp >= (${minTsExpr} - interval '5 minutes')
+        AND timestamp < ${minTsExpr}
+      ORDER BY timestamp
+      LIMIT 3;
+    `;
+    const beforeTs = runSql(dbUser, 'audit_db', beforeTsSql)
+      .split('\n')
+      .filter(Boolean)
+      .join(' | ');
+    console.log(`  [evidencia] 3 timestamps extremos por debajo del inicio: ${beforeTs}`);
+  }
+
+  if (eventsAfterWindow > 0) {
+    const afterTsSql = `
+      SELECT timestamp FROM audit_logs
+      WHERE ${auditFilter}
+        AND timestamp > ${maxTsExpr}
+        AND timestamp <= (${maxTsExpr} + interval '5 minutes')
+      ORDER BY timestamp DESC
+      LIMIT 3;
+    `;
+    const afterTs = runSql(dbUser, 'audit_db', afterTsSql).split('\n').filter(Boolean).join(' | ');
+    console.log(`  [evidencia] 3 timestamps extremos por encima del fin: ${afterTs}`);
+  }
 
   // 5. Evaluación de Criterios de Aceptación
   const eventLossCount = Math.max(0, transactionsForRun - auditForRun);
