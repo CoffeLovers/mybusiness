@@ -2,6 +2,8 @@ package com.mybusiness.feature.dashboard.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.mybusiness.core.common.extensions.toErrorKind
+import com.mybusiness.core.common.extensions.toUserMessage
 import com.mybusiness.core.common.result.Result
 import com.mybusiness.core.datastore.UserSessionDataStore
 import com.mybusiness.feature.dashboard.domain.usecase.GetDashboardSummaryUseCase
@@ -37,22 +39,27 @@ class DashboardViewModel @Inject constructor(
 
     fun loadDashboard() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            _uiState.update { it.copy(isLoading = true, errorMessage = null, errorKind = null) }
             when (val result = getDashboardSummaryUseCase()) {
                 is Result.Success -> {
                     _uiState.update {
                         it.copy(
                             isLoading = false,
                             summary = result.data,
-                            errorMessage = null
+                            errorMessage = null,
+                            errorKind = null
                         )
                     }
                 }
                 is Result.Error -> {
+                    val kind = result.toErrorKind()
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            errorMessage = result.message
+                            errorMessage = result.toUserMessage(
+                                "No pudimos cargar tu resumen. Inténtalo de nuevo."
+                            ),
+                            errorKind = kind
                         )
                     }
                 }

@@ -38,14 +38,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mybusiness.core.common.extensions.ErrorKind
 import com.mybusiness.core.common.extensions.formatCurrency
 import com.mybusiness.core.designsystem.component.ErrorCard
 import com.mybusiness.core.designsystem.component.LoadingView
 import com.mybusiness.core.designsystem.component.MyBusinessTopAppBar
+import com.mybusiness.core.designsystem.component.PrimaryButton
 import com.mybusiness.core.designsystem.theme.businessColors
+import com.mybusiness.core.designsystem.theme.minimumTouchTarget
 import com.mybusiness.core.model.BankAccount
 import com.mybusiness.core.model.DashboardSummary
 import com.mybusiness.core.model.Transaction
@@ -71,19 +75,28 @@ fun DashboardScreen(
             MyBusinessTopAppBar(
                 title = "MyBusiness",
                 actions = {
-                    IconButton(onClick = onOpenBanking) {
+                    IconButton(
+                        onClick = onOpenBanking,
+                        modifier = Modifier.minimumTouchTarget()
+                    ) {
                         Icon(
                             imageVector = Icons.Default.AccountBalance,
                             contentDescription = "Cuentas bancarias"
                         )
                     }
-                    IconButton(onClick = { viewModel.loadDashboard() }) {
+                    IconButton(
+                        onClick = { viewModel.loadDashboard() },
+                        modifier = Modifier.minimumTouchTarget()
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
                             contentDescription = "Actualizar"
                         )
                     }
-                    IconButton(onClick = { viewModel.logout() }) {
+                    IconButton(
+                        onClick = { viewModel.logout() },
+                        modifier = Modifier.minimumTouchTarget()
+                    ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ExitToApp,
                             contentDescription = "Cerrar Sesión",
@@ -101,24 +114,139 @@ fun DashboardScreen(
                 .padding(paddingValues)
                 .background(MaterialTheme.colorScheme.background)
         ) {
+            val errorMessage = uiState.errorMessage
+            val summary = uiState.summary
             when {
                 uiState.isLoading -> {
                     LoadingView()
                 }
-                uiState.errorMessage != null -> {
+                uiState.errorKind == ErrorKind.Unauthorized -> {
+                    SessionExpiredState(
+                        onLogin = onLogoutSuccess,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
+                errorMessage != null -> {
                     ErrorCard(
-                        message = uiState.errorMessage!!,
+                        message = errorMessage,
                         onRetry = { viewModel.loadDashboard() },
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }
-                uiState.summary != null -> {
+                summary != null && uiState.isEmpty -> {
+                    EmptyState(
+                        title = "Aún no hay información",
+                        message = "Vincula una cuenta bancaria para empezar a ver tus finanzas.",
+                        actionText = "Vincular cuenta",
+                        onAction = onOpenBanking,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
+                summary != null -> {
                     DashboardContent(
-                        summary = uiState.summary!!,
+                        summary = summary,
                         userEmail = uiState.userEmail.orEmpty()
                     )
                 }
+                else -> {
+                    EmptyState(
+                        title = "Aún no hay información",
+                        message = "Actualiza para volver a intentarlo.",
+                        actionText = "Actualizar",
+                        onAction = { viewModel.loadDashboard() },
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun SessionExpiredState(
+    onLogin: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(24.dp),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Tu sesión expiró",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Vuelve a iniciar sesión para continuar.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            PrimaryButton(
+                text = "Iniciar sesión",
+                onClick = onLogin
+            )
+        }
+    }
+}
+
+@Composable
+private fun EmptyState(
+    title: String,
+    message: String,
+    actionText: String,
+    onAction: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(24.dp),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            PrimaryButton(
+                text = actionText,
+                onClick = onAction
+            )
         }
     }
 }
@@ -191,7 +319,7 @@ private fun DashboardContent(
 private fun GreetingSection(userEmail: String) {
     Column {
         Text(
-            text = "👋 ¡Bienvenido de nuevo!",
+            text = "Bienvenido de nuevo",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary
