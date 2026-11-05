@@ -148,7 +148,7 @@ export const MCP_TOOLS: McpToolDescriptor[] = [
   },
 ];
 
-const TOOL_SCHEMAS: Record<McpToolName, z.ZodTypeAny> = {
+const TOOL_SCHEMAS: Record<McpToolName, z.ZodType> = {
   get_cashflow_summary: GetCashflowSummarySchema,
   list_unreconciled_transactions: ListUnreconciledSchema,
 };
