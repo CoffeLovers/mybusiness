@@ -586,6 +586,18 @@ export const paypalOrders = pgTable(
       .$type<Record<string, unknown>>()
       .notNull()
       .default({}),
+    /** Identificador de la captura del proveedor; NULL hasta que se captura (SF3-09). */
+    captureId: varchar('capture_id', { length: 255 }),
+    /**
+     * Importe registrado como capturado en unidad mínima (ADR 003). Puede ser
+     * menor a `amount_minor` en capturas parciales registradas localmente tras
+     * la captura total del proveedor (ver comentario en `PayPalClient`).
+     */
+    capturedAmountMinor: bigint('captured_amount_minor', { mode: 'bigint' }),
+    /** Momento de la confirmación de la captura (endpoint o webhook). */
+    capturedAt: timestamp('captured_at', { withTimezone: true }),
+    /** Acumulado reembolsado; `REFUNDED` cuando iguala el importe capturado (SF3-09). */
+    refundedAmountMinor: bigint('refunded_amount_minor', { mode: 'bigint' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .notNull()
@@ -595,16 +607,95 @@ export const paypalOrders = pgTable(
   (table) => [
     uniqueIndex('paypal_orders_tenant_idempotency_uq').on(table.tenantId, table.idempotencyKey),
     uniqueIndex('paypal_orders_paypal_order_id_uq').on(table.paypalOrderId),
+    uniqueIndex('paypal_orders_capture_id_uq').on(table.captureId),
     index('paypal_orders_tenant_id_idx').on(table.tenantId),
     index('paypal_orders_invoice_id_idx').on(table.invoiceId),
     index('paypal_orders_tenant_created_at_idx').on(table.tenantId, table.createdAt),
   ],
 );
 
-export const paypalOrdersRelations = relations(paypalOrders, ({ one }) => ({
+export const paypalOrdersRelations = relations(paypalOrders, ({ one, many }) => ({
   invoice: one(invoices, {
     fields: [paypalOrders.invoiceId],
     references: [invoices.id],
+  }),
+  refunds: many(paypalRefunds),
+  webhookEvents: many(paypalWebhookEvents),
+}));
+
+/**
+ * Tabla: paypal_refunds
+ * Reembolsos totales/parciales aplicados a capturas PayPal (SF3-09). El motivo
+ * y el actor (`requested_by`) viajan en la fila para la auditoría; la idem-
+ * potencia ante el proveedor es determinista vía PayPal-Request-Id derivado de
+ * la clave de la orden y el importe (paypal_refund_id UNIQUE).
+ */
+export const paypalRefunds = pgTable(
+  'paypal_refunds',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    orderId: uuid('order_id')
+      .notNull()
+      .references(() => paypalOrders.id, { onDelete: 'restrict' }),
+    /** Capture-id del proveedor sobre el que se ejecutó la devolución. */
+    captureId: varchar('capture_id', { length: 255 }).notNull(),
+    /** Identificador `REFUND-…` del proveedor (UNIQUE, base de la deduplicación). */
+    paypalRefundId: varchar('paypal_refund_id', { length: 255 }).notNull(),
+    amountMinor: bigint('amount_minor', { mode: 'bigint' }).notNull(),
+    currency: varchar('currency', { length: 3 }).notNull(),
+    reason: varchar('reason', { length: 255 }).notNull(),
+    /** Actor que la solicitó (userId de auditoría; webhook usa `paypal-webhook`). */
+    requestedBy: varchar('requested_by', { length: 255 }).notNull(),
+    /** Estado según el proveedor en el momento del registro (p. ej. COMPLETED). */
+    providerStatus: varchar('provider_status', { length: 32 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('paypal_refunds_paypal_refund_id_uq').on(table.paypalRefundId),
+    index('paypal_refunds_tenant_id_idx').on(table.tenantId),
+    index('paypal_refunds_order_id_idx').on(table.orderId),
+  ],
+);
+
+export const paypalRefundsRelations = relations(paypalRefunds, ({ one }) => ({
+  order: one(paypalOrders, {
+    fields: [paypalRefunds.orderId],
+    references: [paypalOrders.id],
+  }),
+}));
+
+/**
+ * Tabla: paypal_webhook_events
+ * Notificaciones PayPal recibidas (SF3-09), ya verificadas por firma.
+ * Deduplicación por UNIQUE(event_id): el duplicado responde 200 sin
+ * reprocesar; una fila FAILED permite reprocesar en la redelivery del
+ * proveedor (idem LastWriteWin banking #47).
+ */
+export const paypalWebhookEvents = pgTable(
+  'paypal_webhook_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    eventId: varchar('event_id', { length: 255 }).notNull(),
+    eventType: varchar('event_type', { length: 100 }).notNull(),
+    resourceId: varchar('resource_id', { length: 255 }),
+    order: uuid('order_id').references(() => paypalOrders.id, { onDelete: 'set null' }),
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
+    processingStatus: varchar('processing_status', { length: 32 }).notNull(),
+    errorMessage: varchar('error_message', { length: 500 }),
+    processedAt: timestamp('processed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('paypal_webhook_events_event_id_uq').on(table.eventId),
+    index('paypal_webhook_events_order_id_idx').on(table.order),
+  ],
+);
+
+export const paypalWebhookEventsRelations = relations(paypalWebhookEvents, ({ one }) => ({
+  order: one(paypalOrders, {
+    fields: [paypalWebhookEvents.order],
+    references: [paypalOrders.id],
   }),
 }));
 
@@ -716,3 +807,7 @@ export type LedgerSavedView = typeof ledgerSavedViews.$inferSelect;
 export type NewLedgerSavedView = typeof ledgerSavedViews.$inferInsert;
 export type PayPalOrder = typeof paypalOrders.$inferSelect;
 export type NewPayPalOrder = typeof paypalOrders.$inferInsert;
+export type PayPalRefund = typeof paypalRefunds.$inferSelect;
+export type NewPayPalRefund = typeof paypalRefunds.$inferInsert;
+export type PayPalWebhookEvent = typeof paypalWebhookEvents.$inferSelect;
+export type NewPayPalWebhookEvent = typeof paypalWebhookEvents.$inferInsert;
