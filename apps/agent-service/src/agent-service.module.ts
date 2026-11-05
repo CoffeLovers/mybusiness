@@ -7,10 +7,8 @@ import {
   getRootEnvFilePaths,
 } from '@mybusiness/common';
 import { AgentController } from './agent.controller';
-import { AgentService } from './agent.service';
-import { AgentRepository } from './agent.repository';
-import { AgentDatabaseService } from './database/database.service';
-import { EmbeddingModule } from './embeddings';
+import { AgentMemoryModule } from './agent-memory.module';
+import { ChatModule } from './chat/chat.module';
 import { McpModule } from './mcp/mcp.module';
 import { BudgetModule } from './budget/budget.module';
 
@@ -20,15 +18,13 @@ import { BudgetModule } from './budget/budget.module';
       isGlobal: true,
       envFilePath: getRootEnvFilePaths(),
     }),
-    EmbeddingModule,
+    AgentMemoryModule,
     McpModule,
     BudgetModule,
+    ChatModule,
   ],
   controllers: [AgentController],
   providers: [
-    AgentDatabaseService,
-    AgentRepository,
-    AgentService,
     {
       provide: APP_GUARD,
       useClass: RpcTenantGuard,
@@ -38,6 +34,6 @@ import { BudgetModule } from './budget/budget.module';
       useClass: RpcTenantContextInterceptor,
     },
   ],
-  exports: [AgentService, AgentRepository, BudgetModule],
+  exports: [AgentMemoryModule, BudgetModule, ChatModule],
 })
 export class AgentServiceModule {}

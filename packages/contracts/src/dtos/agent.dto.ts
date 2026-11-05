@@ -1,6 +1,9 @@
+import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -8,9 +11,12 @@ import {
   IsString,
   Matches,
   Max,
+  MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
 import { AgentDegradationReason, ContextType } from '../enums';
+import type { McpToolName } from '../mcp/mcp.dto';
 import type { RequestContext, WithContext } from './context.dto';
 
 export class StoreAgentMemoryDto {
@@ -250,6 +256,109 @@ export interface ReleaseTokenBudgetResult {
   releasedMicroUsd: number;
   remainingMicroUsd: number;
 }
+
+// ==========================================
+// Asistente conversacional determinista (SF3-02)
+// ==========================================
+
+/**
+ * Entrada del chat conversacional.
+ *
+ * El contexto (`tenantId`, `userId`, `role`) NUNCA forma parte del DTO:
+ * se resuelve exclusivamente del contexto RPC seguro.
+ */
+export class AgentChatDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(4000)
+  message!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  conversationId?: string;
+}
+
+/**
+ * Referencia explícita de la evidencia usada para construir la respuesta.
+ */
+export class AgentChatCitation {
+  @IsIn(['tool', 'memory'])
+  source!: 'tool' | 'memory';
+
+  @IsString()
+  @IsNotEmpty()
+  ref!: string;
+
+  @IsOptional()
+  @IsString()
+  tool?: McpToolName;
+
+  @IsOptional()
+  @IsString()
+  period?: string;
+
+  @IsOptional()
+  @IsString()
+  label?: string;
+}
+
+/**
+ * Consumo y presupuesto restante de una interacción de chat.
+ */
+export class AgentChatUsageDto {
+  @IsInt()
+  @Min(0)
+  promptTokens!: number;
+
+  @IsInt()
+  @Min(0)
+  completionTokens!: number;
+
+  @IsInt()
+  @Min(0)
+  costMicroUsd!: number;
+
+  @IsInt()
+  @Min(0)
+  budgetRemainingMicroUsd!: number;
+
+  @IsBoolean()
+  cacheHit!: boolean;
+}
+
+/**
+ * Respuesta del asistente conversacional.
+ *
+ * `degraded` indica que la respuesta se construyó sin un LLM confiable
+ * (modo degradado por presupuesto, error del proveedor o grounding fallido).
+ */
+export class AgentChatResponseDto {
+  @IsString()
+  answer!: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AgentChatCitation)
+  citations!: AgentChatCitation[];
+
+  @IsBoolean()
+  degraded!: boolean;
+
+  @IsOptional()
+  @IsEnum(AgentDegradationReason)
+  reason?: AgentDegradationReason;
+
+  @IsOptional()
+  @IsString()
+  code?: string;
+
+  @ValidateNested()
+  @Type(() => AgentChatUsageDto)
+  usage!: AgentChatUsageDto;
+}
+
+export type AgentChatRpcPayload = WithContext<AgentChatDto>;
 
 export type GetAgentBudgetRpcPayload = WithContext<GetAgentBudgetDto>;
 export type GetAgentUsageRpcPayload = WithContext<GetAgentUsageDto>;
