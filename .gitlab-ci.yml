@@ -1,0 +1,44 @@
+# Pipeline mínimo de GitLab CI/CD — MIG-01 (issue #134)
+#
+# Objetivo: demostrar que el proyecto importado ejecuta pipelines y que un MR
+# queda bloqueado sin pipeline verde. Solo incluye el stage `validate` con
+# `backend:lint`; el resto de stages se añaden en MIG-02 … MIG-07.
+#
+# Decisiones de plataforma, runners y registry: docs/adr/009-gitlab-ci-cd-platform.md
+
+stages:
+  - validate
+
+default:
+  image: node:20-bookworm
+  interruptible: true
+  # El pipeline no debe filtrar secretos: nada se interpola en este YAML.
+  before_script:
+    - corepack enable
+    - corepack prepare pnpm@12.9.1 --activate
+
+variables:
+  PNPM_STORE_DIR: '$CI_PROJECT_DIR/.pnpm-store'
+
+.pnpm-base:
+  cache:
+    key:
+      files:
+        - pnpm-lock.yaml
+    paths:
+      - .pnpm-store
+  before_script:
+    - corepack enable
+    - corepack prepare pnpm@12.9.1 --activate
+    - pnpm config set store-dir "$PNPM_STORE_DIR" --global
+    - pnpm install --frozen-lockfile
+
+backend:lint:
+  extends: .pnpm-base
+  stage: validate
+  script:
+    - pnpm lint
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "develop"
+    - if: $CI_COMMIT_BRANCH == "main"
