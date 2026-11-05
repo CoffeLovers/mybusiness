@@ -67,4 +67,5 @@ export * from './cashflow.patterns';
 export * from './documents.patterns';
 export * from './reconciliation.patterns';
 export * from './ledger.patterns';
+export * from './payments.patterns';
 export * from '../mcp/mcp.patterns';
