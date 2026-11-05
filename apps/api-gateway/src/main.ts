@@ -1,11 +1,11 @@
+// Debe ejecutarse antes de cargar Nest/Express/http para que HttpInstrumentation parchee el módulo.
+import './telemetry.bootstrap';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { HttpTelemetryAttributesInterceptor, startTelemetry } from '@mybusiness/telemetry';
+import { HttpTelemetryAttributesInterceptor } from '@mybusiness/telemetry';
 import { AppModule } from './app.module';
 import { setupGatewayApp } from './setup';
-
-startTelemetry({ serviceName: 'api-gateway' });
 
 async function bootstrap() {
   const logger = new Logger('APIGateway');
