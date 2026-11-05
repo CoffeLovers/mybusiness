@@ -20,7 +20,7 @@ export function setupLoadEnvironment() {
   const startedAt = new Date().toISOString();
 
   // 1. Health check del Gateway
-  const healthRes = http.get(`${baseUrl}/api/v1/health`);
+  const healthRes = http.get(`${baseUrl}/api/v1/health`, { responseType: 'text' });
   if (healthRes.status !== 200) {
     throw new Error(
       `Health check falló en ${baseUrl}/api/v1/health: HTTP ${healthRes.status} - ${healthRes.body}`,
@@ -44,7 +44,7 @@ export function setupLoadEnvironment() {
     const loginRes = http.post(
       `${baseUrl}/api/v1/auth/login`,
       JSON.stringify({ email, password }),
-      { headers: { 'Content-Type': 'application/json' } },
+      { headers: { 'Content-Type': 'application/json' }, responseType: 'text' },
     );
 
     if (loginRes.status !== 200 && loginRes.status !== 201) {
@@ -69,11 +69,12 @@ export function setupLoadEnvironment() {
   };
 
   // 2. Resolver o crear cuenta bancaria con la divisa solicitada
-  const accountsRes = http.get(`${baseUrl}/api/v1/finance/accounts`, { headers: authHeaders });
+  const accountsRes = http.get(`${baseUrl}/api/v1/finance/accounts`, {
+    headers: authHeaders,
+    responseType: 'text',
+  });
   if (accountsRes.status !== 200) {
-    throw new Error(
-      `Consulta de cuentas falló: HTTP ${accountsRes.status} - ${accountsRes.body}`,
-    );
+    throw new Error(`Consulta de cuentas falló: HTTP ${accountsRes.status} - ${accountsRes.body}`);
   }
 
   const accountsBody = accountsRes.json();
@@ -103,6 +104,7 @@ export function setupLoadEnvironment() {
 
     const createRes = http.post(`${baseUrl}/api/v1/finance/accounts`, createAccountPayload, {
       headers: authHeaders,
+      responseType: 'text',
     });
 
     if (createRes.status !== 200 && createRes.status !== 201) {

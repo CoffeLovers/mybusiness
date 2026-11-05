@@ -31,7 +31,6 @@ const full50kScenario = {
 };
 
 export const options = {
-  discardResponseBodies: !isSmoke,
   scenarios: {
     ingest_transactions: isSmoke ? smokeScenario : full50kScenario,
   },
@@ -56,7 +55,9 @@ export const options = {
 
 export function setup() {
   const isSmokeRun = isSmoke;
-  console.log(`[k6 setup] Iniciando prueba de carga (modo: ${isSmokeRun ? 'SMOKE' : 'FULL 54K / 30m'})`);
+  console.log(
+    `[k6 setup] Iniciando prueba de carga (modo: ${isSmokeRun ? 'SMOKE' : 'FULL 54K / 30m'})`,
+  );
   const env = setupLoadEnvironment();
   console.log(
     `[k6 setup] Target: ${env.baseUrl} | RunId: ${env.runId} | Tenant: ${env.tenantId} | Cuenta: ${env.bankAccountId} (${env.currency})`,
@@ -113,8 +114,12 @@ export function teardown(data) {
   console.log('================================================================================');
   console.log(`[k6 teardown] Corrida finalizada para RUN_ID: ${data.runId}`);
   console.log(`[k6 teardown] TENANT_ID: ${data.tenantId}`);
-  console.log('[k6 teardown] Recuerda ejecutar la verificación de consistencia y eventos en Postgres:');
-  console.log(`  node scripts/verify-load-54.mjs --run-id ${data.runId} --email <SEED_ADMIN_EMAIL> --db-user <POSTGRES_USER>`);
+  console.log(
+    '[k6 teardown] Recuerda ejecutar la verificación de consistencia y eventos en Postgres:',
+  );
+  console.log(
+    `  node scripts/verify-load-54.mjs --run-id ${data.runId} --email <SEED_ADMIN_EMAIL> --db-user <POSTGRES_USER>`,
+  );
   console.log('================================================================================');
 }
 
@@ -129,7 +134,9 @@ function generateConsoleSummary(data) {
   const reqDuration = data.metrics.http_req_duration ? data.metrics.http_req_duration.values : {};
   const reqFailed = data.metrics.http_req_failed ? data.metrics.http_req_failed.values : {};
   const httpReqs = data.metrics.http_reqs ? data.metrics.http_reqs.values : {};
-  const accepted = data.metrics.transactions_accepted ? data.metrics.transactions_accepted.values : {};
+  const accepted = data.metrics.transactions_accepted
+    ? data.metrics.transactions_accepted.values
+    : {};
   const dropped = data.metrics.dropped_iterations ? data.metrics.dropped_iterations.values : {};
   const rateLimitCount = data.metrics.http_429 ? data.metrics.http_429.values : {};
 
