@@ -52,6 +52,8 @@ export enum InvoiceStatus {
   CANCELLED = 'CANCELLED',
 }
 
+export * from './payments.enum';
+
 export enum ContextType {
   FINANCIAL_RULE = 'FINANCIAL_RULE',
   USER_PREFERENCE = 'USER_PREFERENCE',
