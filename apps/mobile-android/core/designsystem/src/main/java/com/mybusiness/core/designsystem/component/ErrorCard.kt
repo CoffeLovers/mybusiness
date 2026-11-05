@@ -15,7 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import com.mybusiness.core.designsystem.theme.Spacing
 
 @Composable
 fun ErrorCard(
@@ -26,7 +26,7 @@ fun ErrorCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .padding(16.dp),
+            .padding(Spacing.space4),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.errorContainer
         ),
@@ -35,7 +35,7 @@ fun ErrorCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(Spacing.space4),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -45,7 +45,7 @@ fun ErrorCard(
                 color = MaterialTheme.colorScheme.onErrorContainer
             )
             if (onRetry != null) {
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(Spacing.space2))
                 OutlinedButton(
                     onClick = onRetry,
                     colors = ButtonDefaults.outlinedButtonColors(
