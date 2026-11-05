@@ -1,6 +1,20 @@
 {
   "components": {
     "schemas": {
+      "AgentChatDto": {
+        "properties": {
+          "conversationId": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
       "ApiErrorResponse": {
         "properties": {
           "error": {
@@ -1204,6 +1218,30 @@
   },
   "openapi": "3.0.0",
   "paths": {
+    "/api/v1/agent/chat": {
+      "post": {
+        "operationId": "AgentGatewayController_chat",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentChatDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Agent"
+        ]
+      }
+    },
     "/api/v1/agent/memory/query": {
       "post": {
         "operationId": "AgentGatewayController_queryMemory",
