@@ -191,7 +191,7 @@ export async function gatewayFetchText(
   const text = await response.text();
 
   return {
-    body: unwrapTextEnvelope(text, contentType),
+    body: unwrapTextEnvelope(text),
     contentType,
     contentDisposition: response.headers.get('content-disposition'),
   };
@@ -201,9 +201,14 @@ export async function gatewayFetchText(
  * Extrae el `data` string de un envelope JSON cuando el gateway ignora
  * `text/csv` y responde con el sobre habitual (#106). Si no aplica, devuelve
  * el texto original sin tocarlo.
+ *
+ * No se filtra por `content-type`: `TransformInterceptor` envuelve el cuerpo
+ * pero el gateway conserva el `content-type` original (`text/csv`), así que el
+ * sobre puede llegar con cualquier cabecera. Basta con que el cuerpo parezca
+ * JSON y tenga la forma `{ success: true, data: string }`.
  */
-function unwrapTextEnvelope(text: string, contentType: string | null): string {
-  if (!contentType?.includes('json') || !text.trimStart().startsWith('{')) {
+function unwrapTextEnvelope(text: string): string {
+  if (!text.trimStart().startsWith('{')) {
     return text;
   }
 

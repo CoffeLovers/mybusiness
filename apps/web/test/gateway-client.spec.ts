@@ -109,6 +109,21 @@ describe('gatewayFetchText (#106)', () => {
     expect(result.contentDisposition).toBe('attachment; filename="ledger.csv"');
   });
 
+  it('desenvuelve el envelope aunque el gateway conserve content-type text/csv', async () => {
+    stubFetch(
+      new Response(JSON.stringify({ success: true, data: 'fecha,descripcion\r\n1,a' }), {
+        status: 200,
+        headers: { 'content-type': 'text/csv' },
+      }),
+    );
+
+    const result = await gatewayFetchText('/api/v1/finance/ledger/export');
+
+    expect(result.body.startsWith('fecha,descripcion')).toBe(true);
+    expect(result.body.startsWith('{"success"')).toBe(false);
+    expect(result.contentType).toBe('text/csv');
+  });
+
   it('deja intacto un CSV plano', async () => {
     stubFetch(
       new Response('a,b\n1,2', {
