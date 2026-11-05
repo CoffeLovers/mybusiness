@@ -1,22 +1,24 @@
 # Issues — Migración de CI/CD a GitLab
 
 > Documento fuente del alcance de la migración descrita en [`README.md`](./README.md).
-> **No se crean issues en GitHub desde este documento**: las issues se darán de alta en el proyecto
+> Las issues de seguimiento viven en GitHub (ver columna `GitHub`) y se replicarán en el proyecto
 > GitLab de destino durante la fase 1.
-> Convención de ID: `MIG-NN`. La columna `GitHub` se mantiene con `—` a propósito (sin contrapartida).
+> Convención de ID: `MIG-NN`.
+
+> Epic: **#142** · Issues: **#134–#141**
 
 ## Resumen
 
 | ID     | Título                                                                       | Labels                            | Owner    | SP  | Depende de      | GitHub |
 | ------ | ---------------------------------------------------------------------------- | --------------------------------- | -------- | --- | --------------- | ------ |
-| MIG-01 | [CI/CD] Importar repositorio, proteger ramas y decidir runners/registry      | `migration`, `devops`             | Umbrex47 | 3   | —               | —      |
-| MIG-02 | [CI/CD] Pipeline base backend                                                | `migration`, `devops`, `backend`  | Umbrex47 | 5   | MIG-01          | —      |
-| MIG-03 | [CI/CD] Pipeline web (calidad, Playwright, a11y, visual)                     | `migration`, `devops`, `web`      | Umbrex47 | 5   | MIG-01          | —      |
-| MIG-04 | [CI/CD] Runner Android y pipeline Gradle                                     | `migration`, `devops`, `mobile`   | JuanchR4 | 5   | MIG-01          | —      |
-| MIG-05 | [CI/CD] Seguridad y calidad en GitLab                                        | `migration`, `security`, `devops` | Umbrex47 | 5   | MIG-02          | —      |
-| MIG-06 | [CI/CD] CD con Container Registry, staging/producción y rollback             | `migration`, `devops`             | Umbrex47 | 8   | MIG-02, MIG-03  | —      |
-| MIG-07 | [CI/CD] Automatizaciones: schedules, Renovate, merge trains y notificaciones | `migration`, `devops`             | Umbrex47 | 5   | MIG-02 … MIG-06 | —      |
-| MIG-08 | [CI/CD] Cutover, espejo y runbook                                            | `migration`, `devops`             | Umbrex47 | 3   | MIG-02 … MIG-07 | —      |
+| MIG-01 | [CI/CD] Importar repositorio, proteger ramas y decidir runners/registry      | `migration`, `devops`             | Umbrex47 | 3   | —               | #134   |
+| MIG-02 | [CI/CD] Pipeline base backend                                                | `migration`, `devops`, `backend`  | Umbrex47 | 5   | MIG-01          | #135   |
+| MIG-03 | [CI/CD] Pipeline web (calidad, Playwright, a11y, visual)                     | `migration`, `devops`, `web`      | Umbrex47 | 5   | MIG-01          | #136   |
+| MIG-04 | [CI/CD] Runner Android y pipeline Gradle                                     | `migration`, `devops`, `mobile`   | JuanchR4 | 5   | MIG-01          | #137   |
+| MIG-05 | [CI/CD] Seguridad y calidad en GitLab                                        | `migration`, `security`, `devops` | Umbrex47 | 5   | MIG-02          | #138   |
+| MIG-06 | [CI/CD] CD con Container Registry, staging/producción y rollback             | `migration`, `devops`             | Umbrex47 | 8   | MIG-02, MIG-03  | #139   |
+| MIG-07 | [CI/CD] Automatizaciones: schedules, Renovate, merge trains y notificaciones | `migration`, `devops`             | Umbrex47 | 5   | MIG-02 … MIG-06 | #140   |
+| MIG-08 | [CI/CD] Cutover, espejo y runbook                                            | `migration`, `devops`             | Umbrex47 | 3   | MIG-02 … MIG-07 | #141   |
 
 Total: **39 SP**.
 
