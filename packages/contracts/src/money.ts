@@ -72,3 +72,29 @@ export function minorToPayPalDecimal(amountMinor: string, currency: string): str
   const fracPart = padded.slice(padded.length - scale);
   return `${intPart}.${fracPart}`;
 }
+
+/**
+ * Inverso autorizado de `minorToPayPalDecimal`: convierte el decimal del
+ * proveedor (`"250.00"` + `"COP"` → `"25000"`, `"4750"` + `"JPY"` → `"4750"`)
+ * al entero en unidad mínima. La normalización es exacta para las escalas de
+ * la moneda; rechaza decimales con más dígitos que la escala de la moneda,
+ * separadores, signos y notación científica (ADR 003, usado por los webhooks
+ * de SF3-09 que traen el importe en el formato del proveedor).
+ */
+export function payPalDecimalToMinor(value: string, currency: string): string {
+  if (typeof value !== 'string' || !/^\d+(\.\d+)?$/.test(value)) {
+    throw new MoneyFormatError('El importe del proveedor no es un decimal válido');
+  }
+
+  if (typeof currency !== 'string' || !CURRENCY_CODE_PATTERN.test(currency)) {
+    throw new MoneyFormatError('currency debe ser un código ISO 4217 de 3 letras');
+  }
+
+  const scale = currencyScaleOf(currency);
+  const [intPart, fracPart = ''] = value.split('.');
+  if (fracPart.length > scale) {
+    throw new MoneyFormatError('El importe del proveedor excede la escala de la moneda');
+  }
+
+  return `${intPart}${fracPart.padEnd(scale, '0')}`.replace(/^0+(?=\d)/, '');
+}

@@ -152,4 +152,177 @@ describe('PayPalClient (transporte stubbeado sin credenciales reales)', () => {
     expect((error as PayPalClientError).providerStatus).toBe(400);
     expect((error as PayPalClientError).message).not.toContain('INTERNAL_SERVICE_ERROR');
   });
+
+  // ─── SF3-09: captura, reembolso y verificación de webhook ────────────────
+
+  it('con token cacheado captura la orden y extrae el capture-id anidado', async () => {
+    const client = new PayPalClient(
+      configStub({ PAYPAL_CLIENT_ID: 'ci', PAYPAL_CLIENT_SECRET: 'cs' }),
+    );
+    fetchMock.mockResolvedValueOnce(okResponse(200, { access_token: 't', expires_in: 3600 }));
+    fetchMock.mockResolvedValueOnce(
+      okResponse(201, {
+        id: 'PAYPAL-123',
+        status: 'COMPLETED',
+        purchase_units: [{ payments: { captures: [{ id: 'CAPTURE-1', status: 'COMPLETED' }] } }],
+      }),
+    );
+
+    const captured = await client.captureOrder('PAYPAL-123', 'idem-1');
+
+    const [url, init] = fetchMock.mock.calls[1];
+    expect(url).toBe(`${SANDBOX_BASE_URL}/v2/checkout/orders/PAYPAL-123/capture`);
+    expect(init).toMatchObject({
+      method: 'POST',
+      headers: expect.objectContaining({ 'PayPal-Request-Id': 'idem-1' }),
+    });
+    // DECISIÓN SF3-09: captura total — el cuerpo del proveedor debe ir vacío.
+    expect(init.body).toBe('{}');
+    expect(captured).toMatchObject({
+      orderId: 'PAYPAL-123',
+      captureId: 'CAPTURE-1',
+      captureStatus: 'COMPLETED',
+    });
+  });
+
+  it('captura sin capture-id legible falla con PAYPAL_INVALID_RESPONSE', async () => {
+    const client = new PayPalClient(
+      configStub({ PAYPAL_CLIENT_ID: 'ci', PAYPAL_CLIENT_SECRET: 'cs' }),
+    );
+    fetchMock.mockResolvedValueOnce(okResponse(200, { access_token: 't', expires_in: 3600 }));
+    fetchMock.mockResolvedValueOnce(
+      okResponse(201, { id: 'P1', status: 'COMPLETED', purchase_units: [] }),
+    );
+
+    await expect(client.captureOrder('P1', 'k')).rejects.toMatchObject({
+      code: 'PAYPAL_INVALID_RESPONSE',
+    });
+  });
+
+  it('reembolsa con amount parcial y motivo en note_to_payer', async () => {
+    const client = new PayPalClient(
+      configStub({ PAYPAL_CLIENT_ID: 'ci', PAYPAL_CLIENT_SECRET: 'cs' }),
+    );
+    fetchMock.mockResolvedValueOnce(okResponse(200, { access_token: 't', expires_in: 3600 }));
+    fetchMock.mockResolvedValueOnce(okResponse(201, { id: 'REFUND-1', status: 'COMPLETED' }));
+
+    const refund = await client.refundCapture({
+      captureId: 'CAPTURE-1',
+      amountMinor: '1000',
+      currency: 'USD',
+      reason: 'Servicio no prestado',
+      requestId: 'k:refund:CAPTURE-1:1000',
+    });
+
+    const [url, init] = fetchMock.mock.calls[1];
+    expect(url).toBe(`${SANDBOX_BASE_URL}/v2/payments/captures/CAPTURE-1/refund`);
+    const parsed = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(parsed.note_to_payer).toBe('Servicio no prestado');
+    expect(parsed.amount).toEqual({ currency_code: 'USD', value: '10.00' });
+    expect(refund).toMatchObject({ refundId: 'REFUND-1', status: 'COMPLETED' });
+  });
+
+  it('reembolso total envía solo el motivo (sin amount)', async () => {
+    const client = new PayPalClient(
+      configStub({ PAYPAL_CLIENT_ID: 'ci', PAYPAL_CLIENT_SECRET: 'cs' }),
+    );
+    fetchMock.mockResolvedValueOnce(okResponse(200, { access_token: 't', expires_in: 3600 }));
+    fetchMock.mockResolvedValueOnce(okResponse(201, { id: 'REFUND-2', status: 'COMPLETED' }));
+
+    await client.refundCapture({
+      captureId: 'CAPTURE-1',
+      currency: 'USD',
+      reason: 'Devolución completa',
+      requestId: 'k:refund:CAPTURE-1:2500',
+    });
+
+    const parsed = JSON.parse(fetchMock.mock.calls[1][1].body as string) as Record<string, unknown>;
+    expect(parsed.note_to_payer).toBe('Devolución completa');
+    expect(parsed.amount).toBeUndefined();
+  });
+
+  it('verifyWebhookSignature es fail-closed sin PAYPAL_WEBHOOK_ID', async () => {
+    const client = new PayPalClient(
+      configStub({ PAYPAL_CLIENT_ID: 'ci', PAYPAL_CLIENT_SECRET: 'cs' }),
+    );
+
+    const verification = await client.verifyWebhookSignature('{}', {});
+
+    expect(verification).toEqual({ verified: false, reason: 'webhook_id_not_configured' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('verifyWebhookSignature fail-closed sin cabeceras de transmisión', async () => {
+    const client = new PayPalClient(
+      configStub({ PAYPAL_CLIENT_ID: 'ci', PAYPAL_CLIENT_SECRET: 'cs', PAYPAL_WEBHOOK_ID: 'wh-1' }),
+    );
+
+    const verification = await client.verifyWebhookSignature('{"id":3}', {
+      'PayPal-Transmission-Sig': 'sig',
+    });
+
+    expect(verification).toEqual({ verified: false, reason: 'missing_transmission_headers' });
+  });
+
+  it('verifyWebhookSignature fail-closed con cuerpo no interpretable', async () => {
+    const client = new PayPalClient(
+      configStub({ PAYPAL_CLIENT_ID: 'ci', PAYPAL_CLIENT_SECRET: 'cs', PAYPAL_WEBHOOK_ID: 'wh-1' }),
+    );
+
+    const verification = await client.verifyWebhookSignature('not-json', {
+      'PayPal-Transmission-Id': 't',
+      'PayPal-Transmission-Time': 'x',
+      'PayPal-Cert-Url': 'u',
+      'PayPal-Auth-Algo': 'SHA256withRSA',
+      'PayPal-Transmission-Sig': 's',
+    });
+
+    expect(verification).toEqual({ verified: false, reason: 'invalid_event_body' });
+  });
+
+  it('verifyWebhookSignature mapea SUCCESS/FAILURE del verificador del proveedor', async () => {
+    // Cliente fresco por caso: el token se cachea entre llamadas del mismo cliente.
+    const verifiedClient = new PayPalClient(
+      configStub({ PAYPAL_CLIENT_ID: 'ci', PAYPAL_CLIENT_SECRET: 'cs', PAYPAL_WEBHOOK_ID: 'wh-1' }),
+    );
+    fetchMock.mockResolvedValueOnce(okResponse(200, { access_token: 't', expires_in: 3600 }));
+    fetchMock.mockResolvedValueOnce(okResponse(200, { verification_status: 'SUCCESS' }));
+    expect(await verifiedClient.verifyWebhookSignature('{"id":1}', transmissionHeaders())).toEqual({
+      verified: true,
+    });
+
+    // El payload de verificación no incluye credenciales OAuth ni secretos.
+    const [, verifyInit] = fetchMock.mock.calls[1];
+    const body = JSON.parse(verifyInit.body as string) as Record<string, unknown>;
+    expect(body.webhook_id).toBe('wh-1');
+    expect(body.transmission_id).toBe('t');
+    expect(JSON.stringify(body)).not.toContain('client_secret');
+
+    const failing = new PayPalClient(
+      configStub({ PAYPAL_CLIENT_ID: 'ci', PAYPAL_CLIENT_SECRET: 'cs', PAYPAL_WEBHOOK_ID: 'wh-1' }),
+    );
+    fetchMock.mockResolvedValueOnce(okResponse(200, { access_token: 't', expires_in: 3600 }));
+    fetchMock.mockResolvedValueOnce(okResponse(200, { verification_status: 'FAILURE' }));
+    expect(await failing.verifyWebhookSignature('{"id":1}', transmissionHeaders())).toEqual({
+      verified: false,
+      reason: 'signature_invalid',
+    });
+
+    const broken = new PayPalClient(
+      configStub({ PAYPAL_CLIENT_ID: 'ci', PAYPAL_CLIENT_SECRET: 'cs', PAYPAL_WEBHOOK_ID: 'wh-1' }),
+    );
+    fetchMock.mockResolvedValueOnce(okResponse(500, {}));
+    expect(await broken.verifyWebhookSignature('{"id":1}', transmissionHeaders())).toEqual({
+      verified: false,
+      reason: 'provider_error',
+    });
+  });
+
+  const transmissionHeaders = (): Record<string, string> => ({
+    'PayPal-Transmission-Id': 't',
+    'PayPal-Transmission-Time': 'x',
+    'PayPal-Cert-Url': 'u',
+    'PayPal-Auth-Algo': 'SHA256withRSA',
+    'PayPal-Transmission-Sig': 's',
+  });
 });
