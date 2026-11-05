@@ -1,47 +1,223 @@
 name: Load Test (k6)
 
-# Este workflow ejecuta la prueba de carga k6.
-# NOTA DE QA (Issue #54):
-# - La ejecución de carga real (Opción A) requiere el stack completo (gateway, microservicios, Postgres y Redis).
-# - Cualquier ejecución contra el mock gateway es exclusivamente un smoke para validar el arnés k6 y no constituye evidencia de aceptación.
+# Issue #54 (SF2-12) — Workflow autocontenido.
+#
+# Levanta PostgreSQL 16 + pgvector y Redis 7 vía docker compose, aplica migraciones,
+# ejecuta el seed de auth y arranca el stack real (auth-service, finance-service,
+# audit-service y api-gateway) dentro del runner. Después ejecuta la ingesta de
+# 50.000 transacciones con k6 y verifica persistencia, idempotencia, latencia p95,
+# 429, iteraciones caídas y paridad audit_logs / transactions en PostgreSQL.
+#
+# No consume secretos: todas las credenciales son de prueba y viven en el `.env`
+# efímero del job.
 
 on:
   workflow_dispatch:
     inputs:
-      base_url:
-        description: 'URL base del API Gateway real (ej. http://127.0.0.1:3000 o endpoint de staging)'
-        type: string
-        required: false
-        default: 'http://127.0.0.1:3000'
       run_id:
-        description: 'Identificador único de la corrida (RUN_ID)'
+        description: 'Identificador único de la corrida (por defecto load54-<github.run_id>)'
         type: string
         required: false
         default: ''
       smoke:
-        description: 'Modo SMOKE reducido para validar conectividad y arnés (10 segundos)'
+        description: 'Modo SMOKE (10 s) para validar el arnés; omite la verificación en base de datos'
         type: boolean
         required: false
         default: false
+  pull_request:
+    paths:
+      - '.github/workflows/load-test.yml'
+      - 'tests/load/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: load-test-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  load-test:
-    name: Ingesta Masiva Transacciones k6 (Stack Real / Staging)
+  ingest-50k:
+    name: Ingesta 50k transacciones (stack real)
     runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      RUN_ID: ${{ inputs.run_id || format('load54-{0}', github.run_id) }}
+      SMOKE: ${{ inputs.smoke || 'false' }}
+
     steps:
       - name: Checkout del repositorio
         uses: actions/checkout@v4
+
+      - name: Instalar pnpm
+        uses: pnpm/action-setup@v4
 
       - name: Configurar Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
-      - name: Instalar pnpm
-        uses: pnpm/action-setup@v4
+          cache: 'pnpm'
 
       - name: Instalar dependencias
         run: pnpm install --frozen-lockfile
+
+      - name: Compilar el monorepo
+        run: pnpm build
+
+      - name: Crear .env de prueba
+        run: |
+          cat > .env <<'EOF'
+          NODE_ENV=test
+          PORT=3000
+          CORS_ORIGINS=http://127.0.0.1:3001
+          POSTGRES_HOST=127.0.0.1
+          POSTGRES_PORT=5432
+          POSTGRES_USER=mybusiness_admin
+          POSTGRES_PASSWORD=loadtest_pg_admin
+          POSTGRES_DB=auth_db
+          AUTH_DB_USER=auth_user
+          AUTH_DB_PASSWORD=loadtest_auth
+          FINANCE_DB_USER=finance_user
+          FINANCE_DB_PASSWORD=loadtest_finance
+          AGENT_DB_USER=agent_user
+          AGENT_DB_PASSWORD=loadtest_agent
+          AUDIT_DB_USER=audit_user
+          AUDIT_DB_PASSWORD=loadtest_audit
+          AUTH_DATABASE_URL=postgresql://auth_user:loadtest_auth@127.0.0.1:5432/auth_db
+          FINANCE_DATABASE_URL=postgresql://finance_user:loadtest_finance@127.0.0.1:5432/finance_db
+          AGENT_DATABASE_URL=postgresql://agent_user:loadtest_agent@127.0.0.1:5432/agent_db
+          AUDIT_DATABASE_URL=postgresql://audit_user:loadtest_audit@127.0.0.1:5432/audit_db
+          REDIS_HOST=127.0.0.1
+          REDIS_PORT=6379
+          REDIS_PASSWORD=loadtest_redis
+          JWT_SECRET=loadtest_jwt_secret_at_least_32_characters_long
+          JWT_ISSUER=mybusiness
+          JWT_AUDIENCE=mybusiness-api
+          JWT_EXPIRES_IN=60m
+          REFRESH_TOKEN_EXPIRES_IN=12h
+          COOKIE_SECRET=loadtest_cookie_secret_at_least_32_characters
+          AUTH_COOKIE_SECURE=false
+          THROTTLE_API_LIMIT=1000000
+          THROTTLE_AUTH_LIMIT=1000
+          THROTTLE_HEAVY_LIMIT=100000
+          MCP_RATE_LIMIT_PER_MINUTE=1000
+          S3_ENDPOINT=http://127.0.0.1:9000
+          S3_FORCE_PATH_STYLE=true
+          S3_ACCESS_KEY=loadtest
+          S3_SECRET_KEY=loadtest123
+          S3_BUCKET=mybusiness-documents
+          OCR_PROVIDER=stub
+          SEED_TENANT_TAX_ID=900123456-7
+          SEED_TENANT_LEGAL_NAME="MyBusiness Load Test SAS"
+          SEED_TENANT_TRADE_NAME="MyBusiness Load"
+          SEED_TENANT_COUNTRY=CO
+          SEED_TENANT_CURRENCY=COP
+          SEED_TENANT_TIMEZONE=America/Bogota
+          SEED_TENANT_LOCALE=es-CO
+          SEED_ADMIN_EMAIL=loadtest@mybusiness.test
+          SEED_ADMIN_PASSWORD=LoadTest123!
+          SEED_ADMIN_FIRST_NAME=Load
+          SEED_ADMIN_LAST_NAME=Test
+          EOF
+
+      - name: Levantar PostgreSQL y Redis
+        run: |
+          docker compose --env-file .env -f docker/docker-compose.yml up -d postgres redis
+          for i in $(seq 1 60); do
+            pg_status="$(docker inspect -f '{{.State.Health.Status}}' mybusiness_postgres 2>/dev/null || echo missing)"
+            redis_status="$(docker inspect -f '{{.State.Health.Status}}' mybusiness_redis 2>/dev/null || echo missing)"
+            echo "Intento ${i}/60 -> postgres=${pg_status} redis=${redis_status}"
+            if [ "${pg_status}" = "healthy" ] && [ "${redis_status}" = "healthy" ]; then
+              echo "PostgreSQL y Redis están healthy."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "ERROR: PostgreSQL y/o Redis no alcanzaron el estado healthy en 120 s."
+          docker compose --env-file .env -f docker/docker-compose.yml ps
+          docker compose --env-file .env -f docker/docker-compose.yml logs --no-color
+          exit 1
+
+      - name: Aplicar migraciones y extensión vector
+        run: |
+          set -a; source .env; set +a
+          # El init de compose ya crea la extensión; se repite vía el contenedor
+          # para no depender del cliente psql del runner.
+          docker exec mybusiness_postgres \
+            psql -U "$POSTGRES_USER" -d agent_db -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+          pnpm --filter @mybusiness/auth-service db:migrate
+          pnpm --filter @mybusiness/agent-service db:migrate
+          pnpm --filter @mybusiness/audit-service db:migrate
+          pnpm --filter @mybusiness/finance-service db:migrate
+
+      - name: Ejecutar seed de autenticación
+        run: |
+          set -a; source .env; set +a
+          pnpm --filter @mybusiness/auth-service db:seed
+
+      - name: Arrancar el stack real en segundo plano
+        run: |
+          set -euo pipefail
+          for app in auth-service finance-service audit-service api-gateway; do
+            echo "Arrancando ${app}..."
+            nohup node "apps/${app}/dist/main.js" > "/tmp/${app}.log" 2>&1 &
+            echo "$!" > "/tmp/${app}.pid"
+          done
+
+          echo "Esperando /api/v1/health del gateway (máx. 90 s)..."
+          gateway_up=false
+          for i in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:3000/api/v1/health >/dev/null 2>&1; then
+              gateway_up=true
+              break
+            fi
+            sleep 2
+          done
+          if [ "${gateway_up}" != "true" ]; then
+            echo "ERROR: el gateway no respondió /api/v1/health en 90 s."
+            tail -n 100 /tmp/*.log || true
+            exit 1
+          fi
+
+          echo "Esperando /api/v1/health/ready del gateway (máx. 90 s)..."
+          gateway_ready=false
+          for i in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:3000/api/v1/health/ready >/dev/null 2>&1; then
+              gateway_ready=true
+              break
+            fi
+            sleep 2
+          done
+          if [ "${gateway_ready}" != "true" ]; then
+            echo "ERROR: el gateway no alcanzó /api/v1/health/ready en 90 s."
+            tail -n 100 /tmp/*.log || true
+            exit 1
+          fi
+
+          for app in auth-service finance-service audit-service; do
+            subscribed=false
+            for i in $(seq 1 30); do
+              if grep -q "conectado a Redis Broker" "/tmp/${app}.log"; then
+                subscribed=true
+                break
+              fi
+              if ! kill -0 "$(cat "/tmp/${app}.pid")" 2>/dev/null; then
+                echo "ERROR: ${app} terminó durante el arranque."
+                tail -n 100 "/tmp/${app}.log" || true
+                exit 1
+              fi
+              sleep 2
+            done
+            if [ "${subscribed}" != "true" ]; then
+              echo "ERROR: ${app} no se suscribió a Redis en 60 s."
+              tail -n 100 "/tmp/${app}.log" || true
+              exit 1
+            fi
+          done
+
+          curl -fsS http://127.0.0.1:3000/api/v1/health
+          echo
+          curl -fsS http://127.0.0.1:3000/api/v1/health/ready
 
       - name: Instalar k6
         run: |
@@ -52,27 +228,106 @@ jobs:
           sudo apt-get install -y k6
 
       - name: Ejecutar probe de idempotencia (pre-carga)
-        env:
-          BASE_URL: ${{ inputs.base_url || 'http://127.0.0.1:3000' }}
-          RUN_ID: ${{ inputs.run_id }}
-          SEED_ADMIN_EMAIL: ${{ secrets.SEED_ADMIN_EMAIL }}
-          SEED_ADMIN_PASSWORD: ${{ secrets.SEED_ADMIN_PASSWORD }}
-          LOAD_CURRENCY: 'COP'
         run: |
-          k6 run tests/load/idempotency-check.js
+          set -a; source .env; set +a
+          k6 run \
+            -e BASE_URL=http://127.0.0.1:3000 \
+            -e RUN_ID="$RUN_ID" \
+            -e SEED_ADMIN_EMAIL="$SEED_ADMIN_EMAIL" \
+            -e SEED_ADMIN_PASSWORD="$SEED_ADMIN_PASSWORD" \
+            -e LOAD_CURRENCY=COP \
+            tests/load/idempotency-check.js
 
-      - name: Ejecutar prueba de carga k6
-        env:
-          BASE_URL: ${{ inputs.base_url || 'http://127.0.0.1:3000' }}
-          RUN_ID: ${{ inputs.run_id }}
-          SMOKE: ${{ inputs.smoke }}
-          SEED_ADMIN_EMAIL: ${{ secrets.SEED_ADMIN_EMAIL }}
-          SEED_ADMIN_PASSWORD: ${{ secrets.SEED_ADMIN_PASSWORD }}
-          LOAD_CURRENCY: 'COP'
+      - name: Ejecutar ingesta de 50k transacciones (o SMOKE)
         run: |
-          k6 run tests/load/ingest-50k.js
+          set -a; source .env; set +a
+          k6 run \
+            -e BASE_URL=http://127.0.0.1:3000 \
+            -e RUN_ID="$RUN_ID" \
+            -e SEED_ADMIN_EMAIL="$SEED_ADMIN_EMAIL" \
+            -e SEED_ADMIN_PASSWORD="$SEED_ADMIN_PASSWORD" \
+            -e LOAD_CURRENCY=COP \
+            -e SMOKE="$SMOKE" \
+            tests/load/ingest-50k.js
 
-      - name: Subir artefactos de resumen k6 y verificación
+      - name: Verificar persistencia, idempotencia y paridad de eventos
+        if: ${{ !inputs.smoke && success() }}
+        run: |
+          set -a; source .env; set +a
+          node scripts/verify-load-54.mjs \
+            --run-id "$RUN_ID" \
+            --email "$SEED_ADMIN_EMAIL" \
+            --db-user "$POSTGRES_USER"
+
+      - name: Recolectar logs de docker compose
+        if: always()
+        run: |
+          docker compose --env-file .env -f docker/docker-compose.yml ps > docker-compose-logs.txt 2>&1 || true
+          docker compose --env-file .env -f docker/docker-compose.yml logs --no-color >> docker-compose-logs.txt 2>&1 || true
+
+      - name: Publicar resumen en el job summary
+        if: always()
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          const readJson = (file) => {
+            try {
+              return JSON.parse(fs.readFileSync(file, 'utf8'));
+            } catch {
+              return null;
+            }
+          };
+
+          const fmt = (value, fallback = 'N/A') =>
+            value === undefined || value === null ? fallback : value;
+
+          const k6 = readJson('tests/load/k6-summary.json');
+          const verification = readJson('tests/load/verification-54.json');
+
+          const metrics = k6?.metrics ?? {};
+          const p95 = metrics['http_req_duration']?.values?.['p(95)'];
+          const accepted = metrics['transactions_accepted']?.values?.count;
+          const http429 = metrics['http_429']?.values?.count;
+          const dropped = metrics['dropped_iterations']?.values?.count;
+          const failedRate = metrics['http_req_failed']?.values?.rate;
+
+          const auditEvents = verification?.databaseMetrics?.auditForRun;
+          const transactions = verification?.databaseMetrics?.transactionsForRun;
+          const verdict = verification?.verdict ?? 'N/A';
+          const smoke = process.env.SMOKE === 'true';
+
+          const lines = [
+            '### Load test #54 — Ingesta 50k transacciones',
+            '',
+            `- **RUN_ID**: \`${fmt(process.env.RUN_ID)}\``,
+            `- **Modo**: ${smoke ? 'SMOKE (10 s)' : 'FULL 50k (30 min)'}`,
+            '',
+            '| Métrica | Valor |',
+            '| :--- | :--- |',
+            `| p95 | ${p95 === undefined ? 'N/A' : `${Number(p95).toFixed(2)} ms`} |`,
+            `| Transacciones aceptadas | ${fmt(accepted)} |`,
+            `| Peticiones 429 | ${fmt(http429)} |`,
+            `| Iteraciones caídas | ${fmt(dropped)} |`,
+            `| Tasa de fallo HTTP | ${failedRate === undefined ? 'N/A' : `${(Number(failedRate) * 100).toFixed(2)} %`} |`,
+            `| audit_logs / transactions | ${fmt(auditEvents)} / ${fmt(transactions)} |`,
+            '',
+            `**Veredicto**: ${smoke ? 'N/A (SMOKE omite la verificación en base de datos)' : verdict}`,
+            '',
+          ];
+
+          if (!smoke && verification?.criteria) {
+            lines.push('| Criterio | Resultado |', '| :--- | :--- |');
+            for (const [key, check] of Object.entries(verification.criteria)) {
+              lines.push(`| ${key} | ${check.pass ? 'PASS' : 'FAIL'} |`);
+            }
+            lines.push('');
+          }
+
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
+          NODE
+
+      - name: Subir artefactos del load test
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -80,4 +335,7 @@ jobs:
           path: |
             tests/load/k6-summary.json
             tests/load/verification-54.json
+            /tmp/*.log
+            docker-compose-logs.txt
+          if-no-files-found: ignore
           retention-days: 14
