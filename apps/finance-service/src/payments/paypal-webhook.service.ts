@@ -79,15 +79,16 @@ export class PayPalWebhookService {
       return { status: 'already_processed', eventId };
     }
 
-    // 3. Reserva idempotente del evento (carrera entre réplicas): el upsert
-    // sólo reabre el evento si sigue FAILED; si otra réplica lo ganó o ya
-    // está en estado final devuelve null → `already_processed`, sin ventana
-    // de doble reproceso.
+    // 3. Reserva idempotente del evento (carrera entre réplicas) con la orden
+    // interna resuelta cuando exista (H4): el upsert sólo reabre el evento si
+    // sigue FAILED; si otra réplica lo ganó o ya está en estado final devuelve
+    // null → `already_processed`, sin ventana de doble reproceso.
     const resource = this.resourceOf(payload);
     const inserted = await this.repository.createWebhookEvent({
       eventId,
       eventType,
       resourceId: this.resourceIdOf(resource),
+      orderId: await this.resolveOrderId(eventType, resource),
       payload,
     });
     if (!inserted) {
@@ -256,6 +257,31 @@ export class PayPalWebhookService {
     }
 
     return null;
+  }
+
+  /**
+   * Orden interna asociada al evento para el registro de auditoría: por id de
+   * orden del proveedor (CHECKOUT.ORDER.APPROVED), o por custom_id/invoice_id
+   * de la captura o reembolso. Si no se resuelve, el evento se registra igual
+   * y el procesado intenta de nuevo la resolución.
+   */
+  private async resolveOrderId(
+    eventType: string,
+    resource: Record<string, unknown> | null,
+  ): Promise<string | undefined> {
+    if (eventType === EVENT_CHECKOUT_ORDER_APPROVED) {
+      const paypalOrderId = resource && typeof resource.id === 'string' ? resource.id : null;
+      return paypalOrderId
+        ? ((await this.repository.findOrderByPaypalOrderId(paypalOrderId))?.id ?? undefined)
+        : undefined;
+    }
+    if (
+      eventType === EVENT_PAYMENT_CAPTURE_COMPLETED ||
+      eventType === EVENT_PAYMENT_CAPTURE_REFUNDED
+    ) {
+      return (await this.resolveOrderByResource(resource))?.id ?? undefined;
+    }
+    return undefined;
   }
 
   private resourceOf(payload: Record<string, unknown>): Record<string, unknown> | null {

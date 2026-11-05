@@ -525,6 +525,10 @@ describe('PayPalWebhookService (SF3-09)', () => {
       2500n,
     );
     expect(h.repository.markWebhookEvent).toHaveBeenCalledWith('WH-2', 'PROCESSED', undefined);
+    // H4: el registro de la reserva lleva la orden resuelta para auditoría.
+    expect(h.repository.createWebhookEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventId: 'WH-2', orderId: ORDER_ID, resourceId: 'CAPTURE-9' }),
+    );
   });
 
   it('double-capture: orden ya CAPTURED reentra idempotente sin reprocesar', async () => {
@@ -685,7 +689,7 @@ describe('PayPalWebhookService (SF3-09)', () => {
     expect(result.status).toBe('processed');
     // La reserva resetea a RECEIVED y el reproceso cierra en PROCESSED.
     expect(h.repository.createWebhookEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ eventId: 'WH-8', resourceId: 'CAPTURE-5' }),
+      expect.objectContaining({ eventId: 'WH-8', orderId: ORDER_ID, resourceId: 'CAPTURE-5' }),
     );
     expect(h.paymentService.reconcileCapture).toHaveBeenCalledWith(
       expect.objectContaining({ id: ORDER_ID }),
