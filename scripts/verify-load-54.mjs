@@ -6,7 +6,7 @@
  * Consulta PostgreSQL real vía docker exec para verificar:
  * 1. Transacciones persistidas en finance_db vs aceptadas por k6.
  * 2. Cero duplicados en claves de idempotencia.
- * 3. 0 eventos perdidos en audit_db (audit_logs vs transactions).
+ * 3. Paridad de cobertura en audit_db: count(DISTINCT entity_id) de audit_logs == transacciones únicas (los eventos crudos extra del replay idempotente son duplicados esperados, no pérdida).
  * 4. 0 eventos en audit_dead_letters.
  * 5. Consistencia del probe de idempotencia (1 fila, importe inalterado).
  * 6. Cumplimiento estricto de p95, error HTTP y 429.
@@ -141,44 +141,50 @@ async function main() {
 
   // 4. Consultar audit_db y esperar estabilización
   console.log('4. Consultando eventos en audit_db y esperando estabilización del consumidor...');
-  let auditForRun = 0;
+  let auditDistinctIds = 0;
+  let auditEventsRaw = 0;
   let stableCount = 0;
-  let lastAuditCount = -1;
+  let lastAuditDistinct = -1;
   const maxRetries = 40; // 40 * 15s = 10 minutos máx
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     // Tolerancia de ±5 minutos: el evento de auditoría de la última transacción se publica
     // DESPUÉS del insert de su fila, por lo que su timestamp puede superar maxCreatedAt.
+    // Paridad por transacciones cubiertas: count(DISTINCT entity_id) debe igualar las
+    // transacciones únicas. El replay idempotente drena eventos crudos extra (duplicados
+    // por petición), por eso el conteo crudo solo queda como diagnóstico.
     const auditSql = `
-      SELECT count(*) FROM audit_logs
+      SELECT count(DISTINCT entity_id), count(*) FROM audit_logs
       WHERE tenant_id = '${tenantId}'
         AND action = 'finance.transaction.created'
         AND entity_name = 'Transaction'
         AND timestamp >= ('${minCreatedAt}'::timestamptz - interval '5 minutes')
         AND timestamp <= ('${maxCreatedAt}'::timestamptz + interval '5 minutes');
     `;
-    auditForRun = parseInt(runSql(dbUser, 'audit_db', auditSql) || '0', 10);
+    const [auditDistinctStr, auditRawStr] = runSql(dbUser, 'audit_db', auditSql).split('|');
+    auditDistinctIds = parseInt(auditDistinctStr || '0', 10);
+    auditEventsRaw = parseInt(auditRawStr || '0', 10);
 
     console.log(
-      `  Intento ${attempt}/${maxRetries}: audit_logs=${auditForRun} (esperadas: ${transactionsForRun})`,
+      `  Intento ${attempt}/${maxRetries}: transacciones cubiertas=${auditDistinctIds}, eventos crudos=${auditEventsRaw} (esperadas: ${distinctKeys})`,
     );
 
-    if (auditForRun === transactionsForRun) {
-      console.log('✓ Se alcanzó paridad exacta: audit_for_run == transactions_for_run.');
+    if (auditDistinctIds === distinctKeys) {
+      console.log('✓ Se alcanzó paridad exacta: audit_distinct_ids == distinct_keys.');
       break;
     }
 
-    if (auditForRun === lastAuditCount) {
+    if (auditDistinctIds === lastAuditDistinct) {
       stableCount++;
       if (stableCount >= 3) {
         console.log(
-          `✓ Lecturas estabilizadas en ${auditForRun} eventos tras 3 iteraciones idénticas.`,
+          `✓ Lecturas estabilizadas en ${auditDistinctIds} transacciones cubiertas tras 3 iteraciones idénticas.`,
         );
         break;
       }
     } else {
       stableCount = 0;
-      lastAuditCount = auditForRun;
+      lastAuditDistinct = auditDistinctIds;
     }
 
     await sleep(15000);
@@ -245,9 +251,17 @@ async function main() {
     console.log(`  [evidencia] 3 timestamps extremos por encima del fin: ${afterTs}`);
   }
 
+  console.log(
+    `\n📊 Resumen auditoría: transacciones cubiertas=${auditDistinctIds} / transacciones únicas=${distinctKeys} | eventos crudos=${auditEventsRaw} | duplicados (replay idempotente)=${duplicateAuditEvents} | transacciones sin evento=${missingTransactions}`,
+  );
+
   // 5. Evaluación de Criterios de Aceptación
-  const eventLossCount = Math.max(0, transactionsForRun - auditForRun);
-  const eventLossRate = transactionsForRun > 0 ? eventLossCount / transactionsForRun : 0;
+  // Duplicados esperados: el probe de idempotencia envía el MISMO payload dos veces
+  // (original + replay) y cada petición emite un evento de auditoría con el mismo
+  // entity_id; solo existe 1 fila en transactions. Eso es duplicado, no pérdida.
+  const duplicateAuditEvents = Math.max(0, auditEventsRaw - auditDistinctIds);
+  const missingTransactions = Math.max(0, distinctKeys - auditDistinctIds);
+  const eventLossRate = distinctKeys > 0 ? missingTransactions / distinctKeys : 0;
 
   const checks = {
     transactions_accepted_ge_50k: {
@@ -271,10 +285,17 @@ async function main() {
       pass: transactionsForRun >= transactionsAccepted,
     },
     event_loss_zero: {
-      audit_events: auditForRun,
-      transactions: transactionsForRun,
+      audit_transactions_covered: auditDistinctIds,
+      audit_events_raw: auditEventsRaw,
+      transactions: distinctKeys,
+      duplicates_beyond_covered: duplicateAuditEvents,
       event_loss_rate: `${(eventLossRate * 100).toFixed(4)}%`,
-      pass: auditForRun === transactionsForRun && eventLossCount === 0,
+      pass: auditDistinctIds === distinctKeys,
+    },
+    no_missing_transactions: {
+      actual: distinctKeys - auditDistinctIds,
+      required: 0,
+      pass: auditDistinctIds === distinctKeys,
     },
     dead_letters_zero: {
       actual: deadLetters,
@@ -333,9 +354,15 @@ async function main() {
       transactionsForRun,
       distinctKeys,
       duplicateKeys,
-      auditForRun,
+      // auditForRun se mantiene como alias de auditDistinctIds para que el workflow
+      // de $GITHUB_STEP_SUMMARY (load-test.yml) siga leyendo el mismo campo; ahora
+      // representa transacciones cubiertas por auditoría, no eventos crudos.
+      auditForRun: auditDistinctIds,
+      auditTransactionsCovered: auditDistinctIds,
+      auditEventsRaw,
+      duplicatesBeyondCovered: duplicateAuditEvents,
       deadLetters,
-      eventLossCount,
+      eventLossCount: missingTransactions,
       eventLossRate,
       probe: {
         probeRows,
