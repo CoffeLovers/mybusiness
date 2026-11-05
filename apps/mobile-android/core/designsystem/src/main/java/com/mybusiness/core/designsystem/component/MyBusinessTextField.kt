@@ -12,7 +12,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.unit.dp
+import com.mybusiness.core.designsystem.theme.Spacing
 
 @Composable
 fun MyBusinessTextField(
@@ -58,7 +58,7 @@ fun MyBusinessTextField(
                 text = errorMessage,
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(start = 12.dp, top = 4.dp)
+                modifier = Modifier.padding(start = Spacing.space3, top = Spacing.space1)
             )
         }
     }

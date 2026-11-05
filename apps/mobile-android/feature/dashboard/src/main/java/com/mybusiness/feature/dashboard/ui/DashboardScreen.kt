@@ -37,7 +37,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -46,8 +45,7 @@ import com.mybusiness.core.common.extensions.formatCurrency
 import com.mybusiness.core.designsystem.component.ErrorCard
 import com.mybusiness.core.designsystem.component.LoadingView
 import com.mybusiness.core.designsystem.component.MyBusinessTopAppBar
-import com.mybusiness.core.designsystem.theme.ErrorRed
-import com.mybusiness.core.designsystem.theme.SuccessGreen
+import com.mybusiness.core.designsystem.theme.businessColors
 import com.mybusiness.core.model.BankAccount
 import com.mybusiness.core.model.DashboardSummary
 import com.mybusiness.core.model.Transaction
@@ -225,7 +223,7 @@ private fun TotalBalanceCard(summary: DashboardSummary) {
             Text(
                 text = "Saldo Total Consolidado",
                 style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
+                color = MaterialTheme.colorScheme.onPrimary
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
@@ -241,13 +239,13 @@ private fun TotalBalanceCard(summary: DashboardSummary) {
                 Text(
                     text = "Flujo Neto Mensual: ",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
+                    color = MaterialTheme.colorScheme.onPrimary
                 )
                 Text(
                     text = "+${summary.netCashFlow.formatCurrency(summary.currency)}",
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF6EE7B7) // Verde claro
+                    color = MaterialTheme.colorScheme.onPrimary
                 )
             }
         }
@@ -280,13 +278,13 @@ private fun IncomeExpenseRow(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
-                        .background(SuccessGreen.copy(alpha = 0.15f)),
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.ArrowDownward,
                         contentDescription = "Ingresos",
-                        tint = SuccessGreen,
+                        tint = MaterialTheme.businessColors.income,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -301,7 +299,7 @@ private fun IncomeExpenseRow(
                         text = income.formatCurrency(currency),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color = SuccessGreen
+                        color = MaterialTheme.businessColors.income
                     )
                 }
             }
@@ -323,13 +321,13 @@ private fun IncomeExpenseRow(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
-                        .background(ErrorRed.copy(alpha = 0.15f)),
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.ArrowUpward,
                         contentDescription = "Gastos",
-                        tint = ErrorRed,
+                        tint = MaterialTheme.businessColors.expense,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -344,7 +342,7 @@ private fun IncomeExpenseRow(
                         text = expenses.formatCurrency(currency),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color = ErrorRed
+                        color = MaterialTheme.businessColors.expense
                     )
                 }
             }
@@ -427,8 +425,8 @@ private fun TransactionItem(transaction: Transaction) {
                 modifier = Modifier.weight(1f)
             ) {
                 val isIncome = transaction.type == TransactionType.INCOME
-                val iconBg = if (isIncome) SuccessGreen.copy(alpha = 0.15f) else ErrorRed.copy(alpha = 0.15f)
-                val iconTint = if (isIncome) SuccessGreen else ErrorRed
+                val iconBg = MaterialTheme.colorScheme.surfaceVariant
+                val iconTint = if (isIncome) MaterialTheme.businessColors.income else MaterialTheme.businessColors.expense
                 val icon = if (isIncome) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward
 
                 Box(
@@ -464,7 +462,7 @@ private fun TransactionItem(transaction: Transaction) {
             }
 
             val sign = if (transaction.type == TransactionType.INCOME) "+" else "-"
-            val color = if (transaction.type == TransactionType.INCOME) SuccessGreen else MaterialTheme.colorScheme.onSurface
+            val color = if (transaction.type == TransactionType.INCOME) MaterialTheme.businessColors.income else MaterialTheme.colorScheme.onSurface
 
             Text(
                 text = "$sign${transaction.amount.formatCurrency(transaction.currency)}",
