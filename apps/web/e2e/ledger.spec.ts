@@ -308,6 +308,9 @@ test.describe('Libro mayor (Issue #51)', () => {
 
     const before = await scroller.evaluate((element) => element.scrollTop);
 
+    // El scroll debe ser real: comparar dos ceros no probaría nada.
+    expect(before).toBeGreaterThan(0);
+
     await page.getByRole('button', { name: 'Compacta' }).click();
 
     await expect(page.getByRole('button', { name: 'Compacta' })).toHaveAttribute(
@@ -372,7 +375,22 @@ test.describe('Libro mayor (Issue #51)', () => {
     await expect(cell).toHaveCSS('font-variant-numeric', 'tabular-nums');
   });
 
-  test('l. error inline: conserva el borrador, aria-invalid y describedby', async ({ page }) => {
+  test('l. cabecera sticky al hacer scroll', async ({ page }) => {
+    await openLedger(page);
+
+    const thead = page.locator('thead');
+
+    await expect(thead).toHaveCSS('position', 'sticky');
+    await expect(thead).toHaveCSS('top', '0px');
+
+    await page.getByTestId('ledger-scroll').evaluate((element) => {
+      element.scrollTop = 400;
+    });
+
+    await expect(thead).toBeVisible();
+  });
+
+  test('m. error inline: conserva el borrador, aria-invalid y describedby', async ({ page }) => {
     await openLedger(page);
 
     await page.locator('button[data-editable="category"]').first().click();
@@ -395,7 +413,7 @@ test.describe('Libro mayor (Issue #51)', () => {
     await expect(editor).toHaveCount(0);
   });
 
-  test('m. atajos j/k, Enter y Escape sobre las filas', async ({ page }) => {
+  test('n. atajos j/k, Enter y Escape sobre las filas', async ({ page }) => {
     await openLedger(page);
 
     const firstRow = page.locator('tbody tr[data-row-index="0"]');

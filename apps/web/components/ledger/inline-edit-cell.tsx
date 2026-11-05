@@ -1,11 +1,11 @@
-﻿'use client';
+'use client';
 
 /**
- * Celda editable en lÃ­nea (categorÃ­a o notas).
+ * Celda editable en línea (categoría o notas).
  *
- * SÃ³lo gestiona el estado de ediciÃ³n: la persistencia vive en `onSave`. Si
+ * Sólo gestiona el estado de edición: la persistencia vive en `onSave`. Si
  * `onSave` rechaza, la celda conserva el borrador, marca el control como
- * invÃ¡lido y expone el mensaje; es el contenedor quien decide restaurar el
+ * inválido y expone el mensaje; es el contenedor quien decide restaurar el
  * valor anterior (rollback optimista).
  */
 
@@ -59,7 +59,7 @@ export function InlineEditCell({
     }
   }, [value, isEditing]);
 
-  // `autoFocus` dispara avisos de accesibilidad; el foco se mueve aquÃ­.
+  // `autoFocus` dispara avisos de accesibilidad; el foco se mueve aquí.
   useEffect(() => {
     if (!isEditing) {
       return;
@@ -141,7 +141,7 @@ export function InlineEditCell({
         onClick={startEditing}
         data-editable={field}
         data-state={justSaved ? 'saved' : undefined}
-        aria-label={`${label}: ${value.length > 0 ? value : 'vacÃ­o'}. Pulsa para editar`}
+        aria-label={`${label}: ${value.length > 0 ? value : 'vacío'}. Pulsa para editar`}
         className={`flex w-full items-center gap-1 rounded-sm px-1 py-1 text-left text-sm hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
           justSaved ? 'text-income' : value.length > 0 ? 'text-text' : 'text-text-muted'
         } ${multiline ? 'line-clamp-2' : 'truncate'}`}
@@ -162,7 +162,7 @@ export function InlineEditCell({
           </>
         ) : null}
         <span className={multiline ? 'line-clamp-2' : 'truncate'}>
-          {value.length > 0 ? value : 'â€”'}
+          {value.length > 0 ? value : '—'}
         </span>
       </button>
     );

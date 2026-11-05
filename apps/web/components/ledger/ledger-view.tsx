@@ -66,17 +66,17 @@ const SEARCH_DEBOUNCE_MS = 300;
  */
 const COLUMN_CLASSES: Record<string, { th: string; td: string }> = {
   select: { th: 'w-11', td: 'w-11' },
-  date: { th: 'w-20 text-left md:w-[104px]', td: 'w-20 md:w-[104px]' },
+  date: { th: 'w-20 text-left md:w-28', td: 'w-20 md:w-28' },
   name: { th: 'text-left', td: '' },
-  category: { th: 'hidden md:table-cell md:w-[176px] text-left', td: 'hidden md:table-cell' },
+  category: { th: 'hidden text-left md:table-cell md:w-44', td: 'hidden md:table-cell' },
   amount: {
-    th: 'w-24 text-right tabular-nums md:w-[132px]',
-    td: 'w-24 text-right tabular-nums md:w-[132px]',
+    th: 'w-24 text-right tabular-nums md:w-32',
+    td: 'w-24 text-right tabular-nums md:w-32',
   },
-  currency: { th: 'hidden md:table-cell md:w-[76px] text-left', td: 'hidden md:table-cell' },
-  status: { th: 'w-[7.5rem] text-left md:w-[180px]', td: 'w-[7.5rem] md:w-[180px]' },
-  evidence: { th: 'hidden md:table-cell md:w-[150px] text-left', td: 'hidden md:table-cell' },
-  notes: { th: 'hidden md:table-cell md:w-[220px] text-left', td: 'hidden md:table-cell' },
+  currency: { th: 'hidden text-left md:table-cell md:w-20', td: 'hidden md:table-cell' },
+  status: { th: 'w-32 text-left md:w-44', td: 'w-32 md:w-44' },
+  evidence: { th: 'hidden text-left md:table-cell md:w-36', td: 'hidden md:table-cell' },
+  notes: { th: 'hidden text-left md:table-cell md:w-56', td: 'hidden md:table-cell' },
 };
 
 /** Rellena la clase de la columna (o vacía si aún no está mapeada). */
@@ -94,7 +94,7 @@ const SORTABLE_COLUMNS: Record<string, LedgerSortField> = {
 };
 
 const CHECKBOX_CLASS =
-  'h-4 w-4 accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
+  'size-6 accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
 
 const columnHelper = createColumnHelper<LedgerRowResponse>();
 
