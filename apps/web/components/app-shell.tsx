@@ -4,34 +4,17 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 
+import { MobileDrawer } from '@/components/shell/mobile-drawer';
+import {
+  buildCrumbs,
+  getActiveHref,
+  NAV_ITEMS,
+  navDisabledItemClasses,
+  navLinkClasses,
+} from '@/components/shell/nav-config';
+import { SearchPalette } from '@/components/shell/search-palette';
 import { ThemeToggle } from '@/components/theme-toggle';
-
-type NavItem = {
-  label: string;
-  href: string;
-};
-
-const NAV_ITEMS: readonly NavItem[] = [
-  { label: 'Resumen', href: '/' },
-  { label: 'Libro mayor', href: '/libro-mayor' },
-  { label: 'Facturas', href: '#' },
-  { label: 'Bancos', href: '#' },
-  { label: 'Agente', href: '#' },
-];
-
-const SEGMENT_LABELS: Record<string, string> = {
-  resumen: 'Resumen',
-  'libro-mayor': 'Libro mayor',
-  movimientos: 'Movimientos',
-  facturas: 'Facturas',
-  bancos: 'Bancos',
-  agente: 'Agente',
-};
-
-type Crumb = {
-  label: string;
-  href: string;
-};
+import { Button } from '@/components/ui';
 
 export type ShellUser = {
   firstName: string;
@@ -84,51 +67,45 @@ async function logout(): Promise<void> {
   window.location.assign('/login');
 }
 
-function readableSegment(segment: string): string {
-  return SEGMENT_LABELS[segment] ?? segment.charAt(0).toUpperCase() + segment.slice(1);
-}
-
-function buildCrumbs(pathname: string): readonly Crumb[] {
-  const segments = pathname.split('/').filter((segment) => segment !== '');
-  const crumbs: Crumb[] = [{ label: 'Resumen', href: '/' }];
-
-  let accumulated = '';
-  for (const segment of segments) {
-    accumulated += `/${segment}`;
-    crumbs.push({ label: readableSegment(segment), href: accumulated });
-  }
-
-  return crumbs;
-}
-
-function NavLinks({
-  pathname,
-  orientation,
-}: {
-  pathname: string;
-  orientation: 'vertical' | 'horizontal';
-}) {
+/** Wordmark con nombre accesible explícito; siempre vuelve al resumen. */
+function BrandLink() {
   return (
-    <ul
-      className={
-        orientation === 'vertical'
-          ? 'flex flex-col gap-1'
-          : 'flex items-center gap-1 overflow-x-auto'
-      }
+    <Link
+      href="/"
+      aria-label="MyBusiness, ir al resumen"
+      className="inline-flex min-h-11 items-center rounded-md px-2 font-mono text-xs tracking-widest text-text-muted uppercase transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
     >
+      mybusiness
+    </Link>
+  );
+}
+
+/** Navegación vertical del sidebar de escritorio. */
+function NavLinks({ pathname }: { pathname: string }) {
+  const activeHref = getActiveHref(pathname);
+
+  return (
+    <ul className="flex flex-col gap-2">
       {NAV_ITEMS.map((item) => {
-        const isCurrent = item.href === pathname;
+        if (item.href === null) {
+          return (
+            <li key={item.id}>
+              <span role="link" aria-disabled="true" className={navDisabledItemClasses()}>
+                {item.label}
+                <span className="sr-only"> (Próximamente)</span>
+              </span>
+            </li>
+          );
+        }
+
+        const isCurrent = item.href === activeHref;
 
         return (
-          <li key={item.label}>
+          <li key={item.id}>
             <Link
               href={item.href}
               aria-current={isCurrent ? 'page' : undefined}
-              className={`flex items-center rounded-md px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
-                isCurrent
-                  ? 'bg-surface text-text'
-                  : 'text-text-muted hover:bg-surface hover:text-text'
-              }`}
+              className={navLinkClasses(isCurrent)}
             >
               {item.label}
             </Link>
@@ -139,86 +116,109 @@ function NavLinks({
   );
 }
 
+/** Migas derivadas de la ruta; la última es texto, las anteriores enlaces. */
+function Breadcrumbs({ pathname }: { pathname: string }) {
+  const crumbs = buildCrumbs(pathname);
+
+  return (
+    <nav
+      aria-label="Ruta de navegación"
+      className="order-last w-full min-w-0 md:order-none md:w-auto md:flex-1"
+    >
+      <ol className="flex flex-wrap items-center gap-2 text-sm text-text-muted">
+        {crumbs.map((crumb, index) => {
+          const isLast = index === crumbs.length - 1;
+
+          return (
+            <li key={crumb.href} className="flex items-center gap-1">
+              {isLast ? (
+                <span aria-current="page" className="font-medium text-text">
+                  {crumb.label}
+                </span>
+              ) : (
+                <Link
+                  href={crumb.href}
+                  className="inline-flex min-h-11 items-center rounded-sm px-1 underline underline-offset-4 transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+                >
+                  {crumb.label}
+                </Link>
+              )}
+              {isLast ? null : (
+                <span aria-hidden="true" className="px-1">
+                  /
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}
+
 export function AppShell({ children, user }: { children: ReactNode; user?: ShellUser }) {
   const pathname = usePathname();
+
+  const handleLogout = () => {
+    void logout();
+  };
 
   return (
     <div className="min-h-screen bg-surface">
       <a
         href="#contenido"
-        className="sr-only rounded-md border border-border bg-surface-raised px-4 py-2 text-sm font-medium text-text focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50"
+        onClick={() => {
+          document.getElementById('contenido')?.focus();
+        }}
+        className="sr-only rounded-md border border-border-strong bg-surface-raised px-4 py-2 text-sm font-medium text-text focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:inline-flex focus:min-h-11 focus:items-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
       >
         Saltar al contenido
       </a>
 
       <aside className="hidden border-r border-border bg-surface-raised md:fixed md:inset-y-0 md:left-0 md:flex md:w-60 md:flex-col md:gap-6 md:px-4 md:py-6">
-        <p className="px-3 font-mono text-xs tracking-widest text-text-muted uppercase">
-          mybusiness
-        </p>
-        <nav aria-label="Navegación principal">
-          <NavLinks pathname={pathname} orientation="vertical" />
+        <BrandLink />
+        <nav aria-label="Navegación principal" className="flex-1">
+          <NavLinks pathname={pathname} />
         </nav>
+        {user === undefined ? null : (
+          <div className="border-t border-border pt-4">
+            <p className="px-3 text-sm leading-tight">
+              <span className="block font-medium text-text">
+                {user.firstName} {user.lastName}
+              </span>
+              <span className="block text-xs text-text-muted">{user.role}</span>
+            </p>
+          </div>
+        )}
       </aside>
 
       <div className="flex min-h-screen flex-col md:pl-60">
         <header className="sticky top-0 z-10 border-b border-border bg-surface">
-          <div className="flex items-center justify-between gap-4 px-4 py-3 md:px-6">
-            <nav aria-label="Ruta de navegación" className="min-w-0">
-              <ol className="flex flex-wrap items-center gap-1 text-sm text-text-muted">
-                {buildCrumbs(pathname).map((crumb, index, all) => {
-                  const isLast = index === all.length - 1;
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 md:flex-nowrap md:px-6">
+            <div className="flex items-center gap-2 md:hidden">
+              <BrandLink />
+              <MobileDrawer pathname={pathname} onLogout={handleLogout} />
+            </div>
 
-                  return (
-                    <li key={crumb.href} className="flex items-center gap-1">
-                      {isLast ? (
-                        <span aria-current="page" className="font-medium text-text">
-                          {crumb.label}
-                        </span>
-                      ) : (
-                        <Link
-                          href={crumb.href}
-                          className="rounded-sm transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                        >
-                          {crumb.label}
-                        </Link>
-                      )}
-                      {isLast ? null : (
-                        <span aria-hidden="true" className="px-1">
-                          /
-                        </span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ol>
-            </nav>
+            <Breadcrumbs pathname={pathname} />
 
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              <SearchPalette />
+              <ThemeToggle />
               {user === undefined ? null : (
-                <p className="hidden text-right text-sm leading-tight sm:block">
+                <p className="hidden text-right text-sm leading-tight md:block">
                   <span className="block font-medium text-text">{user.firstName}</span>
                   <span className="block text-xs text-text-muted">{user.role}</span>
                 </p>
               )}
-              <ThemeToggle />
-              <button
-                type="button"
-                onClick={() => {
-                  void logout();
-                }}
-                className="rounded-md border border-border bg-surface-raised px-3 py-2 text-sm font-medium text-text transition-colors hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-              >
+              <Button variant="secondary" onClick={handleLogout} className="hidden md:inline-flex">
                 Cerrar sesión
-              </button>
+              </Button>
             </div>
           </div>
-
-          <nav aria-label="Navegación principal móvil" className="px-4 pb-2 md:hidden">
-            <NavLinks pathname={pathname} orientation="horizontal" />
-          </nav>
         </header>
 
-        <main id="contenido" className="flex-1 px-4 py-6 md:px-6 md:py-8">
+        <main id="contenido" tabIndex={-1} className="flex-1 px-4 py-6 md:px-6 md:py-8">
           {children}
         </main>
       </div>
