@@ -267,14 +267,41 @@ export class PayPalPaymentService {
     captureId: string,
     providerAmountMinor: bigint,
   ): Promise<void> {
+    const clampedAmountMinor =
+      providerAmountMinor > paypalOrder.amountMinor ? paypalOrder.amountMinor : providerAmountMinor;
+
+    // Divergencia de importe contra la orden: no se bloquea (el proveedor
+    // confirmó fondos), pero la conciliación queda aclarada con el clamp y
+    // la divergencia queda auditable (criterio QA H2).
+    if (providerAmountMinor > paypalOrder.amountMinor) {
+      this.logger.warn(
+        `Divergencia en la captura ${captureId} de la orden ${paypalOrder.id}: el proveedor notificó ${providerAmountMinor} minor y la orden declara ${paypalOrder.amountMinor} minor; se concilia con el importe de la orden (clamp, ADR 003).`,
+      );
+      await this.events.publish(AuditEvents.LOG_EVENT, {
+        eventId: randomUUID(),
+        tenantId: paypalOrder.tenantId,
+        userId: WEBHOOK_ACTOR,
+        role: undefined,
+        action: PaymentEvents.PAYPAL_CAPTURED,
+        entityName: 'paypal_orders',
+        entityId: paypalOrder.id,
+        newValues: {
+          captureId,
+          providerAmountMinor: providerAmountMinor.toString(),
+          orderAmountMinor: paypalOrder.amountMinor.toString(),
+          reconciledAmountMinor: clampedAmountMinor.toString(),
+          divergence: 'provider_amount_exceeds_order_amount',
+          currency: paypalOrder.currency,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     const claimed = await this.repository.markOrderCaptured({
       orderId: paypalOrder.id,
       fromStatuses: [PayPalOrderStatus.CREATED, PayPalOrderStatus.APPROVED],
       captureId,
-      capturedAmountMinor:
-        providerAmountMinor > paypalOrder.amountMinor
-          ? paypalOrder.amountMinor
-          : providerAmountMinor,
+      capturedAmountMinor: clampedAmountMinor,
     });
 
     if (!claimed) {
@@ -291,10 +318,7 @@ export class PayPalPaymentService {
       invoiceId: paypalOrder.invoiceId,
       paypalOrderId: paypalOrder.paypalOrderId,
       captureId,
-      amountMinor:
-        providerAmountMinor > paypalOrder.amountMinor
-          ? paypalOrder.amountMinor
-          : providerAmountMinor,
+      amountMinor: clampedAmountMinor,
       currency: paypalOrder.currency,
     });
   }

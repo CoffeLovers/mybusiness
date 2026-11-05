@@ -4,6 +4,7 @@ import {
   ConflictException,
   HttpException,
   HttpStatus,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -821,6 +822,48 @@ describe('PayPalPaymentService reconciliación de webhooks (SF3-09)', () => {
     expect(h.events.publish).toHaveBeenCalledWith(
       PaymentEvents.PAYPAL_CAPTURED,
       expect.objectContaining({ captureId: 'CAPTURE-9', amountMinor: '2500' }),
+    );
+  });
+
+  it('reconcileCapture ajusta el importe del proveedor mayor al de la orden, advierte y audita la divergencia', async () => {
+    const h = paymentHarness({
+      findOrderById: vi.fn().mockResolvedValue(orderRow({ status: 'APPROVED' })),
+    });
+    const logger = (h.service as unknown as { logger: Logger }).logger;
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+
+    await h.service.reconcileCapture(
+      {
+        id: ORDER_ID,
+        tenantId: TENANT_A,
+        invoiceId: INVOICE_ID,
+        paypalOrderId: 'PAYPAL-123',
+        currency: 'USD',
+        amountMinor: 2500n,
+      },
+      'CAPTURE-9',
+      3000n,
+    );
+
+    // Clamp: se concilia con el importe de la orden, no el del proveedor.
+    expect(h.repository.markOrderCaptured).toHaveBeenCalledWith(
+      expect.objectContaining({ capturedAmountMinor: 2500n, captureId: 'CAPTURE-9' }),
+    );
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Divergencia en la captura'));
+    // Divergencia auditable junto a la captura conciliada.
+    expect(h.events.publish).toHaveBeenCalledWith(
+      AuditEvents.LOG_EVENT,
+      expect.objectContaining({
+        action: PaymentEvents.PAYPAL_CAPTURED,
+        entityId: ORDER_ID,
+        newValues: expect.objectContaining({
+          captureId: 'CAPTURE-9',
+          providerAmountMinor: '3000',
+          orderAmountMinor: '2500',
+          reconciledAmountMinor: '2500',
+          divergence: 'provider_amount_exceeds_order_amount',
+        }),
+      }),
     );
   });
 
