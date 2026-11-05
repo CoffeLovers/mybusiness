@@ -2,6 +2,9 @@ package com.mybusiness.feature.auth.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.mybusiness.core.common.extensions.ErrorKind
+import com.mybusiness.core.common.extensions.toErrorKind
+import com.mybusiness.core.common.extensions.toUserMessage
 import com.mybusiness.core.common.result.Result
 import com.mybusiness.feature.auth.domain.usecase.LoginUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -25,7 +28,8 @@ class AuthViewModel @Inject constructor(
             it.copy(
                 email = newEmail,
                 emailError = null,
-                generalError = null
+                generalError = null,
+                errorKind = null
             )
         }
     }
@@ -35,7 +39,8 @@ class AuthViewModel @Inject constructor(
             it.copy(
                 password = newPassword,
                 passwordError = null,
-                generalError = null
+                generalError = null,
+                errorKind = null
             )
         }
     }
@@ -45,7 +50,7 @@ class AuthViewModel @Inject constructor(
     }
 
     fun clearError() {
-        _uiState.update { it.copy(generalError = null) }
+        _uiState.update { it.copy(generalError = null, errorKind = null) }
     }
 
     fun login() {
@@ -74,17 +79,31 @@ class AuthViewModel @Inject constructor(
         if (hasError) return
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, generalError = null) }
+            _uiState.update { it.copy(isLoading = true, generalError = null, errorKind = null) }
             when (val result = loginUseCase(email, password)) {
                 is Result.Success -> {
-                    _uiState.update { it.copy(isLoading = false, isSuccess = true) }
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            isSuccess = true,
+                            generalError = null,
+                            errorKind = null
+                        )
+                    }
                 }
                 is Result.Error -> {
+                    val kind = result.toErrorKind()
+                    val message = when (kind) {
+                        ErrorKind.Unauthorized -> "Correo o contraseña incorrectos."
+                        ErrorKind.Network, ErrorKind.Generic ->
+                            result.toUserMessage("No pudimos iniciar sesión. Inténtalo de nuevo.")
+                    }
                     _uiState.update {
                         it.copy(
                             isLoading = false,
                             isSuccess = false,
-                            generalError = result.message
+                            generalError = message,
+                            errorKind = kind
                         )
                     }
                 }

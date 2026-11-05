@@ -84,7 +84,14 @@ fun MyBusinessNavHost(
         }
 
         composable<Screen.Banking> {
-            BankingScreen(onBack = { navController.popBackStack() })
+            BankingScreen(
+                onBack = { navController.popBackStack() },
+                onSessionExpired = {
+                    navController.navigate(Screen.Login) {
+                        popUpTo(Screen.Dashboard) { inclusive = true }
+                    }
+                }
+            )
         }
     }
 }

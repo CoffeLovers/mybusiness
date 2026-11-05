@@ -40,12 +40,14 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mybusiness.core.common.extensions.ErrorKind
 import com.mybusiness.core.designsystem.component.ErrorCard
 import com.mybusiness.core.designsystem.component.MyBusinessTextField
 import com.mybusiness.core.designsystem.component.PrimaryButton
+import com.mybusiness.core.designsystem.theme.Spacing
+import com.mybusiness.core.designsystem.theme.minimumTouchTarget
 import com.mybusiness.feature.auth.BuildConfig
 
 @Composable
@@ -77,40 +79,44 @@ fun LoginScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 24.dp)
+                    .padding(horizontal = Spacing.space6)
                     .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(Spacing.space8))
 
                 // Encabezado institucional
                 Text(
-                    text = "💼 MyBusiness",
+                    text = "MyBusiness",
                     style = MaterialTheme.typography.headlineLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
                     textAlign = TextAlign.Center
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(Spacing.space2))
 
                 Text(
-                    text = "Plataforma Financiera y Contable Inteligente",
+                    text = "Gestiona tus finanzas y contabilidad en un solo lugar.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center
                 )
 
-                Spacer(modifier = Modifier.height(36.dp))
+                Spacer(modifier = Modifier.height(Spacing.space10))
 
                 // Mensaje de Error General si ocurrió
                 if (uiState.generalError != null) {
                     ErrorCard(
                         message = uiState.generalError!!,
-                        onRetry = { viewModel.login() }
+                        onRetry = if (uiState.errorKind == ErrorKind.Unauthorized) {
+                            null
+                        } else {
+                            ({ viewModel.login() })
+                        }
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(Spacing.space4))
                 }
 
                 // Campo Correo Electrónico
@@ -122,7 +128,7 @@ fun LoginScreen(
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.Email,
-                            contentDescription = "Email",
+                            contentDescription = "Correo",
                             tint = MaterialTheme.colorScheme.primary
                         )
                     },
@@ -135,7 +141,7 @@ fun LoginScreen(
                     enabled = !uiState.isLoading
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(Spacing.space4))
 
                 // Campo Contraseña
                 MyBusinessTextField(
@@ -150,7 +156,10 @@ fun LoginScreen(
                         )
                     },
                     trailingIcon = {
-                        IconButton(onClick = { viewModel.togglePasswordVisibility() }) {
+                        IconButton(
+                            onClick = { viewModel.togglePasswordVisibility() },
+                            modifier = Modifier.minimumTouchTarget()
+                        ) {
                             Icon(
                                 imageVector = if (uiState.isPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
                                 contentDescription = if (uiState.isPasswordVisible) "Ocultar contraseña" else "Mostrar contraseña"
@@ -173,7 +182,7 @@ fun LoginScreen(
                     enabled = !uiState.isLoading
                 )
 
-                Spacer(modifier = Modifier.height(28.dp))
+                Spacer(modifier = Modifier.height(Spacing.space6))
 
                 // Botón Principal de Inicio de Sesión
                 PrimaryButton(
@@ -186,7 +195,7 @@ fun LoginScreen(
                     enabled = uiState.canSubmit
                 )
 
-                Spacer(modifier = Modifier.height(28.dp))
+                Spacer(modifier = Modifier.height(Spacing.space6))
 
                 // Indicador informativo cuando el modo simulación esté activo
                 if (BuildConfig.USE_MOCK_AUTH) {
@@ -197,16 +206,16 @@ fun LoginScreen(
                         ),
                         shape = MaterialTheme.shapes.small
                     ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
+                        Column(modifier = Modifier.padding(Spacing.space3)) {
                             Text(
-                                text = "💡 Modo Demostración Activo",
+                                text = "Modo demostración",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.primary
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
+                            Spacer(modifier = Modifier.height(Spacing.space1))
                             Text(
-                                text = "Puedes ingresar con cualquier correo y contraseña válida (mínimo 8 caracteres) para autenticarte en modo demo.",
+                                text = "Puedes entrar con cualquier correo y una contraseña de al menos 8 caracteres para probar la app.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -214,7 +223,7 @@ fun LoginScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(Spacing.space8))
             }
         }
     }
