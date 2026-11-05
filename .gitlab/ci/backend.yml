@@ -1,0 +1,185 @@
+# Pipeline backend — MIG-02 (#135)
+#
+# Paridad con `.github/workflows/ci.yml` sobre GitLab CI:
+#   validate: backend:lint, backend:format
+#   test:     backend:typecheck, backend:test, backend:contracts
+#   build:    backend:build, backend:e2e
+#
+# Todos los jobs comparten `.pnpm-base` (definido en `.gitlab-ci.yml`) para el
+# cache del store de pnpm. Las reglas se centralizan en `.backend-rules`.
+
+# Cambios que invalidan el pipeline backend (apps de backend y paquetes compartidos).
+.backend-changes: &backend-changes
+  - packages/**/*
+  - apps/api-gateway/**/*
+  - apps/auth-service/**/*
+  - apps/finance-service/**/*
+  - apps/agent-service/**/*
+  - apps/audit-service/**/*
+  - pnpm-lock.yaml
+  - pnpm-workspace.yaml
+  - tsconfig*.json
+  - .gitlab/ci/backend.yml
+  - .gitlab-ci.yml
+
+# Se ejecuta en MRs, `develop` y `main`, solo si cambia código de backend.
+.backend-rules: &backend-rules
+  - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    changes: *backend-changes
+  - if: '$CI_COMMIT_BRANCH == "develop"'
+    changes: *backend-changes
+  - if: '$CI_COMMIT_BRANCH == "main"'
+    changes: *backend-changes
+
+# ---------------------------------------------------------------------------
+# validate
+# ---------------------------------------------------------------------------
+backend:lint:
+  extends: .pnpm-base
+  stage: validate
+  script:
+    - pnpm lint
+  rules: *backend-rules
+
+backend:format:
+  extends: .pnpm-base
+  stage: validate
+  script:
+    - pnpm format:check
+  rules: *backend-rules
+
+# ---------------------------------------------------------------------------
+# test
+# ---------------------------------------------------------------------------
+backend:typecheck:
+  extends: .pnpm-base
+  stage: test
+  needs:
+    - job: backend:lint
+    - job: backend:format
+  script:
+    - pnpm typecheck
+  rules: *backend-rules
+
+backend:test:
+  extends: .pnpm-base
+  stage: test
+  needs:
+    - job: backend:lint
+    - job: backend:format
+  script:
+    - pnpm test
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - coverage/
+    exclude:
+      - coverage/**/*.html
+  rules: *backend-rules
+
+backend:contracts:
+  extends: .pnpm-base
+  stage: test
+  needs:
+    - job: backend:lint
+    - job: backend:format
+  script:
+    # `contracts:check` regenera el OpenAPI del gateway: requiere los dist de
+    # contracts, common y api-gateway (igual que el job `contracts` de GitHub).
+    - pnpm --filter @mybusiness/contracts build
+    - pnpm --filter @mybusiness/common build
+    - pnpm --filter @mybusiness/api-gateway build
+    - pnpm contracts:check
+    - pnpm contracts:check:kotlin
+  artifacts:
+    when: on_failure
+    expire_in: 7 days
+    paths:
+      - docs/openapi/api-gateway.json
+      - contracts-drift.diff
+      - node_modules/.cache/contracts-check/
+  rules: *backend-rules
+
+# ---------------------------------------------------------------------------
+# build
+# ---------------------------------------------------------------------------
+backend:build:
+  extends: .pnpm-base
+  stage: build
+  needs:
+    - job: backend:typecheck
+    - job: backend:test
+    - job: backend:contracts
+  script:
+    - pnpm build
+  rules: *backend-rules
+
+# ---------------------------------------------------------------------------
+# e2e (servicios reales: 3 Postgres + Redis con password)
+# ---------------------------------------------------------------------------
+backend:e2e:
+  extends: .pnpm-base
+  stage: build
+  image: node:20-bookworm
+  timeout: 30m
+  needs:
+    - job: backend:build
+  services:
+    - name: postgres:16-alpine
+      alias: postgres
+    - name: pgvector/pgvector:pg16
+      alias: postgres-agent
+    - name: postgres:16-alpine
+      alias: postgres-audit
+    - name: redis:7-alpine
+      alias: redis
+      command: ['redis-server', '--requirepass', 'test_password']
+  variables:
+    # Los servicios Postgres arrancan en modo trust; usuarios y bases se crean
+    # en `before_script` para evitar necesitar variables por servicio (GitLab
+    # no las soporta: las variables del job aplican a todos los servicios).
+    POSTGRES_HOST_AUTH_METHOD: 'trust'
+    REDIS_HOST: redis
+    REDIS_PORT: '6379'
+    REDIS_PASSWORD: test_password
+    FINANCE_DATABASE_URL: 'postgresql://finance_user:test_password@postgres:5432/finance_db'
+    AGENT_DATABASE_URL: 'postgresql://agent_user:test_password@postgres-agent:5432/agent_db'
+    AUDIT_DATABASE_URL: 'postgresql://audit_user:test_password@postgres-audit:5432/audit_db'
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends postgresql-client && rm -rf /var/lib/apt/lists/*
+    - |
+      wait_for_pg() {
+        for _ in $(seq 1 30); do
+          if pg_isready -q -h "$1" -U postgres; then return 0; fi
+          sleep 2
+        done
+        echo "Postgres $1 no responde" >&2
+        return 1
+      }
+      bootstrap_db() {
+        wait_for_pg "$1"
+        psql "postgresql://postgres@$1:5432/postgres" -v ON_ERROR_STOP=1 \
+          -c "CREATE ROLE $2 LOGIN SUPERUSER PASSWORD 'test_password';" \
+          -c "CREATE DATABASE $3 OWNER $2;"
+      }
+      bootstrap_db postgres finance_user finance_db
+      bootstrap_db postgres-agent agent_user agent_db
+      bootstrap_db postgres-audit audit_user audit_db
+    - corepack enable
+    - corepack prepare pnpm@12.9.1 --activate
+    - pnpm config set store-dir "$PNPM_STORE_DIR" --global
+    - pnpm install --frozen-lockfile
+  script:
+    - pnpm build
+    - pnpm --filter @mybusiness/finance-service db:migrate
+    - psql "$AGENT_DATABASE_URL" -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+    - pnpm --filter @mybusiness/agent-service db:migrate
+    - pnpm --filter @mybusiness/audit-service db:migrate
+    - pnpm test:e2e
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+  rules: *backend-rules
