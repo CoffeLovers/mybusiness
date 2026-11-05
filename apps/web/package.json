@@ -8,7 +8,7 @@
     "build": "pnpm --filter @mybusiness/contracts build && next build",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
-    "typecheck": "pnpm --filter @mybusiness/contracts build && tsc --noEmit",
+    "typecheck": "pnpm --filter @mybusiness/telemetry run build && pnpm --filter @mybusiness/contracts build && tsc --noEmit",
     "test": "pnpm --filter @mybusiness/contracts build && playwright test",
     "test:unit": "pnpm --filter @mybusiness/contracts build && vitest run",
     "test:cov": "pnpm --filter @mybusiness/contracts build && vitest run --coverage",
