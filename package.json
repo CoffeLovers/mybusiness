@@ -30,6 +30,7 @@
     "test:infra": "node scripts/verify-issue2.js",
     "test:schemas": "node scripts/verify-issue4.js",
     "test:e2e": "pnpm -r --if-present run test:e2e",
+    "test:contrast": "node scripts/design/check-contrast.mjs",
     "test:cov": "pnpm -r --if-present run test:cov",
     "test:load": "k6 run tests/load/ingest-50k.js",
     "verify:load": "node scripts/verify-load-54.mjs",

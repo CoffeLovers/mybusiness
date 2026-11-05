@@ -11,6 +11,7 @@ on:
       - 'docs/openapi/**'
       - 'contracts/**'
       - 'scripts/**'
+      - 'docs/design/**'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - '.github/workflows/web-ci.yml'
@@ -24,6 +25,7 @@ on:
       - 'docs/openapi/**'
       - 'contracts/**'
       - 'scripts/**'
+      - 'docs/design/**'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - '.github/workflows/web-ci.yml'
@@ -64,6 +66,8 @@ jobs:
         run: pnpm --filter @mybusiness/web lint
       - name: Prettier
         run: pnpm exec prettier --check "apps/web/**/*.{ts,tsx,css,json,md}"
+      - name: Design token contrast
+        run: pnpm test:contrast
       - name: Typecheck
         run: pnpm --filter @mybusiness/web typecheck
       - name: Unit tests with coverage
@@ -149,6 +153,51 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: web-test-results
+          path: apps/web/test-results
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Upload visual diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-visual-diffs
+          path: |
+            apps/web/test-results/**/*-diff.png
+            apps/web/test-results/**/*-actual.png
+            apps/web/test-results/**/*-expected.png
+          retention-days: 7
+          if-no-files-found: ignore
+
+  a11y:
+    name: Accessibility (axe)
+    runs-on: ubuntu-latest
+    needs: [quality]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install Playwright browsers
+        run: pnpm --filter @mybusiness/web exec playwright install --with-deps chromium
+      - name: Run accessibility tests
+        run: pnpm --filter @mybusiness/web exec playwright test e2e/accessibility.spec.ts
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-a11y-report
+          path: apps/web/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-a11y-results
           path: apps/web/test-results
           retention-days: 7
           if-no-files-found: ignore
