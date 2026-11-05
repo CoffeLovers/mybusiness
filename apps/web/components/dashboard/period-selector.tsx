@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { getPresetDates, type PeriodPreset } from '@/lib/date-utils';
 
 interface PeriodSelectorProps {
@@ -27,6 +27,11 @@ export function PeriodSelector({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   const handlePresetChange = (preset: PeriodPreset) => {
     const dates = getPresetDates(preset);
@@ -61,6 +66,7 @@ export function PeriodSelector({
   return (
     <div
       role="toolbar"
+      data-hydrated={hydrated}
       aria-label="Filtro de período y moneda"
       className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-surface p-3"
     >

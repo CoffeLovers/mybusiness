@@ -28,6 +28,11 @@ pnpm-debug.log*
 coverage/
 .nyc_output/
 
+# Artefactos de load testing (generados por k6 y la verificación de #54)
+tests/load/k6-summary.json
+tests/load/verification-54.json
+tests/load/*.log
+
 # IDEs
 .idea/
 .vscode/

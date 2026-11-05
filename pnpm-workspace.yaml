@@ -29,6 +29,11 @@ overrides:
   # Override con scope: parcheamos solo la copia transitiva, la dependencia
   # directa de api-gateway ya declara ^2.5.0.
   '@nestjs/platform-express>multer': ^2.5.0
+  # `openapi-typescript` (dev-only, contract drift en CI) depende de
+  # @redocly/openapi-core, que usa la API de js-yaml 4 (`types.merge`). El
+  # override global `js-yaml: ^5.4.1` rompe el parseo de esquemas, así que se
+  # exceptúa únicamente esa copia transitiva. No aplica a código desplegado.
+  '@redocly/openapi-core>js-yaml': ^4.3.2
 
 allowBuilds:
   '@scarf/scarf': false

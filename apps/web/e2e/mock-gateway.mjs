@@ -11,14 +11,44 @@ import { createServer } from 'node:http';
 const HOST = '127.0.0.1';
 const PORT = 3200;
 
-const USER = {
-  id: 'u1',
-  email: 'ada@example.com',
-  firstName: 'Ada',
-  lastName: 'Lovelace',
-  role: 'OWNER',
-  tenantId: '00000000-0000-0000-0000-000000000001',
+const TENANT_A_ID = '00000000-0000-0000-0000-000000000001';
+const TENANT_B_ID = '00000000-0000-0000-0000-000000000002';
+
+const USERS = {
+  [TENANT_A_ID]: {
+    id: 'u1',
+    email: 'ada@example.com',
+    firstName: 'Ada',
+    lastName: 'Lovelace',
+    role: 'OWNER',
+    tenantId: TENANT_A_ID,
+  },
+  [TENANT_B_ID]: {
+    id: 'u2',
+    email: 'bob@example.com',
+    firstName: 'Bob',
+    lastName: 'Smith',
+    role: 'OWNER',
+    tenantId: TENANT_B_ID,
+  },
 };
+
+const USER = USERS[TENANT_A_ID];
+
+/** Deriva el tenant ID a partir del token de autorización */
+function getTenantIdFromRequest(request) {
+  const authorization = request.headers.authorization ?? '';
+  if (authorization.includes('tenant-b')) {
+    return TENANT_B_ID;
+  }
+  if (authorization.includes('tenant-a')) {
+    return TENANT_A_ID;
+  }
+  if (/^Bearer access-[A-Za-z0-9._-]+$/.test(authorization)) {
+    return TENANT_A_ID;
+  }
+  return null;
+}
 
 const REFRESH_COOKIE = 'mybusiness_refresh_token';
 
@@ -80,20 +110,39 @@ async function handleLogin(request, response) {
     return;
   }
 
+  const isTenantB = body.email.includes('bob') || body.email.includes('tenant-b');
+  const tenantId = isTenantB ? TENANT_B_ID : TENANT_A_ID;
+  const user = USERS[tenantId];
+  const accessToken = isTenantB ? 'access-tenant-b' : 'access-1';
+  const refreshTokenVal = isTenantB ? 'refresh-tenant-b' : 'refresh-1';
+
   sendJson(
     response,
     200,
     {
-      accessToken: 'access-1',
-      user: { ...USER, email: body.email },
+      accessToken,
+      user: { ...user, email: body.email },
     },
-    { 'set-cookie': refreshCookie('refresh-1') },
+    { 'set-cookie': refreshCookie(refreshTokenVal) },
   );
 }
 
 async function handleRefresh(request, response) {
   const body = await readJson(request);
   const refreshToken = body === null ? undefined : body.refreshToken;
+
+  if (refreshToken === 'refresh-tenant-b') {
+    sendJson(
+      response,
+      200,
+      {
+        accessToken: 'access-tenant-b',
+        user: { ...USERS[TENANT_B_ID] },
+      },
+      { 'set-cookie': refreshCookie('refresh-tenant-b') },
+    );
+    return;
+  }
 
   if (refreshToken === 'refresh-1') {
     USED_REFRESH_TOKENS.add('refresh-1');
@@ -136,9 +185,39 @@ function handleCashflowSummary(request, response, url) {
     return;
   }
 
+  const tenantId = getTenantIdFromRequest(request);
   const from = url.searchParams.get('from') || '2026-10-01';
   const to = url.searchParams.get('to') || '2026-10-30';
   const currency = url.searchParams.get('currency') || 'EUR';
+
+  // Si es Tenant B, devolvemos sus datos aislados
+  if (tenantId === TENANT_B_ID) {
+    sendJson(response, 200, {
+      hasData: true,
+      currency: 'EUR',
+      availableCurrencies: ['EUR', 'USD'],
+      period: { from, to },
+      balanceMinor: '9900000',
+      incomeMinor: '2100000',
+      expenseMinor: '1400000',
+      burnRateMinor: '700000',
+      runwayMonths: 14.1,
+      previousPeriod: {
+        incomeMinor: '1900000',
+        expenseMinor: '1300000',
+      },
+      series: [
+        { bucketStart: from, incomeMinor: '1000000', expenseMinor: '700000' },
+        { bucketStart: to, incomeMinor: '1100000', expenseMinor: '700000' },
+      ],
+      categories: [
+        { category: 'Servicios en la nube', amountMinor: '700000', share: 0.5 },
+        { category: 'Nómina', amountMinor: '500000', share: 0.3571 },
+        { category: 'Oficina', amountMinor: '200000', share: 0.1429 },
+      ],
+    });
+    return;
+  }
 
   // Escenario de error simulado
   if (currency === 'ERROR' || from.includes('error')) {
@@ -309,6 +388,376 @@ const LEDGER_ROWS = (() => {
 /** Índice por id para mutaciones sin recorrer las 50.000 filas. */
 const LEDGER_BY_ID = new Map(LEDGER_ROWS.map((row) => [row.id, row]));
 
+/** Filas aisladas del libro mayor para Tenant B */
+const LEDGER_ROWS_B = [
+  {
+    id: '00000000-0000-4000-8000-bbbb00000001',
+    date: '2026-10-15',
+    name: 'Movimiento Exclusivo Tenant B 001',
+    merchantName: 'Proveedor Tenant B',
+    category: 'Oficina',
+    notes: 'Nota confidencial Tenant B',
+    amountMinor: '850000',
+    isoCurrencyCode: 'EUR',
+    accountId: '22222222-2222-4222-8222-222222222222',
+    accountName: 'Cuenta Banco Tenant B',
+    reconciliationStatus: 'UNMATCHED',
+    evidence: null,
+    updatedAt: '2026-10-15T09:00:00.000Z',
+  },
+  {
+    id: '00000000-0000-4000-8000-bbbb00000002',
+    date: '2026-10-16',
+    name: 'Movimiento Exclusivo Tenant B 002',
+    merchantName: 'Cloud Services B',
+    category: 'Servicios en la nube',
+    notes: null,
+    amountMinor: '-120000',
+    isoCurrencyCode: 'EUR',
+    accountId: '22222222-2222-4222-8222-222222222222',
+    accountName: 'Cuenta Banco Tenant B',
+    reconciliationStatus: 'AUTO_MATCHED',
+    evidence: null,
+    updatedAt: '2026-10-16T09:00:00.000Z',
+  },
+];
+
+const LEDGER_B_BY_ID = new Map(LEDGER_ROWS_B.map((row) => [row.id, row]));
+
+function getLedgerRowsForTenant(tenantId) {
+  if (tenantId === TENANT_B_ID) {
+    return LEDGER_ROWS_B;
+  }
+  return LEDGER_ROWS;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Estado en memoria multi-tenant: Banking & Reconciliation                  */
+/* ------------------------------------------------------------------------- */
+
+const BANK_CONNECTIONS = {
+  [TENANT_A_ID]: [],
+  [TENANT_B_ID]: [
+    {
+      id: 'conn-b-default-001',
+      tenantId: TENANT_B_ID,
+      provider: 'PLAID',
+      institutionName: 'Banco Nacional B',
+      status: 'ACTIVE',
+      lastSuccessfulSyncAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+  ],
+};
+
+const BANK_ACCOUNTS = {
+  [TENANT_A_ID]: [],
+  [TENANT_B_ID]: [
+    {
+      id: 'acc-b-default-001',
+      tenantId: TENANT_B_ID,
+      connectionId: 'conn-b-default-001',
+      name: 'Cuenta Operativa Tenant B',
+      mask: '4321',
+      isoCurrencyCode: 'EUR',
+      balanceCurrentMinor: '9900000',
+      balanceAvailableMinor: '9900000',
+      status: 'ACTIVE',
+      lastSyncedAt: new Date().toISOString(),
+    },
+  ],
+};
+
+const RECONCILIATION_SETTINGS = {
+  [TENANT_A_ID]: {
+    dateWindowDays: 3,
+    autoMatchThresholdBps: 9000,
+    timezone: 'UTC',
+    lookbackDays: 30,
+    nightlyEnabled: true,
+  },
+  [TENANT_B_ID]: {
+    dateWindowDays: 5,
+    autoMatchThresholdBps: 8500,
+    timezone: 'UTC',
+    lookbackDays: 60,
+    nightlyEnabled: false,
+  },
+};
+
+const RECONCILIATION_REVIEWS = {
+  [TENANT_A_ID]: [],
+  [TENANT_B_ID]: [],
+};
+
+async function handleBankingConnect(request, response) {
+  const tenantId = getTenantIdFromRequest(request);
+  if (!tenantId) {
+    sendError(response, 401, 'unauthorized');
+    return;
+  }
+  const body = await readJson(request);
+  sendJson(response, 201, {
+    provider: body?.provider || 'PLAID',
+    linkToken: `link_token_${Date.now()}`,
+    expiration: new Date(Date.now() + 3600000).toISOString(),
+  });
+}
+
+async function handleBankingExchange(request, response) {
+  const tenantId = getTenantIdFromRequest(request);
+  if (!tenantId) {
+    sendError(response, 401, 'unauthorized');
+    return;
+  }
+  const body = await readJson(request);
+  const connId = `conn-${tenantId === TENANT_B_ID ? 'b' : 'a'}-${Date.now()}`;
+  const conn = {
+    id: connId,
+    tenantId,
+    provider: body?.provider || 'PLAID',
+    institutionName: body?.institution || 'Banco Santander Empresas',
+    status: 'ACTIVE',
+    lastSuccessfulSyncAt: new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  BANK_CONNECTIONS[tenantId].push(conn);
+
+  const accId = `acc-${tenantId === TENANT_B_ID ? 'b' : 'a'}-${Date.now()}`;
+  const acc = {
+    id: accId,
+    tenantId,
+    connectionId: connId,
+    name: 'Cuenta Operativa Principal',
+    mask: '4890',
+    isoCurrencyCode: 'EUR',
+    balanceCurrentMinor: '4500000',
+    balanceAvailableMinor: '4500000',
+    status: 'ACTIVE',
+    lastSyncedAt: new Date().toISOString(),
+  };
+  BANK_ACCOUNTS[tenantId].push(acc);
+
+  sendJson(response, 201, conn);
+}
+
+function handleBankingConnections(request, response) {
+  const tenantId = getTenantIdFromRequest(request);
+  if (!tenantId) {
+    sendError(response, 401, 'unauthorized');
+    return;
+  }
+  sendJson(response, 200, BANK_CONNECTIONS[tenantId] || []);
+}
+
+function handleBankingConnectionAccounts(request, response, connectionId) {
+  const tenantId = getTenantIdFromRequest(request);
+  if (!tenantId) {
+    sendError(response, 401, 'unauthorized');
+    return;
+  }
+  const conn = (BANK_CONNECTIONS[tenantId] || []).find((c) => c.id === connectionId);
+  if (!conn) {
+    sendError(response, 404, 'connection_not_found');
+    return;
+  }
+  const accounts = (BANK_ACCOUNTS[tenantId] || []).filter((a) => a.connectionId === connectionId);
+  sendJson(response, 200, accounts);
+}
+
+function handleBankingConnectionSync(request, response, connectionId) {
+  const tenantId = getTenantIdFromRequest(request);
+  if (!tenantId) {
+    sendError(response, 401, 'unauthorized');
+    return;
+  }
+  const conn = (BANK_CONNECTIONS[tenantId] || []).find((c) => c.id === connectionId);
+  if (!conn) {
+    sendError(response, 404, 'connection_not_found');
+    return;
+  }
+  conn.lastSuccessfulSyncAt = new Date().toISOString();
+  sendJson(response, 200, {
+    connectionId,
+    added: 3,
+    modified: 0,
+    removed: 0,
+    hasMore: false,
+  });
+}
+
+function handleReconciliationSettings(request, response) {
+  const tenantId = getTenantIdFromRequest(request);
+  if (!tenantId) {
+    sendError(response, 401, 'unauthorized');
+    return;
+  }
+  sendJson(response, 200, RECONCILIATION_SETTINGS[tenantId]);
+}
+
+function handleReconciliationReview(request, response) {
+  const tenantId = getTenantIdFromRequest(request);
+  if (!tenantId) {
+    sendError(response, 401, 'unauthorized');
+    return;
+  }
+  sendJson(response, 200, RECONCILIATION_REVIEWS[tenantId] || []);
+}
+
+async function handleReconciliationRun(request, response) {
+  const tenantId = getTenantIdFromRequest(request);
+  if (!tenantId) {
+    sendError(response, 401, 'unauthorized');
+    return;
+  }
+
+  const rows = getLedgerRowsForTenant(tenantId);
+  // Seleccionar la fila más reciente para que aparezca en la primera página por defecto
+  const targetRow = rows.slice().sort((a, b) => b.date.localeCompare(a.date))[0];
+  const reviewId = `rev-${tenantId === TENANT_B_ID ? 'b' : 'a'}-001`;
+
+  if (targetRow) {
+    targetRow.reconciliationStatus = 'NEEDS_REVIEW';
+    const reviewItem = {
+      id: reviewId,
+      tenantId,
+      bankTransactionId: targetRow.id,
+      documentId: `doc-${tenantId === TENANT_B_ID ? 'b' : 'a'}-001`,
+      confidenceScoreBps: 9200,
+      status: 'NEEDS_REVIEW',
+      suggestedRule: 'EXACT_AMOUNT_DATE',
+      discrepancyReasons: ['Diferencia horaria de procesamiento bancario'],
+      reviewedAt: null,
+      reviewedBy: null,
+      createdAt: new Date().toISOString(),
+      bankTransaction: {
+        id: targetRow.id,
+        name: targetRow.name,
+        amountMinor: targetRow.amountMinor,
+      },
+      document: {
+        id: `doc-${tenantId === TENANT_B_ID ? 'b' : 'a'}-001`,
+        originalName: 'Factura-Auditoria-SF2.pdf',
+        totalMinor: targetRow.amountMinor,
+      },
+    };
+    const existingIdx = (RECONCILIATION_REVIEWS[tenantId] || []).findIndex((r) => r.id === reviewId);
+    if (existingIdx >= 0) {
+      RECONCILIATION_REVIEWS[tenantId][existingIdx] = reviewItem;
+    } else {
+      RECONCILIATION_REVIEWS[tenantId].push(reviewItem);
+    }
+  }
+
+  sendJson(response, 201, {
+    runId: `run-${Date.now()}`,
+    tenantId,
+    status: 'COMPLETED',
+    matchedCount: 1,
+    reviewCount: 1,
+  });
+}
+
+function handleReconciliationReviewConfirm(request, response, reviewId) {
+  const tenantId = getTenantIdFromRequest(request);
+  if (!tenantId) {
+    sendError(response, 401, 'unauthorized');
+    return;
+  }
+
+  const reviews = RECONCILIATION_REVIEWS[tenantId] || [];
+  const item = reviews.find((r) => r.id === reviewId);
+  if (!item) {
+    sendError(response, 404, 'review_not_found');
+    return;
+  }
+
+  item.status = 'MANUAL_MATCHED';
+  item.reviewedAt = new Date().toISOString();
+  item.reviewedBy = USERS[tenantId]?.id || 'user';
+
+  const rows = getLedgerRowsForTenant(tenantId);
+  const row = rows.find((r) => r.id === item.bankTransactionId);
+  if (row) {
+    row.reconciliationStatus = 'MANUAL_MATCHED';
+    row.evidence = {
+      documentId: item.documentId,
+      documentName: item.document?.originalName || 'Factura-Auditoria-SF2.pdf',
+      score: 0.98,
+      rule: 'EXACT_AMOUNT_DATE',
+      matchedAt: new Date().toISOString(),
+    };
+    row.updatedAt = new Date().toISOString();
+  }
+
+  sendJson(response, 200, {
+    confirmed: true,
+    matchId: reviewId,
+    transactionId: item.bankTransactionId,
+    status: 'MANUAL_MATCHED',
+  });
+}
+
+function handleReconciliationReviewReject(request, response, reviewId) {
+  const tenantId = getTenantIdFromRequest(request);
+  if (!tenantId) {
+    sendError(response, 401, 'unauthorized');
+    return;
+  }
+
+  const reviews = RECONCILIATION_REVIEWS[tenantId] || [];
+  const item = reviews.find((r) => r.id === reviewId);
+  if (!item) {
+    sendError(response, 404, 'review_not_found');
+    return;
+  }
+
+  item.status = 'REJECTED';
+  item.reviewedAt = new Date().toISOString();
+
+  const rows = getLedgerRowsForTenant(tenantId);
+  const row = rows.find((r) => r.id === item.bankTransactionId);
+  if (row) {
+    row.reconciliationStatus = 'REJECTED';
+    row.evidence = null;
+    row.updatedAt = new Date().toISOString();
+  }
+
+  sendJson(response, 200, {
+    rejected: true,
+    matchId: reviewId,
+    transactionId: item.bankTransactionId,
+    status: 'REJECTED',
+  });
+}
+
+function handleReconciliationMetrics(request, response) {
+  const tenantId = getTenantIdFromRequest(request);
+  if (!tenantId) {
+    sendError(response, 401, 'unauthorized');
+    return;
+  }
+
+  const rows = getLedgerRowsForTenant(tenantId);
+  const autoMatched = rows.filter((r) => r.reconciliationStatus === 'AUTO_MATCHED').length;
+  const manualMatched = rows.filter((r) => r.reconciliationStatus === 'MANUAL_MATCHED').length;
+  const needsReview = rows.filter((r) => r.reconciliationStatus === 'NEEDS_REVIEW').length;
+  const rejected = rows.filter((r) => r.reconciliationStatus === 'REJECTED').length;
+  const total = autoMatched + manualMatched + needsReview + rejected;
+
+  sendJson(response, 200, {
+    totalMatches: total,
+    autoMatched,
+    manualMatched,
+    needsReview,
+    rejected,
+    autoMatchRate: total > 0 ? Number((autoMatched / total).toFixed(4)) : 0,
+    reviewCount: (RECONCILIATION_REVIEWS[tenantId] || []).filter((r) => r.status === 'NEEDS_REVIEW').length,
+  });
+}
+
 /** Vistas guardadas en memoria; se reinician con el proceso del mock. */
 const SAVED_VIEWS = [];
 let savedViewSequence = 0;
@@ -338,8 +787,8 @@ function parseLedgerFilters(url) {
   };
 }
 
-function filterLedgerRows(filters) {
-  return LEDGER_ROWS.filter((row) => {
+function filterLedgerRows(filters, rowsPool = LEDGER_ROWS) {
+  return rowsPool.filter((row) => {
     if (filters.q.length > 0) {
       const haystack = `${row.name} ${row.merchantName ?? ''}`.toLowerCase();
 
@@ -406,8 +855,10 @@ function handleLedgerList(request, response, url) {
     return;
   }
 
+  const tenantId = getTenantIdFromRequest(request);
+  const rowsPool = getLedgerRowsForTenant(tenantId);
   const filters = parseLedgerFilters(url);
-  const filtered = filterLedgerRows(filters);
+  const filtered = filterLedgerRows(filters, rowsPool);
   const sorted = sortLedgerRows(filtered, filters.sortBy, filters.sortDir);
   const start = (filters.page - 1) * filters.pageSize;
   const rows = sorted.slice(start, start + filters.pageSize);
@@ -445,7 +896,7 @@ async function handleLedgerUpdate(request, response, id) {
     return;
   }
 
-  const row = LEDGER_BY_ID.get(id);
+  const row = LEDGER_BY_ID.get(id) || LEDGER_B_BY_ID.get(id);
 
   if (row === undefined) {
     sendError(response, 404, 'not_found');
@@ -524,8 +975,10 @@ function handleLedgerExport(request, response, url) {
     return;
   }
 
+  const tenantId = getTenantIdFromRequest(request);
+  const rowsPool = getLedgerRowsForTenant(tenantId);
   const filters = parseLedgerFilters(url);
-  const rows = sortLedgerRows(filterLedgerRows(filters), filters.sortBy, filters.sortDir).slice(
+  const rows = sortLedgerRows(filterLedgerRows(filters, rowsPool), filters.sortBy, filters.sortDir).slice(
     0,
     LEDGER_EXPORT_LIMIT,
   );
@@ -621,12 +1074,68 @@ function handleSavedViewDelete(request, response, id) {
   response.end();
 }
 
+const TRANSACTIONS_STORE = {
+  [TENANT_A_ID]: new Map(),
+  [TENANT_B_ID]: new Map(),
+};
+
+async function handleCreateTransaction(request, response) {
+  const tenantId = getTenantIdFromRequest(request);
+  if (!tenantId) {
+    sendError(response, 401, 'unauthorized');
+    return;
+  }
+  const body = await readJson(request);
+  if (!body || !body.idempotencyKey) {
+    sendError(response, 400, 'bad_request');
+    return;
+  }
+  const tenantStore = TRANSACTIONS_STORE[tenantId];
+  if (tenantStore.has(body.idempotencyKey)) {
+    const existing = tenantStore.get(body.idempotencyKey);
+    sendJson(response, 201, existing);
+    return;
+  }
+
+  const newTx = {
+    id: `tx-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    tenantId,
+    bankAccountId: body.bankAccountId || 'acc-1',
+    amountMinor: body.amountMinor || '25000',
+    currency: body.currency || 'EUR',
+    type: body.type || 'EXPENSE',
+    description: body.description || 'Transacción de prueba',
+    category: body.category || 'Operaciones',
+    idempotencyKey: body.idempotencyKey,
+    createdAt: new Date().toISOString(),
+  };
+
+  tenantStore.set(body.idempotencyKey, newTx);
+  sendJson(response, 201, newTx);
+}
+
+function handleGetTransactions(request, response) {
+  const tenantId = getTenantIdFromRequest(request);
+  if (!tenantId) {
+    sendError(response, 401, 'unauthorized');
+    return;
+  }
+  const tenantStore = TRANSACTIONS_STORE[tenantId];
+  sendJson(response, 200, {
+    total: tenantStore.size,
+    items: Array.from(tenantStore.values()),
+  });
+}
+
 const server = createServer((request, response) => {
+  response.on('finish', () => {
+    request.resume();
+  });
   const method = request.method ?? 'GET';
   const url = new URL(request.url ?? '/', `http://${HOST}:${PORT}`);
   const path = url.pathname;
 
-  if (method === 'GET' && path === '/health') {
+  if (method === 'GET' && (path === '/health' || path === '/healthz' || path === '/api/v1/health')) {
     sendJson(response, 200, { status: 'ok' });
     return;
   }
@@ -695,6 +1204,112 @@ const server = createServer((request, response) => {
   if (method === 'PATCH' && ledgerRowMatch !== null) {
     void handleLedgerUpdate(request, response, decodeURIComponent(ledgerRowMatch[1]));
     return;
+  }
+
+  // Banking endpoints
+  if (method === 'POST' && (path === '/api/v1/banking/connect' || path === '/api/v1/banking/link-token')) {
+    void handleBankingConnect(request, response);
+    return;
+  }
+
+  if (method === 'POST' && path === '/api/v1/banking/exchange') {
+    void handleBankingExchange(request, response);
+    return;
+  }
+
+  if (method === 'GET' && path === '/api/v1/banking/connections') {
+    handleBankingConnections(request, response);
+    return;
+  }
+
+  const accountsMatch = /^\/api\/v1\/banking\/connections\/([^/]+)\/accounts$/.exec(path);
+  if (method === 'GET' && accountsMatch !== null) {
+    handleBankingConnectionAccounts(request, response, decodeURIComponent(accountsMatch[1]));
+    return;
+  }
+
+  const syncMatch = /^\/api\/v1\/banking\/connections\/([^/]+)\/sync$/.exec(path);
+  if (method === 'POST' && syncMatch !== null) {
+    handleBankingConnectionSync(request, response, decodeURIComponent(syncMatch[1]));
+    return;
+  }
+
+  // Reconciliation endpoints
+  if (method === 'GET' && path === '/api/v1/finance/reconciliation/settings') {
+    handleReconciliationSettings(request, response);
+    return;
+  }
+
+  if (method === 'GET' && path === '/api/v1/finance/reconciliation/review') {
+    handleReconciliationReview(request, response);
+    return;
+  }
+
+  if (method === 'POST' && path === '/api/v1/finance/reconciliation/run') {
+    void handleReconciliationRun(request, response);
+    return;
+  }
+
+  const reviewConfirmMatch = /^\/api\/v1\/finance\/reconciliation\/review\/([^/]+)\/confirm$/.exec(path);
+  if (method === 'POST' && reviewConfirmMatch !== null) {
+    handleReconciliationReviewConfirm(request, response, decodeURIComponent(reviewConfirmMatch[1]));
+    return;
+  }
+
+  const reviewRejectMatch = /^\/api\/v1\/finance\/reconciliation\/review\/([^/]+)\/reject$/.exec(path);
+  if (method === 'POST' && reviewRejectMatch !== null) {
+    handleReconciliationReviewReject(request, response, decodeURIComponent(reviewRejectMatch[1]));
+    return;
+  }
+
+  if (method === 'GET' && path === '/api/v1/finance/reconciliation/metrics') {
+    handleReconciliationMetrics(request, response);
+    return;
+  }
+
+async function handleFinanceAccountsPost(request, response) {
+  const tenantId = getTenantIdFromRequest(request) || TENANT_A_ID;
+  const body = await readJson(request);
+  const accId = `acc-${Date.now()}`;
+  const newAcc = {
+    id: accId,
+    tenantId,
+    institutionName: body?.institutionName || 'Load Test Bank',
+    accountType: body?.accountType || 'CHECKING',
+    accountNumberMasked: body?.accountNumberMasked || '******0054',
+    currency: body?.currency || 'COP',
+    status: 'ACTIVE',
+    balanceMinor: '0',
+  };
+  if (!BANK_ACCOUNTS[tenantId]) BANK_ACCOUNTS[tenantId] = [];
+  BANK_ACCOUNTS[tenantId].push(newAcc);
+  sendJson(response, 201, { success: true, data: newAcc });
+}
+
+// Accounts endpoints (finance)
+  if (path === '/api/v1/finance/accounts') {
+    if (method === 'GET') {
+      const tenantId = getTenantIdFromRequest(request) || TENANT_A_ID;
+      const accounts = BANK_ACCOUNTS[tenantId] || [];
+      sendJson(response, 200, { success: true, data: accounts });
+      return;
+    }
+    if (method === 'POST') {
+      void handleFinanceAccountsPost(request, response);
+      return;
+    }
+  }
+
+  // Transactions endpoints (para ingest y pruebas de carga)
+  if (path === '/api/v1/finance/transactions') {
+    if (method === 'POST') {
+      void handleCreateTransaction(request, response);
+      return;
+    }
+    if (method === 'GET') {
+      handleGetTransactions(request, response);
+      return;
+    }
   }
 
   sendError(response, 404, 'not_found');

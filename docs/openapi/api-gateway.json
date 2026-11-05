@@ -1,0 +1,2565 @@
+{
+  "components": {
+    "schemas": {
+      "AgentChatDto": {
+        "properties": {
+          "conversationId": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "ApiErrorResponse": {
+        "properties": {
+          "error": {
+            "nullable": true,
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "statusCode": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "statusCode",
+          "message"
+        ],
+        "type": "object"
+      },
+      "AuthResponse": {
+        "properties": {
+          "accessToken": {
+            "type": "string"
+          },
+          "refreshToken": {
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserDto"
+          }
+        },
+        "required": [
+          "accessToken",
+          "refreshToken",
+          "user"
+        ],
+        "type": "object"
+      },
+      "BankAccountResponse": {
+        "properties": {
+          "balanceAvailableMinor": {
+            "nullable": true,
+            "type": "string"
+          },
+          "balanceCurrentMinor": {
+            "nullable": true,
+            "type": "string"
+          },
+          "connectionId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isoCurrencyCode": {
+            "type": "string"
+          },
+          "lastSyncedAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "mask": {
+            "nullable": true,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "officialName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "providerAccountId": {
+            "type": "string"
+          },
+          "status": {
+            "nullable": true,
+            "type": "string"
+          },
+          "subtype": {
+            "nullable": true,
+            "type": "string"
+          },
+          "type": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "connectionId",
+          "providerAccountId",
+          "name",
+          "isoCurrencyCode"
+        ],
+        "type": "object"
+      },
+      "BankConnectionResponse": {
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "institutionId": {
+            "nullable": true,
+            "type": "string"
+          },
+          "institutionName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "lastSuccessfulSyncAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "provider": {
+            "enum": [
+              "PLAID",
+              "BELVO"
+            ],
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "PENDING",
+              "ACTIVE",
+              "NEEDS_REAUTH",
+              "ERROR",
+              "DISCONNECTED"
+            ],
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "BankTransactionResponse": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "amountMinor": {
+            "type": "string"
+          },
+          "authorizedDate": {
+            "format": "date",
+            "nullable": true,
+            "type": "string"
+          },
+          "category": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "date": {
+            "format": "date",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isoCurrencyCode": {
+            "type": "string"
+          },
+          "merchantName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pending": {
+            "type": "boolean"
+          },
+          "providerTransactionId": {
+            "type": "string"
+          },
+          "transactionType": {
+            "enum": [
+              "INCOME",
+              "EXPENSE",
+              "TRANSFER"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "providerTransactionId",
+          "amountMinor",
+          "transactionType",
+          "isoCurrencyCode",
+          "date",
+          "name",
+          "pending"
+        ],
+        "type": "object"
+      },
+      "BulkCategorizeDto": {
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids",
+          "category"
+        ],
+        "type": "object"
+      },
+      "CashflowSummaryQueryDto": {
+        "properties": {
+          "compare": {
+            "type": "boolean"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "type": "object"
+      },
+      "CashflowSummaryResponse": {
+        "properties": {
+          "availableCurrencies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "balanceMinor": {
+            "nullable": true,
+            "type": "string"
+          },
+          "burnRateMinor": {
+            "nullable": true,
+            "type": "string"
+          },
+          "categories": {
+            "items": {
+              "properties": {
+                "amountMinor": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string"
+                },
+                "share": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "category",
+                "amountMinor",
+                "share"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "expenseMinor": {
+            "nullable": true,
+            "type": "string"
+          },
+          "hasData": {
+            "type": "boolean"
+          },
+          "incomeMinor": {
+            "nullable": true,
+            "type": "string"
+          },
+          "period": {
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ],
+            "type": "object"
+          },
+          "previousPeriod": {
+            "nullable": true,
+            "properties": {
+              "expenseMinor": {
+                "type": "string"
+              },
+              "incomeMinor": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "runwayMonths": {
+            "nullable": true,
+            "type": "number"
+          },
+          "series": {
+            "items": {
+              "properties": {
+                "bucketStart": {
+                  "type": "string"
+                },
+                "expenseMinor": {
+                  "type": "string"
+                },
+                "incomeMinor": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "bucketStart",
+                "incomeMinor",
+                "expenseMinor"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "hasData",
+          "currency",
+          "availableCurrencies",
+          "period",
+          "series",
+          "categories"
+        ],
+        "type": "object"
+      },
+      "CreateBankAccountDto": {
+        "properties": {
+          "accountNumberMasked": {
+            "type": "string"
+          },
+          "accountType": {
+            "enum": [
+              "CHECKING",
+              "SAVINGS",
+              "CREDIT",
+              "INVESTMENT"
+            ],
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "initialBalanceMinor": {
+            "type": "string"
+          },
+          "institutionName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "institutionName",
+          "accountType",
+          "accountNumberMasked",
+          "currency"
+        ],
+        "type": "object"
+      },
+      "CreateInvoiceDto": {
+        "properties": {
+          "counterpartyName": {
+            "type": "string"
+          },
+          "counterpartyTaxId": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "dueDate": {
+            "type": "string"
+          },
+          "invoiceNumber": {
+            "type": "string"
+          },
+          "subtotalMinor": {
+            "type": "string"
+          },
+          "taxAmountMinor": {
+            "type": "string"
+          },
+          "totalAmountMinor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "invoiceNumber",
+          "counterpartyName",
+          "counterpartyTaxId",
+          "subtotalMinor",
+          "taxAmountMinor",
+          "totalAmountMinor",
+          "currency",
+          "dueDate"
+        ],
+        "type": "object"
+      },
+      "CreateTransactionDto": {
+        "properties": {
+          "amountMinor": {
+            "type": "string"
+          },
+          "bankAccountId": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "INCOME",
+              "EXPENSE",
+              "TRANSFER"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "bankAccountId",
+          "amountMinor",
+          "currency",
+          "type",
+          "description",
+          "idempotencyKey"
+        ],
+        "type": "object"
+      },
+      "ExchangeBankConnectionDto": {
+        "properties": {
+          "institution": {
+            "type": "string"
+          },
+          "linkId": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "provider": {
+            "enum": [
+              "plaid",
+              "belvo"
+            ],
+            "type": "string"
+          },
+          "publicToken": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider"
+        ],
+        "type": "object"
+      },
+      "LedgerEvidence": {
+        "properties": {
+          "documentId": {
+            "type": "string"
+          },
+          "documentName": {
+            "type": "string"
+          },
+          "matchedAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "rule": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "documentId",
+          "documentName",
+          "score",
+          "rule"
+        ],
+        "type": "object"
+      },
+      "LedgerPageResponse": {
+        "properties": {
+          "hasMore": {
+            "type": "boolean"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "pageSize": {
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/LedgerRowResponse"
+            },
+            "type": "array"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rows",
+          "total",
+          "page",
+          "pageSize",
+          "hasMore"
+        ],
+        "type": "object"
+      },
+      "LedgerQueryDto": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "page": {
+            "type": "number"
+          },
+          "pageSize": {
+            "type": "number"
+          },
+          "q": {
+            "type": "string"
+          },
+          "reconciliationStatus": {
+            "enum": [
+              "UNMATCHED",
+              "AUTO_MATCHED",
+              "MANUAL_MATCHED",
+              "NEEDS_REVIEW",
+              "REJECTED"
+            ],
+            "type": "string"
+          },
+          "sortBy": {
+            "enum": [
+              "date",
+              "amount",
+              "name",
+              "category",
+              "status"
+            ],
+            "type": "string"
+          },
+          "sortDir": {
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "LedgerRowResponse": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "amountMinor": {
+            "type": "string"
+          },
+          "category": {
+            "nullable": true,
+            "type": "string"
+          },
+          "date": {
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/LedgerEvidence",
+            "nullable": true
+          },
+          "id": {
+            "type": "string"
+          },
+          "isoCurrencyCode": {
+            "type": "string"
+          },
+          "merchantName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "notes": {
+            "nullable": true,
+            "type": "string"
+          },
+          "reconciliationStatus": {
+            "enum": [
+              "UNMATCHED",
+              "AUTO_MATCHED",
+              "MANUAL_MATCHED",
+              "NEEDS_REVIEW",
+              "REJECTED"
+            ],
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "date",
+          "name",
+          "amountMinor",
+          "isoCurrencyCode",
+          "accountId",
+          "accountName",
+          "reconciliationStatus",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "ListReconciliationReviewQuery": {
+        "properties": {
+          "cursor": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "LoginDto": {
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "type": "object"
+      },
+      "ManualReconciliationDto": {
+        "properties": {
+          "bankTransactionId": {
+            "type": "string"
+          },
+          "documentId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bankTransactionId",
+          "documentId"
+        ],
+        "type": "object"
+      },
+      "PayInvoiceDto": {
+        "properties": {
+          "invoiceId": {
+            "type": "string"
+          },
+          "transactionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "invoiceId"
+        ],
+        "type": "object"
+      },
+      "QueryAgentMemoryDto": {
+        "properties": {
+          "contextType": {
+            "enum": [
+              "FINANCIAL_RULE",
+              "USER_PREFERENCE",
+              "CONVERSATION_SUMMARY",
+              "TRANSACTION_NOTE",
+              "DOCUMENT"
+            ],
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "queryText": {
+            "type": "string"
+          },
+          "threshold": {
+            "type": "number"
+          },
+          "topK": {
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "ReconciliationMetricsDto": {
+        "properties": {
+          "autoMatchRate": {
+            "type": "number"
+          },
+          "autoMatched": {
+            "type": "integer"
+          },
+          "manualMatched": {
+            "type": "integer"
+          },
+          "needsReview": {
+            "type": "integer"
+          },
+          "rejected": {
+            "type": "integer"
+          },
+          "reviewCount": {
+            "type": "integer"
+          },
+          "totalMatches": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "totalMatches",
+          "autoMatched",
+          "manualMatched",
+          "needsReview",
+          "rejected",
+          "autoMatchRate",
+          "reviewCount"
+        ],
+        "type": "object"
+      },
+      "ReconciliationMetricsQuery": {
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ReconciliationReviewItemDto": {
+        "properties": {
+          "bankTransaction": {
+            "nullable": true,
+            "type": "object"
+          },
+          "bankTransactionId": {
+            "type": "string"
+          },
+          "confidenceScoreBps": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "discrepancyReasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "document": {
+            "nullable": true,
+            "type": "object"
+          },
+          "documentId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "reviewedAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "reviewedBy": {
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "AUTO_MATCHED",
+              "NEEDS_REVIEW",
+              "MANUAL_MATCHED",
+              "REJECTED"
+            ],
+            "type": "string"
+          },
+          "suggestedRule": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "bankTransactionId",
+          "documentId",
+          "confidenceScoreBps",
+          "status",
+          "suggestedRule",
+          "discrepancyReasons",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "ReconciliationSettingsDto": {
+        "properties": {
+          "autoMatchThresholdBps": {
+            "type": "integer"
+          },
+          "dateWindowDays": {
+            "type": "integer"
+          },
+          "lookbackDays": {
+            "type": "integer"
+          },
+          "nightlyEnabled": {
+            "type": "boolean"
+          },
+          "timezone": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "dateWindowDays",
+          "autoMatchThresholdBps",
+          "timezone",
+          "lookbackDays",
+          "nightlyEnabled"
+        ],
+        "type": "object"
+      },
+      "RefreshTokenDto": {
+        "properties": {
+          "refreshToken": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "refreshToken"
+        ],
+        "type": "object"
+      },
+      "RegisterDto": {
+        "properties": {
+          "companyName": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "taxId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password",
+          "firstName",
+          "lastName",
+          "companyName",
+          "taxId"
+        ],
+        "type": "object"
+      },
+      "ReplayBankWebhookDto": {
+        "properties": {
+          "force": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "RunReconciliationDto": {
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "trigger": {
+            "enum": [
+              "MANUAL",
+              "NIGHTLY"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "SaveLedgerViewDto": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "query": {
+            "$ref": "#/components/schemas/LedgerQueryDto"
+          }
+        },
+        "required": [
+          "name",
+          "query"
+        ],
+        "type": "object"
+      },
+      "SearchDocumentsQuery": {
+        "properties": {
+          "limit": {
+            "type": "number"
+          },
+          "q": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "q"
+        ],
+        "type": "object"
+      },
+      "StartBankConnectionDto": {
+        "properties": {
+          "institutionId": {
+            "type": "string"
+          },
+          "provider": {
+            "enum": [
+              "plaid",
+              "belvo"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider"
+        ],
+        "type": "object"
+      },
+      "StartBankConnectionResponse": {
+        "properties": {
+          "expiration": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "linkToken": {
+            "nullable": true,
+            "type": "string"
+          },
+          "provider": {
+            "enum": [
+              "PLAID",
+              "BELVO"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider"
+        ],
+        "type": "object"
+      },
+      "StoreAgentMemoryDto": {
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "contextType": {
+            "enum": [
+              "FINANCIAL_RULE",
+              "USER_PREFERENCE",
+              "CONVERSATION_SUMMARY",
+              "TRANSACTION_NOTE",
+              "DOCUMENT"
+            ],
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "type": "object"
+      },
+      "SyncConnectionResponse": {
+        "properties": {
+          "added": {
+            "type": "integer"
+          },
+          "connectionId": {
+            "type": "string"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "modified": {
+            "type": "integer"
+          },
+          "nextCursor": {
+            "nullable": true,
+            "type": "string"
+          },
+          "removed": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "connectionId",
+          "added",
+          "modified",
+          "removed",
+          "hasMore"
+        ],
+        "type": "object"
+      },
+      "UpdateLedgerTransactionDto": {
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "UpdateReconciliationSettingsDto": {
+        "properties": {
+          "autoMatchThresholdBps": {
+            "type": "number"
+          },
+          "dateWindowDays": {
+            "type": "number"
+          },
+          "lookbackDays": {
+            "type": "number"
+          },
+          "nightlyEnabled": {
+            "type": "boolean"
+          },
+          "timezone": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "UserDto": {
+        "properties": {
+          "companyName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "email": {
+            "format": "email",
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "SUPER_ADMIN",
+              "TENANT_ADMIN",
+              "ACCOUNTANT",
+              "AUDITOR",
+              "VIEWER",
+              "EMPLOYEE"
+            ],
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "firstName",
+          "lastName",
+          "role",
+          "tenantId"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "bearerFormat": "JWT",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "contact": {},
+    "description": "Documentación de endpoints públicos y proxy a microservicios de MyBusiness",
+    "title": "MyBusiness API Gateway",
+    "version": "1.0"
+  },
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/v1/agent/chat": {
+      "post": {
+        "operationId": "AgentGatewayController_chat",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentChatDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Agent"
+        ]
+      }
+    },
+    "/api/v1/agent/memory/query": {
+      "post": {
+        "operationId": "AgentGatewayController_queryMemory",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryAgentMemoryDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Agent"
+        ]
+      }
+    },
+    "/api/v1/agent/memory/store": {
+      "post": {
+        "operationId": "AgentGatewayController_storeMemory",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreAgentMemoryDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Agent"
+        ]
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "AuthGatewayController_login",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "AuthGatewayController_logout",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/logout-all": {
+      "post": {
+        "operationId": "AuthGatewayController_logoutAll",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "operationId": "AuthGatewayController_getProfile",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "operationId": "AuthGatewayController_refresh",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "operationId": "AuthGatewayController_register",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/v1/banking/connect": {
+      "post": {
+        "operationId": "BankingController_connect",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartBankConnectionDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Banking"
+        ]
+      }
+    },
+    "/api/v1/banking/connections": {
+      "get": {
+        "operationId": "BankingController_getConnections",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Banking"
+        ]
+      }
+    },
+    "/api/v1/banking/connections/{id}": {
+      "delete": {
+        "operationId": "BankingController_disconnectConnection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Banking"
+        ]
+      }
+    },
+    "/api/v1/banking/connections/{id}/accounts": {
+      "get": {
+        "operationId": "BankingController_getConnectionAccounts",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Banking"
+        ]
+      }
+    },
+    "/api/v1/banking/connections/{id}/sync": {
+      "post": {
+        "operationId": "BankingController_syncConnection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Banking"
+        ]
+      }
+    },
+    "/api/v1/banking/exchange": {
+      "post": {
+        "operationId": "BankingController_exchange",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExchangeBankConnectionDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Banking"
+        ]
+      }
+    },
+    "/api/v1/banking/link-token": {
+      "post": {
+        "operationId": "BankingController_linkToken",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartBankConnectionDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Banking"
+        ]
+      }
+    },
+    "/api/v1/documents": {
+      "post": {
+        "operationId": "DocumentsController_create",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/api/v1/documents/search": {
+      "get": {
+        "operationId": "DocumentsController_search",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/api/v1/documents/{id}": {
+      "get": {
+        "operationId": "DocumentsController_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/api/v1/documents/{id}/download": {
+      "get": {
+        "operationId": "DocumentsController_download",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Documents"
+        ]
+      }
+    },
+    "/api/v1/finance/accounts": {
+      "get": {
+        "operationId": "FinanceGatewayController_getAccounts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Finance"
+        ]
+      },
+      "post": {
+        "operationId": "FinanceGatewayController_createAccount",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBankAccountDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Finance"
+        ]
+      }
+    },
+    "/api/v1/finance/cashflow/summary": {
+      "get": {
+        "operationId": "FinanceGatewayController_getCashflowSummary",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "currency",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "compare",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Finance"
+        ]
+      }
+    },
+    "/api/v1/finance/invoices": {
+      "get": {
+        "operationId": "FinanceGatewayController_getInvoices",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Finance"
+        ]
+      },
+      "post": {
+        "operationId": "FinanceGatewayController_createInvoice",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInvoiceDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Finance"
+        ]
+      }
+    },
+    "/api/v1/finance/invoices/pay": {
+      "post": {
+        "operationId": "FinanceGatewayController_payInvoice",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayInvoiceDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Finance"
+        ]
+      }
+    },
+    "/api/v1/finance/ledger": {
+      "get": {
+        "operationId": "LedgerController_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sortBy",
+            "required": false,
+            "schema": {
+              "enum": [
+                "date",
+                "amount",
+                "name",
+                "category",
+                "status"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sortDir",
+            "required": false,
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reconciliationStatus",
+            "required": false,
+            "schema": {
+              "enum": [
+                "UNMATCHED",
+                "AUTO_MATCHED",
+                "MANUAL_MATCHED",
+                "NEEDS_REVIEW",
+                "REJECTED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Ledger"
+        ]
+      }
+    },
+    "/api/v1/finance/ledger/bulk-categorize": {
+      "post": {
+        "operationId": "LedgerController_bulkCategorize",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkCategorizeDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Ledger"
+        ]
+      }
+    },
+    "/api/v1/finance/ledger/export.csv": {
+      "get": {
+        "operationId": "LedgerController_export",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sortBy",
+            "required": false,
+            "schema": {
+              "enum": [
+                "date",
+                "amount",
+                "name",
+                "category",
+                "status"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sortDir",
+            "required": false,
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reconciliationStatus",
+            "required": false,
+            "schema": {
+              "enum": [
+                "UNMATCHED",
+                "AUTO_MATCHED",
+                "MANUAL_MATCHED",
+                "NEEDS_REVIEW",
+                "REJECTED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Ledger"
+        ]
+      }
+    },
+    "/api/v1/finance/ledger/saved-views": {
+      "get": {
+        "operationId": "LedgerController_listSavedViews",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Ledger"
+        ]
+      },
+      "post": {
+        "operationId": "LedgerController_createSavedView",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveLedgerViewDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Ledger"
+        ]
+      }
+    },
+    "/api/v1/finance/ledger/saved-views/{id}": {
+      "delete": {
+        "operationId": "LedgerController_deleteSavedView",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Ledger"
+        ]
+      }
+    },
+    "/api/v1/finance/ledger/{id}": {
+      "patch": {
+        "operationId": "LedgerController_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLedgerTransactionDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Ledger"
+        ]
+      }
+    },
+    "/api/v1/finance/reconciliation/matches": {
+      "post": {
+        "operationId": "ReconciliationController_manualMatch",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualReconciliationDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Reconciliation"
+        ]
+      }
+    },
+    "/api/v1/finance/reconciliation/metrics": {
+      "get": {
+        "operationId": "ReconciliationController_getMetrics",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Reconciliation"
+        ]
+      }
+    },
+    "/api/v1/finance/reconciliation/review": {
+      "get": {
+        "operationId": "ReconciliationController_listReview",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Reconciliation"
+        ]
+      }
+    },
+    "/api/v1/finance/reconciliation/review/{id}/confirm": {
+      "post": {
+        "operationId": "ReconciliationController_confirmReview",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Reconciliation"
+        ]
+      }
+    },
+    "/api/v1/finance/reconciliation/review/{id}/reject": {
+      "post": {
+        "operationId": "ReconciliationController_rejectReview",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Reconciliation"
+        ]
+      }
+    },
+    "/api/v1/finance/reconciliation/run": {
+      "post": {
+        "operationId": "ReconciliationController_run",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunReconciliationDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Reconciliation"
+        ]
+      }
+    },
+    "/api/v1/finance/reconciliation/settings": {
+      "get": {
+        "operationId": "ReconciliationController_getSettings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Reconciliation"
+        ]
+      },
+      "put": {
+        "operationId": "ReconciliationController_updateSettings",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateReconciliationSettingsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Reconciliation"
+        ]
+      }
+    },
+    "/api/v1/finance/transactions": {
+      "get": {
+        "operationId": "FinanceGatewayController_getTransactions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Finance"
+        ]
+      },
+      "post": {
+        "operationId": "FinanceGatewayController_createTransaction",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTransactionDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Finance"
+        ]
+      }
+    },
+    "/api/v1/webhooks/belvo": {
+      "post": {
+        "operationId": "BankingWebhooksController_handleBelvoWebhook",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Webhooks"
+        ]
+      }
+    },
+    "/api/v1/webhooks/plaid": {
+      "post": {
+        "operationId": "BankingWebhooksController_handlePlaidWebhook",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Webhooks"
+        ]
+      }
+    },
+    "/api/v1/webhooks/{id}/replay": {
+      "post": {
+        "operationId": "BankingWebhooksController_replayWebhook",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplayBankWebhookDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Webhooks"
+        ]
+      }
+    }
+  },
+  "servers": [],
+  "tags": []
+}

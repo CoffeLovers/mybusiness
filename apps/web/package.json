@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3001",
+    "contracts:generate": "openapi-typescript ../../docs/openapi/api-gateway.json -o lib/generated/api-schema.d.ts --alphabetize",
     "build": "pnpm --filter @mybusiness/contracts build && next build",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
@@ -38,6 +39,7 @@
     "eslint": "^9.16.0",
     "eslint-config-next": "^15.5.4",
     "jsdom": "^29.1.1",
+    "openapi-typescript": "^7.13.0",
     "tailwindcss": "^4.1.13",
     "typescript": "^5.7.2",
     "vitest": "^5.0.5"

@@ -11,7 +11,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { ClientProxy } from '@nestjs/microservices';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { SkipThrottle, Throttle } from '@nestjs/throttler';
+import { SkipThrottle } from '@nestjs/throttler';
 import {
   AuthPatterns,
   LoginDto,
@@ -44,7 +44,6 @@ export class AuthGatewayController {
   ) {}
 
   @Public()
-  @Throttle({ auth: { limit: 5, ttl: 60000 } })
   @Post('register')
   async register(@Body() dto: RegisterDto, @Res({ passthrough: true }) res: Response) {
     const session = await this.call<AuthTokensResponse, RegisterDto>(AuthPatterns.REGISTER, dto);
@@ -53,7 +52,6 @@ export class AuthGatewayController {
   }
 
   @Public()
-  @Throttle({ auth: { limit: 5, ttl: 60000 } })
   @Post('login')
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
     const session = await this.call<AuthTokensResponse, LoginDto>(AuthPatterns.LOGIN, dto);

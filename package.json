@@ -20,6 +20,9 @@
     "lint": "eslint \"{apps,packages}/**/*.{ts,tsx}\" --max-warnings=0",
     "format": "prettier --write \"{apps,packages}/**/*.{ts,tsx,json,md}\"",
     "format:check": "prettier --check \"{apps,packages}/**/*.{ts,tsx,json,md}\"",
+    "contracts:generate": "pnpm --filter @mybusiness/contracts build && pnpm --filter @mybusiness/api-gateway build && node scripts/generate-openapi.mjs && pnpm --filter @mybusiness/web contracts:generate",
+    "contracts:check": "node scripts/check-contracts.mjs",
+    "contracts:check:kotlin": "node scripts/check-kotlin-contracts.mjs",
     "typecheck": "pnpm --filter \"./packages/*\" run build && tsc --build --noEmit && pnpm --filter @mybusiness/web typecheck && pnpm typecheck:scripts",
     "typecheck:scripts": "tsc -p scripts/experiments/agent-orchestration/tsconfig.json",
     "test": "pnpm -r --if-present --filter '!@mybusiness/web' run test",
@@ -28,6 +31,8 @@
     "test:schemas": "node scripts/verify-issue4.js",
     "test:e2e": "pnpm -r --if-present run test:e2e",
     "test:cov": "pnpm -r --if-present run test:cov",
+    "test:load": "k6 run tests/load/ingest-50k.js",
+    "verify:load": "node scripts/verify-load-54.mjs",
     "docker:up": "docker compose --env-file .env -f docker/docker-compose.yml up -d",
     "docker:down": "docker compose --env-file .env -f docker/docker-compose.yml down",
     "prepare": "husky"

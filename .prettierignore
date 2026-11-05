@@ -4,3 +4,7 @@ build/
 node_modules/
 coverage/
 pnpm-lock.yaml
+apps/web/lib/generated/
+
+# Contratos generados de forma determinista (no reformatear)
+docs/openapi/

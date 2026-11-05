@@ -334,20 +334,35 @@ La app consume el API Gateway mediante `API_BASE_URL`. Desde el emulador Android
 ```bash
 # Verificación de linter y formateo en todo el monorepo
 pnpm lint
-pnpm format
+pnpm format:check
 
 # Chequeo estático de tipos
 pnpm typecheck
 
-# Pruebas unitarias de microservicios
+# Pruebas unitarias de microservicios y gateway
 pnpm test
 
-# Pruebas de integración inter-servicio / e2e
+# Pruebas de integración inter-servicio / e2e (Playwright y Supertest)
 pnpm test:e2e
 
 # Reporte de cobertura global
 pnpm test:cov
+
+# Contratos OpenAPI y verificación de drift
+pnpm contracts:generate      # Regenera docs/openapi/api-gateway.json y api-schema.d.ts
+pnpm contracts:check         # Falla si hay divergencia (drift) de contratos
+pnpm contracts:check:kotlin  # Verifica paridad de DTOs Kotlin de Android contra OpenAPI
+
+# Pruebas de carga e ingesta transaccional (k6)
+pnpm test:load               # Ejecuta escenario de 50.000 transacciones en 30 minutos
+k6 run -e SMOKE=true tests/load/ingest-50k.js # Smoke test rápido de 10s
 ```
+
+Documentación detallada de calidad y QA en:
+
+- [Gestión de Contratos OpenAPI y Verificación Kotlin](docs/qa/contracts.md)
+- [Matriz E2E Multi-Canal y Aislamiento por Tenant](docs/qa/e2e-matrix.md)
+- [Reporte de Prueba de Carga e Ingesta Transaccional](docs/qa/load-report-54.md)
 
 ---
 
