@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
 import { UserRole } from '../enums';
 import { PayPalOrderStatus } from '../enums/payments.enum';
 import { CURRENCY_CODE_PATTERN, MAX_MONEY_MINOR_DIGITS } from '../money';
@@ -52,6 +52,58 @@ export class CreatePayPalOrderDto {
   idempotencyKey!: string;
 }
 
+/** Límite de `RefundPayPalOrderDto.reason` (columna varchar(255)). */
+export const PAYPAL_REFUND_REASON_MAX_LENGTH = 255;
+
+/**
+ * Solicitud de captura de una orden PayPal aprobada (SF3-09). Si `amountMinor`
+ * se omite se captura el total. Nota: la API Orders v2 de PayPal no admite
+ * capturas parciales (ver comentario en `PayPalClient.captureOrder`); una
+ * cuantía menor al total se registra localmente tras la captura total del
+ * proveedor.
+ */
+export class CapturePayPalOrderDto {
+  /**
+   * Entero positivo en unidad mínima, menor o igual al importe pendiente de la
+   * orden (ADR 003). Opcional: omitir equivale a capturar el total.
+   */
+  @IsOptional()
+  @IsString()
+  @Matches(PAYMENT_AMOUNT_MINOR_PATTERN, {
+    message: 'amountMinor debe ser un entero positivo, sin decimales ni signo',
+  })
+  @MaxLength(MAX_MONEY_MINOR_DIGITS)
+  amountMinor?: string;
+}
+
+/**
+ * Solicitud de reembolso (total o parcial) de una orden PayPal capturada.
+ * El motivo es obligatorio para la auditoría y el flujo con aprobación humana
+ * de la interfaz (SF3-10/SF3-11) (SF3-09).
+ */
+export class RefundPayPalOrderDto {
+  /**
+   * Entero positivo en unidad mínima, menor o igual al importe capturado aún
+   * no reembolsado (ADR 003). Opcional: omitir equivale a reembolsar el total.
+   */
+  @IsOptional()
+  @IsString()
+  @Matches(PAYMENT_AMOUNT_MINOR_PATTERN, {
+    message: 'amountMinor debe ser un entero positivo, sin decimales ni signo',
+  })
+  @MaxLength(MAX_MONEY_MINOR_DIGITS)
+  amountMinor?: string;
+
+  /**
+   * Motivo del reembolso; obligatorio y conservado en auditoría junto al actor
+   * que lo solicitó.
+   */
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(PAYPAL_REFUND_REASON_MAX_LENGTH)
+  reason!: string;
+}
+
 /**
  * Solicitud opcional idempotente desde la herramienta MCP; si se omite, el
  * servidor usa el `requestId` del contexto como clave de idempotencia.
@@ -91,6 +143,38 @@ export type CreatePayPalOrderRpcPayload = CreatePayPalOrderDto & {
   role: UserRole;
 };
 
+/** Payload RPC `payments.paypal.orders.capture`: captura total/parcial. */
+export type CapturePayPalOrderRpcPayload = CapturePayPalOrderDto &
+  RequestContextPayload & {
+    /** UUID interno de la orden (identificador en la ruta HTTP del BFF). */
+    orderId: string;
+  };
+
+/** Payload RPC `payments.paypal.orders.refund`: reembolso total/parcial. */
+export type RefundPayPalOrderRpcPayload = RefundPayPalOrderDto &
+  RequestContextPayload & {
+    /** UUID interno de la orden (identificador en la ruta HTTP del BFF). */
+    orderId: string;
+  };
+
+/**
+ * Payload RPC `payments.paypal.webhooks.handle`: notificación cruda del
+ * proveedor con sus cabeceras, para verificar firma y deduplicar en
+ * finance-service. No lleva contexto de tenant: el webhook es público/firmado.
+ */
+export type PayPalWebhookRpcPayload = {
+  payload: Record<string, unknown>;
+  headers?: Record<string, string>;
+  rawBody?: string;
+};
+
+/** Contexto multi-tenant mínimo compartido por los payloads de escritura. */
+type RequestContextPayload = {
+  tenantId: string;
+  userId: string;
+  role: UserRole;
+};
+
 /** Vista pública de la orden: nunca incluye la respuesta cruda del proveedor. */
 export interface PayPalOrderView {
   id: string;
@@ -102,6 +186,38 @@ export interface PayPalOrderView {
   currency: string;
   checkoutUrl: string;
   createdAt: string;
+  /** Identificador de la captura del proveedor; presente tras la captura (SF3-09). */
+  captureId?: string;
+  /** Importe registrado como capturado en unidad mínima; presente tras la captura. */
+  capturedAmountMinor?: string;
+  /** Importe acumulado reembolsado en unidad mínima; presente si hubo reembolsos. */
+  refundedAmountMinor?: string;
+}
+
+/** Vista pública de un reembolso registrado sobre una captura (SF3-09). */
+export interface PayPalRefundView {
+  id: string;
+  tenantId: string;
+  orderId: string;
+  paypalRefundId: string;
+  captureId: string;
+  amountMinor: string;
+  currency: string;
+  reason: string;
+  requestedBy: string;
+  createdAt: string;
+}
+
+/** Resultado del procesado de un webhook PayPal (SF3-09). */
+export interface PayPalWebhookResult {
+  /**
+   * `processed`: aplicado a la orden; `already_processed`: duplicado
+   * (deduplicado por `event_id`) reprocesado tras fallo; `ignored`: evento no
+   * accionable o no resoluble a una orden.
+   */
+  status: 'processed' | 'already_processed' | 'ignored';
+  eventId: string;
+  reason?: string;
 }
 
 /**
