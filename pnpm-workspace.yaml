@@ -7,7 +7,24 @@ overrides:
   esbuild: ^0.25.0
   glob: ^14.0.2
   js-yaml: ^5.4.1
-  minimatch: ^11.0.1
+  # Override con scope: NO usar `minimatch: ^11` global. ESLint 9 (@eslint/eslintrc)
+  # importa el export por defecto (CJS) de minimatch 3 y la major 11 lo rompe
+  # ("does not provide an export named 'default'"). Parcheamos solo la copia
+  # transitiva de `glob` (GHSA ReDoS de minimatch).
+  #
+  # EXCEPCIÓN DOCUMENTADA (ver `pnpm audit`): quedan 2 alertas sin parchear a
+  # propósito, ambas SOLO de desarrollo (tooling de build/lint que nunca se
+  # despliega ni procesa input de usuario no confiable en producción):
+  #   1. minimatch 10.2.6 — vía eslint -> @typescript-eslint/parser ->
+  #      @typescript-eslint/typescript-estree (GHSA-g3hv-75wg-m249). No se sube
+  #      a la major 11 porque typescript-estree está acoplado a la API 10.x.
+  #      (ESLint 9 además fija minimatch 3.1.5 vía @eslint/eslintrc, que también
+  #      rompería con la major 11: por eso el override ya no es global.)
+  #   2. deepmerge 4.3.1 — vía @nestjs/cli -> fork-ts-checker-webpack-plugin
+  #      (GHSA-gcqx-w48m-w2h4). No existe versión parcheada publicada.
+  # El riesgo (ReDoS / prototype poisoning local) no es explotable en el
+  # artefacto desplegado, por lo que se acepta y se documenta.
+  glob>minimatch: ^11.0.1
   # @nestjs/platform-express pinnea multer a 2.4.0 (afectado por GHSA-q7qp-rjg7-q26m).
   # Override con scope: parcheamos solo la copia transitiva, la dependencia
   # directa de api-gateway ya declara ^2.5.0.
