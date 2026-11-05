@@ -1,8 +1,6 @@
 import {
   BadGatewayException,
   BadRequestException,
-  HttpException,
-  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
@@ -17,8 +15,9 @@ import {
   type RequestContext,
 } from '@mybusiness/contracts';
 import { DomainEventPublisher } from '../events/domain-event.publisher';
-import { PayPalClient, PayPalClientError } from './paypal-client';
+import { PayPalClient } from './paypal-client';
 import { PaymentsRepository } from './payments.repository';
+import { mapPayPalErrorToHttpException, toPayPalOrderView } from './paypal-support';
 
 /**
  * Orquestador de órdenes PayPal (SF3-08). Valida el importe antes de salir del
@@ -67,7 +66,8 @@ export class PayPalOrderService {
         idempotencyKey: dto.idempotencyKey,
       });
     } catch (error) {
-      throw this.toHttpException(error);
+      // Traduce los errores del cliente a códigos PAYMENT_* estables (SF3-08).
+      throw mapPayPalErrorToHttpException(error, this.logger, 'la creación de la orden');
     }
 
     const checkoutUrl = created.links.find((link) => link.rel === 'approve')?.href;
@@ -125,64 +125,6 @@ export class PayPalOrderService {
     }
   }
 
-  /**
-   * Traduce los errores tipados del cliente a códigos HTTP estables. Los
-   * mensajes nunca revelan credenciales, tokens ni cuerpos del proveedor.
-   */
-  private toHttpException(error: unknown): HttpException {
-    if (!(error instanceof PayPalClientError)) {
-      this.logger.error(
-        'Fallo inesperado creando la orden de pago',
-        error instanceof Error ? error.name : undefined,
-      );
-      return new HttpException(
-        {
-          statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
-          message: 'No se pudo crear la orden de pago',
-          error: 'PAYMENT_ORDER_FAILED',
-        },
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-
-    this.logger.warn(`Error del proveedor de pagos (código ${error.code})`);
-
-    switch (error.code) {
-      case 'PAYPAL_TIMEOUT':
-        return new HttpException(
-          {
-            statusCode: HttpStatus.GATEWAY_TIMEOUT,
-            message: 'El proveedor de pagos no respondió a tiempo',
-            error: 'PAYMENT_PROVIDER_TIMEOUT',
-          },
-          HttpStatus.GATEWAY_TIMEOUT,
-        );
-      case 'PAYPAL_RATE_LIMITED':
-        return new HttpException(
-          {
-            statusCode: HttpStatus.TOO_MANY_REQUESTS,
-            message: 'El proveedor de pagos alcanzó su límite de solicitudes',
-            error: 'PAYMENT_PROVIDER_RATE_LIMITED',
-          },
-          HttpStatus.TOO_MANY_REQUESTS,
-        );
-      case 'PAYPAL_NOT_CONFIGURED':
-        this.logger.error('Credenciales de PayPal ausentes en la configuración del servicio');
-        break;
-      default:
-        break;
-    }
-
-    return new HttpException(
-      {
-        statusCode: HttpStatus.BAD_GATEWAY,
-        message: 'El proveedor de pagos rechazó la creación de la orden',
-        error: 'PAYMENT_PROVIDER_UNAVAILABLE',
-      },
-      HttpStatus.BAD_GATEWAY,
-    );
-  }
-
   /** Vista pública: nunca incluye la respuesta cruda del proveedor. */
   private toView(order: {
     id: string;
@@ -195,17 +137,7 @@ export class PayPalOrderService {
     checkoutUrl: string;
     createdAt: Date;
   }): PayPalOrderView {
-    return {
-      id: order.id,
-      tenantId: order.tenantId,
-      invoiceRef: order.invoiceId,
-      paypalOrderId: order.paypalOrderId,
-      status: order.status as PayPalOrderStatus,
-      amountMinor: order.amountMinor.toString(),
-      currency: order.currency,
-      checkoutUrl: order.checkoutUrl,
-      createdAt: order.createdAt.toISOString(),
-    };
+    return toPayPalOrderView(order);
   }
 
   private requireTenant(ctx: RequestContext): string {

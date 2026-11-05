@@ -34,6 +34,22 @@ export interface PayPalCreatedOrder {
   raw: Record<string, unknown>;
 }
 
+/**
+ * Resultado de la captura de una orden (SF3-09). La respuesta de
+ * `capture` trae el id de la orden con las capturas anidadas en
+ * `purchase_units[0].payments.captures[0]`; se identifican de forma
+ * defensiva y el raw completo queda disponible para persistencia.
+ */
+export interface PayPalCapturedOrder {
+  /** Identificador del proveedor para la orden capturada. */
+  orderId: string;
+  status: string;
+  /** Identificador `CAPTURE-…`; si falta se considera respuesta inválida aguas abajo. */
+  captureId: string | null;
+  captureStatus: string | null;
+  raw: Record<string, unknown>;
+}
+
 export interface PayPalCreateOrderCommand {
   /** Entero en unidad mínima; el cliente convertiría el decimal. */
   amountMinor: string;
@@ -46,6 +62,43 @@ export interface PayPalCreateOrderCommand {
   /** URLs opcionales de retorno configuradas por despliegue. */
   returnUrl?: string;
   cancelUrl?: string;
+}
+
+/** Resultado del reembolso de una captura (SF3-09). */
+export interface PayPalRefundedCapture {
+  /** Identificador `REFUND-…` de la devolución. */
+  refundId: string;
+  /** Estado del proveedor (p. ej. COMPLETED). */
+  status: string;
+  raw: Record<string, unknown>;
+}
+
+export interface PayPalRefundCommand {
+  /** Capture-id del proveedor sobre el que se devuelve dinero. */
+  captureId: string;
+  /** Importe a reembolsar en unidad mínima; omitir = reembolso total. */
+  amountMinor?: string;
+  currency: string;
+  /** Motivo obligatorio; viaja como `note_to_payer` para el pagador. */
+  reason: string;
+  /** PayPal-Request-Id determinista para idempotencia ante reintentos. */
+  requestId: string;
+}
+
+/**
+ * Verificación de la firma de un webhook PayPal vía
+ * `POST /v1/notifications/verify-webhook-signature`. `verified=false` SIEMPRE
+ * debe traducirse en 401 sin modificar datos (fail-closed, SF3-09).
+ */
+export interface PayPalWebhookVerification {
+  verified: boolean;
+  /** Motivo del fallo cuando `verified=false`; ausente si la firma es válida. */
+  reason?:
+    | 'webhook_id_not_configured'
+    | 'invalid_event_body'
+    | 'missing_transmission_headers'
+    | 'provider_error'
+    | 'signature_invalid';
 }
 
 /** Error tipado con código estable; el mensaje no contiene credenciales ni stack del proveedor. */
@@ -82,6 +135,8 @@ export class PayPalClient {
   private readonly timeoutMs: number;
   private readonly clientId: string | undefined;
   private readonly clientSecret: string | undefined;
+  /** Webhook id registrado en PayPal para verificar firmas (SF3-09, fail-closed). */
+  private readonly webhookId: string | undefined;
   private readonly returnUrl: string | undefined;
   private readonly cancelUrl: string | undefined;
   private tokenCache: TokenCache | null = null;
@@ -96,6 +151,7 @@ export class PayPalClient {
         : DEFAULT_TIMEOUT_MS;
     this.clientId = config.get<string>('PAYPAL_CLIENT_ID');
     this.clientSecret = config.get<string>('PAYPAL_CLIENT_SECRET');
+    this.webhookId = config.get<string>('PAYPAL_WEBHOOK_ID');
     this.returnUrl = config.get<string>('PAYPAL_RETURN_URL') || undefined;
     this.cancelUrl = config.get<string>('PAYPAL_CANCEL_URL') || undefined;
   }
@@ -167,6 +223,166 @@ export class PayPalClient {
     }
 
     return this.parseCreatedOrder(await response.text(), 'createOrder');
+  }
+
+  /**
+   * Captura una orden previamente aprobada por el pagador (`SF3-09`).
+   * El endpoint del proveedor se invoca con `PayPal-Request-Id` derivado de la
+   * clave de idempotencia de la orden para cubrir reintentos de transporte.
+   *
+   * DECISIÓN (SF3-09): la API Orders v2 de PayPal no admite capturas
+   * parciales — el cuerpo de `POST /v2/checkout/orders/{id}/capture` debe ir
+   * vacío; las capturas parciales solo existen sobre *autorizaciones*
+   * (inten AUTHORIZE), flujo no usado en #78. Ante un importe parcial
+   * solicitado, el proveedor recibe la captura TOTAL y finance-service
+   * registra el importe parcial en `captured_amount_minor`, dejando la
+   * divergencia documentada en `provider_response` para su conciliación en
+   * SF3-10. Si el API lo permitiera en el futuro, este método es el único
+   * punto donde añadir el parámetro `amount`.
+   */
+  async captureOrder(paypalOrderId: string, requestId: string): Promise<PayPalCapturedOrder> {
+    const accessToken = await this.accessToken();
+
+    const response = await this.request(
+      'POST',
+      `${this.baseUrl}/v2/checkout/orders/${encodeURIComponent(paypalOrderId)}/capture`,
+      accessToken,
+      JSON.stringify({}),
+      { 'PayPal-Request-Id': requestId },
+    );
+
+    if (!response.ok) {
+      throw this.toProviderError(response.status);
+    }
+
+    return this.parseCapturedOrder(await response.text());
+  }
+
+  /**
+   * Reembolsa (total o parcial) una captura vía `POST /v2/payments/captures/
+   * {capture_id}/refund` (SF3-09). El amount  sí es admitido por el proveedor
+   * aquí, así que el reembolso parcial es exacto; el motivo viaja como
+   * `note_to_payer` y el `requestId` determinista evita dobles devoluciones
+   * ante reintentos de transporte.
+   */
+  async refundCapture(command: PayPalRefundCommand): Promise<PayPalRefundedCapture> {
+    const accessToken = await this.accessToken();
+
+    const body: Record<string, unknown> = { note_to_payer: command.reason };
+    if (command.amountMinor !== undefined) {
+      try {
+        body.amount = {
+          currency_code: command.currency,
+          value: minorToPayPalDecimal(command.amountMinor, command.currency),
+        };
+      } catch {
+        throw new PayPalClientError(
+          'PAYPAL_INVALID_RESPONSE',
+          'El importe del reembolso no es representable en la moneda indicada',
+        );
+      }
+    }
+
+    const response = await this.request(
+      'POST',
+      `${this.baseUrl}/v2/payments/captures/${encodeURIComponent(command.captureId)}/refund`,
+      accessToken,
+      JSON.stringify(body),
+      { 'PayPal-Request-Id': command.requestId },
+    );
+
+    if (!response.ok) {
+      throw this.toProviderError(response.status);
+    }
+
+    return this.parseRefundedCapture(await response.text());
+  }
+
+  /**
+   * Verifica la firma de una notificación webhook contra el API del proveedor
+   * (`/v1/notifications/verify-webhook-signature`, SF3-09). Fail-closed: sin
+   * `PAYPAL_WEBHOOK_ID`, sin cabeceras de transmisión o con un body no
+   * interpretable devuelve `verified: false` y el llamador debe responder 401
+   * sin tocar datos.
+   */
+  async verifyWebhookSignature(
+    rawBody: string,
+    headers: Record<string, string>,
+  ): Promise<PayPalWebhookVerification> {
+    if (!this.webhookId || this.webhookId.trim().length === 0) {
+      return { verified: false, reason: 'webhook_id_not_configured' };
+    }
+
+    const transmissionId = PayPalClient.headerOf(headers, 'PayPal-Transmission-Id');
+    const transmissionTime = PayPalClient.headerOf(headers, 'PayPal-Transmission-Time');
+    const certUrl = PayPalClient.headerOf(headers, 'PayPal-Cert-Url');
+    const authAlgo = PayPalClient.headerOf(headers, 'PayPal-Auth-Algo');
+    const transmissionSig = PayPalClient.headerOf(headers, 'PayPal-Transmission-Sig');
+
+    if (!transmissionId || !transmissionTime || !certUrl || !authAlgo || !transmissionSig) {
+      return { verified: false, reason: 'missing_transmission_headers' };
+    }
+
+    const parsedEvent = this.parseJson(rawBody);
+    if (!parsedEvent) {
+      return { verified: false, reason: 'invalid_event_body' };
+    }
+
+    let accessToken: string;
+    try {
+      accessToken = await this.accessToken();
+    } catch {
+      // Sin credenciales OAuth no hay soporte para verificar: fail-closed.
+      return { verified: false, reason: 'provider_error' };
+    }
+
+    const body = {
+      auth_algo: authAlgo,
+      cert_url: certUrl,
+      transmission_id: transmissionId,
+      transmission_sig: transmissionSig,
+      transmission_time: transmissionTime,
+      webhook_id: this.webhookId,
+      webhook_event: parsedEvent,
+    };
+
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}/v1/notifications/verify-webhook-signature`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ...body }),
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+    } catch {
+      return { verified: false, reason: 'provider_error' };
+    }
+
+    if (!response.ok) {
+      return { verified: false, reason: 'provider_error' };
+    }
+
+    const parsed = this.parseJson(await response.text());
+    const status =
+      typeof parsed?.verification_status === 'string' ? parsed.verification_status : '';
+    return status === 'SUCCESS'
+      ? { verified: true }
+      : { verified: false, reason: 'signature_invalid' };
+  }
+
+  /** Búsqueda de cabecera insensible a mayúsculas (los proxies varían el caso). */
+  private static headerOf(headers: Record<string, string>, name: string): string | undefined {
+    const normalized = name.toLowerCase();
+    for (const [key, value] of Object.entries(headers)) {
+      if (key.toLowerCase() === normalized && typeof value === 'string' && value.length > 0) {
+        return value;
+      }
+    }
+    return undefined;
   }
 
   private async accessToken(): Promise<string> {
@@ -288,7 +504,7 @@ export class PayPalClient {
     }
     return new PayPalClientError(
       'PAYPAL_PROVIDER',
-      'El proveedor de pagos rechazó la creación de la orden',
+      'El proveedor de pagos rechazó la operación',
       status,
     );
   }
@@ -317,6 +533,88 @@ export class PayPalClient {
 
     const raw = this.isPlainObject(parsed) ? parsed : ({} as Record<string, unknown>);
     return { id, status, links, raw };
+  }
+
+  /**
+   * Extrae el capture-id de una respuesta de captura de orden: el proveedor
+   * lo anida en `purchase_units[0].payments.captures[0]`. Una respuesta sin
+   * captura legible es `PAYPAL_INVALID_RESPONSE` (nunca se marca CAPTURED sin
+   * capture_id, SF3-09).
+   */
+  private parseCapturedOrder(text: string): PayPalCapturedOrder {
+    const parsed = this.parseJson(text);
+    const orderId = typeof parsed?.id === 'string' ? parsed.id : undefined;
+    const status = typeof parsed?.status === 'string' ? parsed.status : undefined;
+
+    const capture = this.firstCaptureOf(parsed);
+    if (!orderId || !status || !capture?.id) {
+      this.logger.warn('Respuesta de captura sin identificador de captura');
+      throw new PayPalClientError(
+        'PAYPAL_INVALID_RESPONSE',
+        'El proveedor de pagos devolvió una captura sin identificador',
+      );
+    }
+
+    const raw = this.isPlainObject(parsed) ? parsed : ({} as Record<string, unknown>);
+    return {
+      orderId,
+      status,
+      captureId: capture.id,
+      captureStatus: capture.status ?? null,
+      raw,
+    };
+  }
+
+  private firstCaptureOf(
+    value: Record<string, unknown> | null,
+  ): { id?: string; status?: string } | null {
+    const purchaseUnits = value?.purchase_units;
+    if (!Array.isArray(purchaseUnits) || purchaseUnits.length === 0) {
+      return null;
+    }
+
+    const unit = purchaseUnits[0];
+    if (!unit || typeof unit !== 'object' || Array.isArray(unit)) {
+      return null;
+    }
+
+    const payments = (unit as Record<string, unknown>).payments;
+    if (!payments || typeof payments !== 'object') {
+      return null;
+    }
+
+    const captures = (payments as Record<string, unknown>).captures;
+    if (!Array.isArray(captures) || captures.length === 0) {
+      return null;
+    }
+
+    const capture = captures[0];
+    if (!capture || typeof capture !== 'object' || Array.isArray(capture)) {
+      return null;
+    }
+
+    const record = capture as Record<string, unknown>;
+    return {
+      id: typeof record.id === 'string' ? record.id : undefined,
+      status: typeof record.status === 'string' ? record.status : undefined,
+    };
+  }
+
+  private parseRefundedCapture(text: string): PayPalRefundedCapture {
+    const parsed = this.parseJson(text);
+    const refundId = typeof parsed?.id === 'string' ? parsed.id : undefined;
+    const status = typeof parsed?.status === 'string' ? parsed.status : undefined;
+
+    if (!refundId || !status) {
+      this.logger.warn('Respuesta de reembolso sin identificador');
+      throw new PayPalClientError(
+        'PAYPAL_INVALID_RESPONSE',
+        'El proveedor de pagos devolvió un reembolso sin identificador',
+      );
+    }
+
+    const raw = this.isPlainObject(parsed) ? parsed : ({} as Record<string, unknown>);
+    return { refundId, status, raw };
   }
 
   private parseJson(text: string): Record<string, unknown> | null {
