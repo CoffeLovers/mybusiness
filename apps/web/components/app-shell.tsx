@@ -85,7 +85,7 @@ function NavLinks({ pathname }: { pathname: string }) {
   const activeHref = getActiveHref(pathname);
 
   return (
-    <ul className="flex flex-col gap-1">
+    <ul className="flex flex-col gap-2">
       {NAV_ITEMS.map((item) => {
         if (item.href === null) {
           return (
@@ -125,7 +125,7 @@ function Breadcrumbs({ pathname }: { pathname: string }) {
       aria-label="Ruta de navegación"
       className="order-last w-full min-w-0 md:order-none md:w-auto md:flex-1"
     >
-      <ol className="flex flex-wrap items-center gap-1 text-sm text-text-muted">
+      <ol className="flex flex-wrap items-center gap-2 text-sm text-text-muted">
         {crumbs.map((crumb, index) => {
           const isLast = index === crumbs.length - 1;
 
@@ -195,7 +195,7 @@ export function AppShell({ children, user }: { children: ReactNode; user?: Shell
       <div className="flex min-h-screen flex-col md:pl-60">
         <header className="sticky top-0 z-10 border-b border-border bg-surface">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 md:flex-nowrap md:px-6">
-            <div className="flex items-center gap-1 md:hidden">
+            <div className="flex items-center gap-2 md:hidden">
               <BrandLink />
               <MobileDrawer pathname={pathname} onLogout={handleLogout} />
             </div>

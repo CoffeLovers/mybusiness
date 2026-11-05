@@ -57,7 +57,7 @@ export function MobileDrawer({ pathname, onLogout }: { pathname: string; onLogou
           title="Navegación"
         >
           <nav aria-label="Navegación principal">
-            <ul className="flex flex-col gap-1">
+            <ul className="flex flex-col gap-2">
               {NAV_ITEMS.map((item) => {
                 if (item.href === null) {
                   return (

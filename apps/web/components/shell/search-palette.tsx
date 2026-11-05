@@ -201,7 +201,7 @@ export function SearchPalette() {
           {results.length === 0 ? (
             <p className="py-2 text-sm text-text-muted">Sin resultados</p>
           ) : (
-            <ul className="flex flex-col gap-1">
+            <ul className="flex flex-col gap-2">
               {results.map((item, index) => (
                 <li key={item.id}>
                   <button
