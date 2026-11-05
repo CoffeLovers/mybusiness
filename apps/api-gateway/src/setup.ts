@@ -68,7 +68,13 @@ export function setupGatewayApp(app: INestApplication): void {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'x-refresh-token'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Requested-With',
+      'x-refresh-token',
+      'Idempotency-Key',
+    ],
     exposedHeaders: [
       'Retry-After',
       'X-RateLimit-Limit',
