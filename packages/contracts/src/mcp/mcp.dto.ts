@@ -5,11 +5,13 @@ export const MCP_PROTOCOL_VERSION = '2025-06-18';
 export const MCP_SERVER_NAME = 'mybusiness-internal';
 export const MCP_SERVER_VERSION = '1.0.0';
 
-export type McpToolName = 'get_cashflow_summary' | 'list_unreconciled_transactions';
+export type McpToolName =
+  'get_cashflow_summary' | 'list_unreconciled_transactions' | 'create_payment_link';
 
 export const MCP_TOOL_NAMES: readonly McpToolName[] = [
   'get_cashflow_summary',
   'list_unreconciled_transactions',
+  'create_payment_link',
 ];
 
 export const McpErrorCodes = {

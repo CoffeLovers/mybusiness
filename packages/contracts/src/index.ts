@@ -1,4 +1,5 @@
 export * from './enums';
+export * from './enums/payments.enum';
 export * from './money';
 export * from './patterns';
 export * from './dtos/auth.dto';
@@ -11,5 +12,7 @@ export * from './dtos/cashflow.dto';
 export * from './dtos/document.dto';
 export * from './dtos/reconciliation.dto';
 export * from './dtos/ledger.dto';
+export * from './dtos/payments.dto';
+export * from './patterns/payments.patterns';
 export * from './mcp/mcp.dto';
 export * from './mcp/mcp.patterns';
