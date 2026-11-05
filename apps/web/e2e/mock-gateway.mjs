@@ -1131,6 +1131,405 @@ function handleGetTransactions(request, response) {
   });
 }
 
+/* ------------------------------------------------------------------------- */
+/* Agente conversacional (SF3-12 / issue #82)                                */
+/*                                                                           */
+/* Mock determinista del perímetro del gateway para `POST /agent/chat`.      */
+/* Replica el contrato de `AgentChatResponseDto` (contratos SF3-03/SF3-12):  */
+/* responder degradado con presupuesto agotado SIN llamar al proveedor,      */
+/* citas de herramientas MCP, presupuesto actualizado tras liquidar y       */
+/* aislamiento estricto por tenant (memoria/caché por tenant en memoria).    */
+/* El proveedor LLM es un stub determinista: cuenta llamadas pero no consume */
+/* servicios externos (sin PayPal ni OpenAI en pruebas de carga/E2E).        */
+/* ------------------------------------------------------------------------ */
+
+const AGENT_MONTHLY_BUDGET_MICRO_USD = 2_000_000; // 2 USD = 2.000.000 micro-USD
+
+const AGENT_STATE = {
+  [TENANT_A_ID]: createAgentState(),
+  [TENANT_B_ID]: createAgentState(),
+};
+
+function createAgentState() {
+  return {
+    monthlyBudgetMicroUsd: AGENT_MONTHLY_BUDGET_MICRO_USD,
+    remainingMicroUsd: AGENT_MONTHLY_BUDGET_MICRO_USD,
+    llmProviderCalls: 0,
+    cacheHits: 0,
+    degradedEvents: 0,
+    /** Caché semántica determinista: match exacto del mensaje por tenant. */
+    conversations: [],
+    /** Memoria conversacional del tenant (nunca cruza entre tenants). */
+    memories: [],
+  };
+}
+
+function agentState(tenantId) {
+  if (!AGENT_STATE[tenantId]) {
+    AGENT_STATE[tenantId] = createAgentState();
+  }
+  return AGENT_STATE[tenantId];
+}
+
+/** Cifras de finanzas por tenant, espejo de las del dashboard (EUR, moneda menor). */
+const AGENT_FINANCE_FACTS = {
+  [TENANT_A_ID]: {
+    currency: 'EUR',
+    incomeMinor: '1250000',
+    expenseMinor: '820000',
+    balanceMinor: '4500000',
+  },
+  [TENANT_B_ID]: {
+    currency: 'EUR',
+    incomeMinor: '2100000',
+    expenseMinor: '1400000',
+    balanceMinor: '9900000',
+  },
+};
+
+const AGENT_CASHFLOW_KEYWORDS = ['flujo', 'cashflow', 'saldo', 'ingresos', 'egresos', 'gastos'];
+const AGENT_RECONCILIATION_KEYWORDS = ['conciliar', 'conciliación', 'pendiente', 'sin conciliar'];
+const AGENT_PAYMENT_KEYWORDS = ['enlace de cobro', 'payment link', 'cobro paypal'];
+
+/**
+ * Moneda menor (centavos) a texto humano; determinista en cualquier runtime
+ * (sin `Intl`, cuyo agrupamiento depende del ICU del sistema) e idéntico al
+ * formato visible del dashboard (agruto separador de millar con '.').
+ */
+function agentFormatMinor(minor) {
+  const cents = Number(minor);
+  const sign = cents < 0 ? '-' : '';
+  const absolute = Math.abs(cents) / 100;
+  const integer = Math.trunc(absolute);
+  const decimals = Math.round((absolute - integer) * 100)
+    .toString()
+    .padStart(2, '0');
+  const grouped = integer.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `${sign}${grouped},${decimals} €`;
+}
+function agentTokens(text) {
+  return Math.max(1, Math.ceil(text.length / 4));
+}
+
+/** Date más reciente en el rango YYYY-MM-DD; vacío si no aparece ninguno. */
+function agentExtractDates(message) {
+  return message.match(/\d{4}-\d{2}-\d{2}/g) ?? [];
+}
+
+function agentToolCitation(tool, label, period) {
+  return {
+    source: 'tool',
+    ref: tool,
+    tool,
+    ...(period !== '' ? { period } : {}),
+    label,
+  };
+}
+
+/** Cita memoria cuyo contenido comparte palabra significativa con el mensaje. */
+function agentMemoryCitations(state, message) {
+  const keywords = message
+    .toLowerCase()
+    .replace(/[^\p{L}\s]/gu, ' ')
+    .split(/\s+/)
+    .filter((word) => word.length > 4);
+
+  if (keywords.length === 0) {
+    return [];
+  }
+
+  return state.memories
+    .filter((memory) => keywords.some((keyword) => memory.content.toLowerCase().includes(keyword)))
+    .slice(0, 3)
+    .map((memory) => ({
+      source: 'memory',
+      ref: memory.id,
+      label: memory.content.length > 160 ? `${memory.content.slice(0, 159)}…` : memory.content,
+    }));
+}
+
+/** Respuesta degradada según el contrato `AgentChatResponseDto`. */
+function agentDegraded(state, code, reason, message) {
+  state.degradedEvents += 1;
+  return {
+    answer: message,
+    citations: [],
+    degraded: true,
+    reason,
+    code,
+    usage: {
+      promptTokens: 0,
+      completionTokens: 0,
+      costMicroUsd: 0,
+      budgetRemainingMicroUsd: state.remainingMicroUsd,
+      cacheHit: false,
+    },
+  };
+}
+
+/**
+ * Llamada al proveedor LLM (stub determinista): compone la respuesta a partir
+ * de los hechos de herramientas e incrementa el contador de invocaciones.
+ */
+function agentLlmStubComplete(state, question, facts, citations) {
+  state.llmProviderCalls += 1;
+  const promptTokens = agentTokens(question) + 48;
+  const completionTokens = 96;
+  const costMicroUsd = promptTokens * 2 + completionTokens * 8;
+  const remainingMicroUsd = Math.max(0, state.remainingMicroUsd - costMicroUsd);
+  state.remainingMicroUsd = remainingMicroUsd;
+
+  const parts = [];
+  if (facts.tool === 'get_cashflow_summary') {
+    parts.push(
+      `Entre ${facts.from} y ${facts.to} tus ingresos son ${agentFormatMinor(facts.incomeMinor)} y tus gastos ${agentFormatMinor(facts.expenseMinor)}, con un saldo consolidado de ${agentFormatMinor(facts.balanceMinor)}.`,
+    );
+  } else if (facts.tool === 'list_unreconciled_transactions') {
+    parts.push(
+      `Tienes ${facts.count} movimientos pendientes de conciliar${facts.names.length > 0 ? `; los más recientes son: ${facts.names.join(', ')}` : ''}.`,
+    );
+  } else if (facts.tool === 'create_payment_link') {
+    parts.push(
+      `He creado el enlace de cobro por ${agentFormatMinor(facts.amountMinor)} (${facts.currency}): ${facts.checkoutUrl} (estado ${facts.status}).`,
+    );
+  }
+
+  if (citations.some((citation) => citation.source === 'memory')) {
+    parts.push('He recuperado contexto previo de tu memoria conversacional.');
+  }
+
+  return {
+    answer: parts.join(' ') || 'No tengo datos suficientes para responder con fundamento.',
+    citations,
+    degraded: false,
+    usage: {
+      promptTokens,
+      completionTokens,
+      costMicroUsd,
+      budgetRemainingMicroUsd: remainingMicroUsd,
+      cacheHit: false,
+    },
+  };
+}
+
+async function handleAgentChat(request, response) {
+  const tenantId = getTenantIdFromRequest(request);
+  if (!tenantId) {
+    sendError(response, 401, 'unauthorized');
+    return;
+  }
+
+  const state = agentState(tenantId);
+  const body = await readJson(request);
+  const message = typeof body?.message === 'string' ? body.message.trim() : '';
+  const normalized = message.toLowerCase();
+
+  if (message.length === 0) {
+    sendError(response, 400, 'message_required');
+    return;
+  }
+
+  // RBAC del gateway: sólo TENANT_ADMIN/ACCOUNTANT/SUPER_ADMIN conversan.
+  const effectiveRole = request.headers['x-e2e-role'] ?? 'TENANT_ADMIN';
+  if (['AUDITOR', 'VIEWER', 'OWNER'].includes(effectiveRole)) {
+    sendError(response, 403, 'insufficient_permissions');
+    return;
+  }
+
+  // 1. Caché semántica determinista (match exacto dentro del tenant).
+  const cached = state.conversations.find((entry) => entry.message === message);
+  if (cached) {
+    state.cacheHits += 1;
+    sendJson(response, 200, {
+      ...cached.response,
+      usage: {
+        ...cached.response.usage,
+        cacheHit: true,
+        costMicroUsd: 0,
+        budgetRemainingMicroUsd: state.remainingMicroUsd,
+      },
+    });
+    return;
+  }
+
+  // 1.b Control determinista de drenaje de presupuesto por mensaje (QA #82):
+  // la reserva no es posible y el tenant queda agotado para el periodo.
+  if (/\bagotar presupuesto\b|\bdrain budget\b/.test(normalized)) {
+    state.remainingMicroUsd = 0;
+    sendJson(
+      response,
+      200,
+      agentDegraded(
+        state,
+        'BUDGET_EXHAUSTED',
+        'BUDGET_EXHAUSTED',
+        'El presupuesto mensual de tokens se agotó. El asistente responde en modo degradado hasta el siguiente periodo.',
+      ),
+    );
+    return;
+  }
+
+  // 2. Control de escenarios E2E deterministas.
+  const scenario = request.headers['x-e2e-scenario'];
+  if (scenario === 'budget-exhausted') {
+    sendJson(
+      response,
+      200,
+      agentDegraded(
+        state,
+        'BUDGET_EXHAUSTED',
+        'BUDGET_EXHAUSTED',
+        'El presupuesto mensual de tokens se agotó. El asistente responde en modo degradado hasta el siguiente periodo.',
+      ),
+    );
+    return;
+  }
+
+  // 3. Presupuesto: sin reserva posible, responde degradado y sin proveedor.
+  if (state.remainingMicroUsd <= 0) {
+    sendJson(
+      response,
+      200,
+      agentDegraded(
+        state,
+        'BUDGET_EXHAUSTED',
+        'BUDGET_EXHAUSTED',
+        'El presupuesto mensual de tokens se agotó. El asistente responde en modo degradado hasta el siguiente periodo.',
+      ),
+    );
+    return;
+  }
+
+  // 4. Router determinista (espejo del router de palabras clave del chat.service).
+  const dates = agentExtractDates(message);
+  const allToolsFailed =
+    scenario === 'all-tools-failed' || /\bfallo de herramientas\b/.test(normalized);
+  const citedTools = [];
+  let facts = null;
+
+  const wantsPaymentLink =
+    !allToolsFailed && AGENT_PAYMENT_KEYWORDS.some((keyword) => normalized.includes(keyword));
+  const wantsCashflow =
+    !allToolsFailed && AGENT_CASHFLOW_KEYWORDS.some((keyword) => normalized.includes(keyword));
+  const wantsReconciliation =
+    !allToolsFailed &&
+    !wantsCashflow &&
+    AGENT_RECONCILIATION_KEYWORDS.some((keyword) => normalized.includes(keyword));
+
+  if (wantsCashflow) {
+    const from = dates[0] ?? '2026-10-01';
+    const to = dates[1] ?? '2026-10-31';
+    const finance = AGENT_FINANCE_FACTS[tenantId];
+    facts = { tool: 'get_cashflow_summary', from, to, ...finance };
+    citedTools.push(
+      agentToolCitation('get_cashflow_summary', 'Resumen de flujo de caja', `${from}/${to}`),
+    );
+  } else if (wantsReconciliation) {
+    const rows = getLedgerRowsForTenant(tenantId);
+    const pending = rows.filter((row) => row.reconciliationStatus === 'UNMATCHED');
+    facts = {
+      tool: 'list_unreconciled_transactions',
+      count: pending.length,
+      names: pending.slice(0, 3).map((row) => row.name),
+    };
+    citedTools.push(
+      agentToolCitation(
+        'list_unreconciled_transactions',
+        'Transacciones pendientes de conciliación',
+        '',
+      ),
+    );
+  } else if (wantsPaymentLink) {
+    facts = {
+      tool: 'create_payment_link',
+      amountMinor: '250000',
+      currency: 'EUR',
+      status: 'CREATED',
+      // Sin PayPal sandbox: el stub genérico evita infra de dinero en QA (#82).
+      checkoutUrl: 'https://www.sandbox.paypal.com/checkoutnow?token=MOCK-4F11AD22',
+    };
+    citedTools.push(agentToolCitation('create_payment_link', 'Enlace de cobro PayPal', ''));
+  }
+
+  // 5. Todas las herramientas fallaron: degradado determinista, proveedor no
+  //    invocado y reserva de presupuesto liberada (contrato chat.service).
+  if (citedTools.length === 0) {
+    sendJson(
+      response,
+      200,
+      agentDegraded(
+        state,
+        'ALL_TOOLS_FAILED',
+        'PROVIDER_ERROR',
+        'No pude completar la consulta con las herramientas disponibles. Inténtalo de nuevo en unos minutos.',
+      ),
+    );
+    return;
+  }
+
+  // 6. Memoria conversacional del tenant + stub LLM ("con stub").
+  const citations = [...citedTools, ...agentMemoryCitations(state, message)];
+  const answer = agentLlmStubComplete(state, message, facts, citations);
+
+  state.conversations.push({ message, response: answer });
+  state.memories.push({
+    id: `mem-${tenantId.slice(0, 8)}-${state.memories.length + 1}`,
+    content: `Pregunta: ${message}\nRespuesta: ${answer.answer}`,
+  });
+  if (state.memories.length > 20) {
+    state.memories.shift();
+  }
+
+  sendJson(response, 200, answer);
+}
+
+function handleAgentBudget(request, response) {
+  const tenantId = getTenantIdFromRequest(request);
+  if (!tenantId) {
+    sendError(response, 401, 'unauthorized');
+    return;
+  }
+
+  const state = agentState(tenantId);
+  sendJson(response, 200, {
+    periodKey: new Date().toISOString().slice(0, 7),
+    currency: 'MICRO_USD',
+    monthlyBudgetMicroUsd: state.monthlyBudgetMicroUsd,
+    remainingMicroUsd: state.remainingMicroUsd,
+    usedMicroUsd: state.monthlyBudgetMicroUsd - state.remainingMicroUsd,
+  });
+}
+
+function handleAgentDevStats(request, response) {
+  const tenantId = getTenantIdFromRequest(request);
+  if (!tenantId) {
+    sendError(response, 401, 'unauthorized');
+    return;
+  }
+
+  const state = agentState(tenantId);
+  sendJson(response, 200, {
+    tenantId,
+    llmProviderCalls: state.llmProviderCalls,
+    cacheHits: state.cacheHits,
+    degradedEvents: state.degradedEvents,
+    remainingMicroUsd: state.remainingMicroUsd,
+    memories: state.memories.length,
+    conversations: state.conversations.length,
+  });
+}
+
+function handleAgentDevReset(request, response) {
+  const tenantId = getTenantIdFromRequest(request);
+  if (!tenantId) {
+    sendError(response, 401, 'unauthorized');
+    return;
+  }
+
+  AGENT_STATE[tenantId] = createAgentState();
+  sendJson(response, 200, { reset: tenantId });
+}
+
 const server = createServer((request, response) => {
   response.on('finish', () => {
     request.resume();
@@ -1324,6 +1723,24 @@ const server = createServer((request, response) => {
       handleGetTransactions(request, response);
       return;
     }
+  }
+
+  // Agente conversacional (SF3-12 / #82)
+  if (method === 'POST' && path === '/api/v1/agent/chat') {
+    void handleAgentChat(request, response);
+    return;
+  }
+  if (method === 'GET' && path === '/api/v1/agent/budget') {
+    handleAgentBudget(request, response);
+    return;
+  }
+  if (method === 'GET' && path === '/api/v1/agent/dev/stats') {
+    handleAgentDevStats(request, response);
+    return;
+  }
+  if (method === 'POST' && path === '/api/v1/agent/dev/reset') {
+    handleAgentDevReset(request, response);
+    return;
   }
 
   sendError(response, 404, 'not_found');
