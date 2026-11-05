@@ -1,5 +1,6 @@
 import type { ConnectionOptions as BullMQConnectionOptions } from 'bullmq';
 import { loadRootEnv } from '../config/env.loader';
+import { isTelemetryActive, withTelemetryTransport } from '@mybusiness/telemetry';
 
 export interface RedisConnectionConfig {
   host: string;
@@ -44,18 +45,23 @@ export function getRedisConfig(config?: ConfigReader): RedisConnectionConfig {
 
 /**
  * Opciones para el transporte Redis de NestJS Microservices (RPC @MessagePattern y @EventPattern).
+ *
+ * Incorpora los hooks de OpenTelemetry: el serializador inyecta el carrier W3C
+ * (traceparent/baggage) en los mensajes salientes y el deserializador lo descarga
+ * sin tocar el payload de negocio. Sin `OTEL_ENABLED=true` devuelve el comportamiento
+ * por defecto de Nest (serialización identidad/passthrough): impacto cero.
  */
-export function getMicroserviceRedisOptions(config?: ConfigReader): {
-  host: string;
-  port: number;
-  password?: string;
-} {
+export function getMicroserviceRedisOptions(config?: ConfigReader) {
   const base = getRedisConfig(config);
-  return {
+  const baseOptions = {
     host: base.host,
     port: base.port,
     password: base.password,
   };
+  if (isTelemetryActive()) {
+    return withTelemetryTransport(baseOptions);
+  }
+  return baseOptions;
 }
 
 /**

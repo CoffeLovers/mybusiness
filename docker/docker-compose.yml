@@ -91,6 +91,33 @@ services:
       S3_BUCKET: ${S3_BUCKET:-mybusiness-documents}
     restart: 'no'
 
+  # ------------------------------------------------------------------------------
+  # Observabilidad de trazas (OpenTelemetry, SF3-07)
+  # ------------------------------------------------------------------------------
+  # Jaeger all-in-one es SOLO el backend interno de desarrollo; no expone 4317/4318
+  # al host: las señal entra únicamente por el collector (single point of ingress).
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: mybusiness_jaeger
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: 'true'
+    ports:
+      - '127.0.0.1:${JAEGER_UI_PORT:-16686}:16686'
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.118.0
+    container_name: mybusiness_otel_collector
+    restart: unless-stopped
+    command: ['--config=/etc/otel-collector-config.yaml']
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - '127.0.0.1:${OTEL_COLLECTOR_GRPC_PORT:-4317}:4317'
+      - '127.0.0.1:${OTEL_COLLECTOR_HTTP_PORT:-4318}:4318'
+    depends_on:
+      - jaeger
+
 volumes:
   postgres_data:
   redis_data:

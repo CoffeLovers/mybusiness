@@ -1,8 +1,11 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
+import { RpcTelemetryInterceptor, startTelemetry } from '@mybusiness/telemetry';
 import { getMicroserviceRedisOptions } from '@mybusiness/common';
 import { AuthServiceModule } from './auth-service.module';
+
+startTelemetry({ serviceName: 'auth-service' });
 
 async function bootstrap() {
   const logger = new Logger('AuthService');
@@ -12,6 +15,9 @@ async function bootstrap() {
     transport: Transport.REDIS,
     options: redisOptions,
   });
+  // Span consumidor por mensaje del bus (padre = carrier W3C del gateway).
+  app.useGlobalInterceptors(new RpcTelemetryInterceptor());
+  app.enableShutdownHooks();
 
   await app.listen();
   logger.log(

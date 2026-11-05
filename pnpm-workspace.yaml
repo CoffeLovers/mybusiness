@@ -37,6 +37,9 @@ overrides:
 
 allowBuilds:
   '@scarf/scarf': false
+  # protobufjs (transitiva de @opentelemetry/exporter-trace-otlp-grpc): su
+  # postinstall solo regenera bundle de protoc para editors; no se necesita.
+  protobufjs: false
   msgpackr-extract: false
   argon2: true
   esbuild: true

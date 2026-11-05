@@ -5,13 +5,15 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc",
+    "build": "pnpm --filter @mybusiness/telemetry run build && tsc",
     "clean": "rimraf dist"
   },
   "dependencies": {
     "@mybusiness/contracts": "workspace:*",
+    "@mybusiness/telemetry": "workspace:*",
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
+    "@nestjs/microservices": "^11.0.0",
     "bullmq": "^6.4.2",
     "ioredis": "^6.0.0",
     "rxjs": "^7.8.1"
