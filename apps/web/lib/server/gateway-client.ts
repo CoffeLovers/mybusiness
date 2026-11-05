@@ -51,6 +51,33 @@ function readErrorCode(payload: unknown): string {
   return typeof candidate === 'string' && candidate.length > 0 ? candidate : 'gateway_error';
 }
 
+/**
+ * Desenvuelve el envelope que añade `TransformInterceptor` en el gateway
+ * (`{ success: true, data: <payload> }`, #106). Sin esto el BFF entregaría el
+ * sobre completo y los consumidores verían `undefined` en login/dashboard/ledger.
+ *
+ * Se mantiene tolerante para no romper mocks ni endpoints que responden plano:
+ * si no hay envelope reconocible se devuelve el payload tal cual.
+ */
+function unwrapGatewayEnvelope<T>(payload: unknown): T {
+  if (typeof payload !== 'object' || payload === null) {
+    return payload as T;
+  }
+
+  const envelope = payload as { success?: unknown; data?: unknown };
+
+  if (envelope.success === false) {
+    // No se propaga el mensaje interno del gateway: sólo un código estable.
+    throw new GatewayError(502, 'gateway_unsuccessful_response');
+  }
+
+  if (envelope.success === true && 'data' in envelope) {
+    return envelope.data as T;
+  }
+
+  return payload as T;
+}
+
 /** Construye las cabeceras salientes a partir de `init`. */
 function buildHeaders(init?: GatewayRequestInit): Record<string, string> {
   const headers: Record<string, string> = {};
@@ -109,7 +136,8 @@ export async function gatewayFetchWithHeaders<T>(
     return { data: undefined as T, setCookie };
   }
 
-  return { data: (await response.json()) as T, setCookie };
+  // #106: el gateway envuelve el payload en `{ success, data, timestamp }`.
+  return { data: unwrapGatewayEnvelope<T>(await response.json()), setCookie };
 }
 
 /**
@@ -159,9 +187,45 @@ export async function gatewayFetchText(
     throw new GatewayError(response.status, code);
   }
 
+  const contentType = response.headers.get('content-type');
+  const text = await response.text();
+
   return {
-    body: await response.text(),
-    contentType: response.headers.get('content-type'),
+    body: unwrapTextEnvelope(text),
+    contentType,
     contentDisposition: response.headers.get('content-disposition'),
   };
+}
+
+/**
+ * Extrae el `data` string de un envelope JSON cuando el gateway ignora
+ * `text/csv` y responde con el sobre habitual (#106). Si no aplica, devuelve
+ * el texto original sin tocarlo.
+ *
+ * No se filtra por `content-type`: `TransformInterceptor` envuelve el cuerpo
+ * pero el gateway conserva el `content-type` original (`text/csv`), así que el
+ * sobre puede llegar con cualquier cabecera. Basta con que el cuerpo parezca
+ * JSON y tenga la forma `{ success: true, data: string }`.
+ */
+function unwrapTextEnvelope(text: string): string {
+  if (!text.trimStart().startsWith('{')) {
+    return text;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(text);
+
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      (parsed as { success?: unknown }).success === true &&
+      typeof (parsed as { data?: unknown }).data === 'string'
+    ) {
+      return (parsed as { data: string }).data;
+    }
+  } catch {
+    return text;
+  }
+
+  return text;
 }
