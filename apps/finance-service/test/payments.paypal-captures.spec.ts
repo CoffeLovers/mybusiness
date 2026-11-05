@@ -497,6 +497,7 @@ describe('PayPalWebhookService (SF3-09)', () => {
 
     expect(result.status).toBe('already_processed');
     expect(h.paymentService.reconcileCapture).not.toHaveBeenCalled();
+    expect(h.repository.markWebhookEvent).not.toHaveBeenCalled();
   });
 
   it('convierte el importe decimal a minor y concilia la captura (ADR 003)', async () => {
@@ -653,11 +654,16 @@ describe('PayPalWebhookService (SF3-09)', () => {
     expect(h.repository.createWebhookEvent).not.toHaveBeenCalled();
   });
 
-  it('un evento FAILED se reprueba en la revisión del proveedor', async () => {
+  it('un evento FAILED se resetea atómicamente en la redelivery y se reprocesa', async () => {
     const h = webhookHarness({
+      // Fila previa en FAILED: la reserva (upsert condicionado) la reabre y
+      // devuelve la fila reseteada (contrato atómico del repositorio).
       findWebhookEventByEventId: vi
         .fn()
         .mockResolvedValue({ id: 'ev-2', processingStatus: 'FAILED' }),
+      createWebhookEvent: vi
+        .fn()
+        .mockResolvedValue({ id: 'ev-2', processingStatus: 'RECEIVED', processedAt: null }),
       findOrdersByIdempotencyKey: vi.fn().mockResolvedValue([orderRow({ status: 'APPROVED' })]),
     });
 
@@ -676,12 +682,69 @@ describe('PayPalWebhookService (SF3-09)', () => {
     );
 
     expect(result.status).toBe('processed');
+    // La reserva resetea a RECEIVED y el reproceso cierra en PROCESSED.
+    expect(h.repository.createWebhookEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventId: 'WH-8', resourceId: 'CAPTURE-5' }),
+    );
     expect(h.paymentService.reconcileCapture).toHaveBeenCalledWith(
       expect.objectContaining({ id: ORDER_ID }),
       'CAPTURE-5',
       2500n,
     );
     expect(h.repository.markWebhookEvent).toHaveBeenCalledWith('WH-8', 'PROCESSED', undefined);
+  });
+
+  it('la redelivery concurrente de un FAILED no se reprocesa dos veces entre réplicas', async () => {
+    const h = webhookHarness({
+      findWebhookEventByEventId: vi
+        .fn()
+        .mockResolvedValue({ id: 'ev-2', processingStatus: 'FAILED' }),
+      // Otra réplica ya ganó el reset (upsert devuelve 0 filas): no reprocesar.
+      createWebhookEvent: vi.fn().mockResolvedValue(null),
+    });
+
+    const result = await h.service.handleWebhook(
+      {
+        id: 'WH-8',
+        event_type: 'PAYMENT.CAPTURE.COMPLETED',
+        resource: {
+          id: 'CAPTURE-5',
+          amount: { value: '25.00', currency_code: 'USD' },
+          custom_id: 'idem-1',
+        },
+      },
+      HEADERS,
+      RAW_BODY,
+    );
+
+    expect(result).toMatchObject({ status: 'already_processed', eventId: 'WH-8' });
+    expect(h.paymentService.reconcileCapture).not.toHaveBeenCalled();
+    expect(h.repository.markWebhookEvent).not.toHaveBeenCalled();
+  });
+
+  it('un evento ya PROCESSED es idempotente: el upsert no lo resetea ni lo reprocesa', async () => {
+    const h = webhookHarness({
+      // El conflicto resultó en ninguna fila: el estado vigente no era FAILED.
+      createWebhookEvent: vi.fn().mockResolvedValue(null),
+    });
+
+    const result = await h.service.handleWebhook(
+      {
+        id: 'WH-3',
+        event_type: 'PAYMENT.CAPTURE.COMPLETED',
+        resource: {
+          id: 'CAPTURE-1',
+          amount: { value: '25.00', currency_code: 'USD' },
+          custom_id: 'idem-1',
+        },
+      },
+      HEADERS,
+      RAW_BODY,
+    );
+
+    expect(result).toMatchObject({ status: 'already_processed', eventId: 'WH-3' });
+    expect(h.paymentService.reconcileCapture).not.toHaveBeenCalled();
+    expect(h.repository.markWebhookEvent).not.toHaveBeenCalled();
   });
 
   it('un evento desconocido se registra como ignored con motivo', async () => {
