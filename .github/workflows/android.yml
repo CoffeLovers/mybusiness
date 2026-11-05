@@ -39,4 +39,4 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
       - name: Test and assemble
-        run: ./gradlew :core:designsystem:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace --console=plain
+        run: ./gradlew :core:designsystem:testDebugUnitTest :core:common:testDebugUnitTest :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace --console=plain
