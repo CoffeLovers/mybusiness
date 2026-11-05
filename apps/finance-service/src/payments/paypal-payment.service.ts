@@ -156,6 +156,13 @@ export class PayPalPaymentService {
    * importe acumulado cubre la captura, la orden transita a REFUNDED (mapa
    * central de estados). Fallos del proveedor no mutan la orden (visible en
    * CAPTURED) y los códigos PAYMENT_* quedan estables.
+   *
+   * Nota de operación: no existe soporte para un segundo reembolso del MISMO
+   * importe sobre una misma captura — el PayPal-Request-Id es determinista
+   * por (orden, captura, importe) y PayPal deduplica la petición repetida
+   * (ver el comentario en la derivación de la clave más abajo). Ante ese
+   * escenario, reembolsar por un importe distinto al ya devuelto o tramitar
+   * el movimiento manualmente en el panel de PayPal.
    */
   async refund(
     ctx: RequestContext,
@@ -196,6 +203,15 @@ export class PayPalPaymentService {
     // reintento tras timeout reenvía la petición, el proveedor no duplica la
     // devolución. Los reembolsos parciales con importe distinto obtienen
     // claves distintas (ver decisión, ADR 003 §4).
+    //
+    // LÍMITE CONOCIDO: PayPal deduplica por PayPal-Request-Id, así que un
+    // segundo reembolso legítimo del MISMO importe sobre la misma captura
+    // reutiliza esta clave y el proveedor no ejecuta una nueva devolución
+    // (devolverá el primer refund). En ese caso el operador debe: registrar
+    // el reembolso con un importe distinto (el restante, que produce otra
+    // clave) o tramitarlo manualmente en el panel del proveedor y
+    // conciliarlo. No se secuencia la clave por diseño (mínima reparación
+    // SF3-09/QA); el secuenciador queda fuera de alcance.
     const requestId = `${order.idempotencyKey}:refund:${captureId}:${requestedMinor.toString()}`;
     let refund;
     try {
