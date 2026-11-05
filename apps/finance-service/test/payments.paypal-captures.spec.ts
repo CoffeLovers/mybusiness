@@ -18,6 +18,12 @@ import {
 } from '@mybusiness/contracts';
 import { PayPalPaymentService } from '../src/payments/paypal-payment.service';
 import { PayPalWebhookService } from '../src/payments/paypal-webhook.service';
+import { PayPalOrdersController } from '../src/payments/payments.controller';
+import {
+  mapPayPalErrorToHttpException,
+  paymentOrderNotFound,
+  toPayPalRefundView,
+} from '../src/payments/paypal-support';
 import {
   PayPalTransitionError,
   requirePayPalTransition,
@@ -632,6 +638,324 @@ describe('PayPalWebhookService (SF3-09)', () => {
       'CAPTURE-1',
       'REFUND-2',
       2500n,
+    );
+  });
+
+  it('rechaza 400 un evento sin id/event_type y no escribe nada', async () => {
+    const h = webhookHarness();
+
+    const error = await errorOf(() => h.service.handleWebhook({ foo: 1 }, HEADERS, RAW_BODY));
+
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect(((error as BadRequestException).getResponse() as Record<string, unknown>).error).toBe(
+      'PAYMENT_WEBHOOK_EVENT_INVALID',
+    );
+    expect(h.repository.createWebhookEvent).not.toHaveBeenCalled();
+  });
+
+  it('un evento FAILED se reprueba en la revisión del proveedor', async () => {
+    const h = webhookHarness({
+      findWebhookEventByEventId: vi
+        .fn()
+        .mockResolvedValue({ id: 'ev-2', processingStatus: 'FAILED' }),
+      findOrdersByIdempotencyKey: vi.fn().mockResolvedValue([orderRow({ status: 'APPROVED' })]),
+    });
+
+    const result = await h.service.handleWebhook(
+      {
+        id: 'WH-8',
+        event_type: 'PAYMENT.CAPTURE.COMPLETED',
+        resource: {
+          id: 'CAPTURE-5',
+          amount: { value: '25.00', currency_code: 'USD' },
+          custom_id: 'idem-1',
+        },
+      },
+      HEADERS,
+      RAW_BODY,
+    );
+
+    expect(result.status).toBe('processed');
+    expect(h.paymentService.reconcileCapture).toHaveBeenCalledWith(
+      expect.objectContaining({ id: ORDER_ID }),
+      'CAPTURE-5',
+      2500n,
+    );
+    expect(h.repository.markWebhookEvent).toHaveBeenCalledWith('WH-8', 'PROCESSED', undefined);
+  });
+
+  it('un evento desconocido se registra como ignored con motivo', async () => {
+    const h = webhookHarness();
+
+    const result = await h.service.handleWebhook(
+      { id: 'WH-9', event_type: 'CUSTOMER.DISPUTE.CREATED', resource: { id: 'R1' } },
+      HEADERS,
+      RAW_BODY,
+    );
+
+    expect(result).toMatchObject({ status: 'ignored', reason: 'evento_no_accionable' });
+    expect(h.repository.markWebhookEvent).toHaveBeenCalledWith(
+      'WH-9',
+      'IGNORED',
+      'evento_no_accionable',
+    );
+  });
+
+  it('un webhook cuyo custom_id es ambiguo entre tenants arriba a ignored', async () => {
+    const h = webhookHarness({
+      findOrdersByIdempotencyKey: vi
+        .fn()
+        .mockResolvedValue([
+          orderRow({ status: 'APPROVED', tenantId: TENANT_B }),
+          orderRow({ status: 'APPROVED' }),
+        ]),
+    });
+
+    const result = await h.service.handleWebhook(
+      {
+        id: 'WH-10',
+        event_type: 'PAYMENT.CAPTURE.COMPLETED',
+        resource: {
+          id: 'C-1',
+          custom_id: 'idem-1',
+          amount: { value: '25.00', currency_code: 'USD' },
+        },
+      },
+      HEADERS,
+      RAW_BODY,
+    );
+
+    expect(result).toMatchObject({ status: 'ignored', reason: 'orden_no_resuelta' });
+    expect(h.paymentService.reconcileCapture).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Reconciliación webhook → servicio (con real PayPalPaymentService) ───────
+
+describe('PayPalPaymentService reconciliación de webhooks (SF3-09)', () => {
+  it('reconcileCapture marca CAPTURED, concilia la factura y publica eventos una sola vez', async () => {
+    const h = paymentHarness({
+      findOrderById: vi.fn().mockResolvedValue(orderRow({ status: 'APPROVED' })),
+    });
+
+    await h.service.reconcileCapture(
+      {
+        id: ORDER_ID,
+        tenantId: TENANT_A,
+        invoiceId: INVOICE_ID,
+        paypalOrderId: 'PAYPAL-123',
+        currency: 'USD',
+        amountMinor: 2500n,
+      },
+      'CAPTURE-9',
+      2500n,
+    );
+
+    expect(h.repository.markOrderCaptured).toHaveBeenCalledWith(
+      expect.objectContaining({ captureId: 'CAPTURE-9', capturedAmountMinor: 2500n }),
+    );
+    expect(h.repository.markInvoicePaid).toHaveBeenCalledWith(TENANT_A, INVOICE_ID);
+    expect(h.events.publish).toHaveBeenCalledWith(
+      PaymentEvents.PAYPAL_CAPTURED,
+      expect.objectContaining({ captureId: 'CAPTURE-9', amountMinor: '2500' }),
+    );
+  });
+
+  it('reconcileCapture es reentrante: si ya está CAPTURED no republish', async () => {
+    const h = paymentHarness({
+      findOrderById: vi
+        .fn()
+        .mockResolvedValue(orderRow({ status: 'CAPTURED', captureId: 'CAPTURE-1' })),
+      markOrderCaptured: vi.fn().mockResolvedValue(null),
+    });
+
+    await h.service.reconcileCapture(
+      {
+        id: ORDER_ID,
+        tenantId: TENANT_A,
+        invoiceId: INVOICE_ID,
+        paypalOrderId: 'PAYPAL-123',
+        currency: 'USD',
+        amountMinor: 2500n,
+      },
+      'CAPTURE-1',
+      2500n,
+    );
+
+    expect(h.events.publish).not.toHaveBeenCalled();
+  });
+
+  it('reconcileRefund acumula hasta REFUNDED con actor del webhook y audita motivo', async () => {
+    const h = paymentHarness({
+      findOrderById: vi
+        .fn()
+        .mockResolvedValue(orderRow({ status: 'CAPTURED', captureId: 'CAPTURE-1' })),
+    });
+
+    await h.service.reconcileRefund(
+      {
+        id: ORDER_ID,
+        tenantId: TENANT_A,
+        captureId: 'CAPTURE-1',
+        amountMinor: 2500n,
+        capturedAmountMinor: 2500n,
+        refundedAmountMinor: null,
+        currency: 'USD',
+      },
+      'CAPTURE-1',
+      'REFUND-9',
+      2500n,
+    );
+
+    expect(h.repository.createRefund).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestedBy: 'system:paypal-webhook',
+        reason: 'Notificación del proveedor',
+      }),
+    );
+    expect(h.repository.applyRefundToOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finalStatus: PayPalOrderStatus.REFUNDED,
+        refundedAmountMinor: 2500n,
+      }),
+    );
+    const audit = h.events.publish.mock.calls.find(
+      (call: unknown[]) => call[0] === AuditEvents.LOG_EVENT,
+    );
+    expect(audit?.[1]).toMatchObject({ userId: 'system:paypal-webhook' });
+  });
+
+  it('reconcileRefund sin captura previa lanza 409 PAYMENT_INVALID_TRANSITION', async () => {
+    const h = paymentHarness({
+      findOrderById: vi.fn().mockResolvedValue(orderRow({ status: 'APPROVED' })),
+    });
+
+    const error = await errorOf(() =>
+      h.service.reconcileRefund(
+        {
+          id: ORDER_ID,
+          tenantId: TENANT_A,
+          captureId: null,
+          amountMinor: 2500n,
+          capturedAmountMinor: null,
+          refundedAmountMinor: null,
+          currency: 'USD',
+        },
+        '',
+        'REFUND-8',
+        1000n,
+      ),
+    );
+
+    expect(error).toBeInstanceOf(ConflictException);
+    expect(((error as ConflictException).getResponse() as Record<string, unknown>).error).toBe(
+      'PAYMENT_INVALID_TRANSITION',
+    );
+  });
+});
+
+// ─── Superficie RPC y helpers compartidos ────────────────────────────────────
+
+describe('Surface RPC de pagos (SF3-09)', () => {
+  it('el patrón orders.capture entrega el dto mínimo y el contexto al servicio', async () => {
+    const capture = vi.fn().mockResolvedValue({});
+    const refund = vi.fn().mockResolvedValue({});
+    const webhook = vi.fn().mockResolvedValue({});
+    const createOrder = vi.fn();
+    const controller = new PayPalOrdersController(
+      { createOrder } as never,
+      { capture, refund } as never,
+      { handleWebhook: webhook } as never,
+    );
+
+    await controller.captureOrder({
+      orderId: ORDER_ID,
+      tenantId: TENANT_A,
+      userId: 'user-1',
+      role: UserRole.ACCOUNTANT,
+      amountMinor: '1000',
+    });
+
+    expect(capture).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: TENANT_A }),
+      ORDER_ID,
+      { amountMinor: '1000' },
+    );
+
+    await controller.refundOrder({
+      orderId: ORDER_ID,
+      tenantId: TENANT_A,
+      userId: 'user-1',
+      role: UserRole.TENANT_ADMIN,
+      reason: 'Servicio no prestado',
+    });
+    expect(refund).toHaveBeenCalledWith(
+      expect.objectContaining({ role: UserRole.TENANT_ADMIN }),
+      ORDER_ID,
+      { reason: 'Servicio no prestado' },
+    );
+
+    await controller.handleWebhook({ payload: { id: 'WH-1' }, headers: {}, rawBody: '{}' });
+    expect(webhook).toHaveBeenCalledWith({ id: 'WH-1' }, {}, '{}');
+  });
+});
+
+describe('Helpers compartidos (paypal-support, SF3-09)', () => {
+  it('la vista de reembolso expone motivo/actor/importe en minor', () => {
+    const view = toPayPalRefundView({
+      id: 'r-1',
+      tenantId: TENANT_A,
+      orderId: ORDER_ID,
+      paypalRefundId: 'REFUND-1',
+      captureId: 'CAPTURE-1',
+      amountMinor: 1000n,
+      currency: 'USD',
+      reason: 'Servicio no prestado',
+      requestedBy: 'user-1',
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+
+    expect(view.amountMinor).toBe('1000');
+    expect(view).toMatchObject({ reason: 'Servicio no prestado', requestedBy: 'user-1' });
+  });
+
+  it('mapPayPalErrorToHttpException conserva los códigos PAYMENT_* estables', () => {
+    const logger = { warn: vi.fn(), error: vi.fn() } as never;
+    const timeout = mapPayPalErrorToHttpException(
+      new PayPalClientError('PAYPAL_TIMEOUT', 't'),
+      logger,
+      'x',
+    );
+    expect((timeout as HttpException).getStatus()).toBe(HttpStatus.GATEWAY_TIMEOUT);
+
+    const notConfigured = mapPayPalErrorToHttpException(
+      new PayPalClientError('PAYPAL_NOT_CONFIGURED', 'c'),
+      logger,
+      'x',
+    );
+    expect((notConfigured as HttpException).getStatus()).toBe(HttpStatus.BAD_GATEWAY);
+
+    const unexpected = mapPayPalErrorToHttpException(new Error('boom'), logger, 'x');
+    expect((unexpected as HttpException).getStatus()).toBe(HttpStatus.INTERNAL_SERVER_ERROR);
+    expect(((unexpected as HttpException).getResponse() as Record<string, unknown>).error).toBe(
+      'PAYMENT_INTERNAL_ERROR',
+    );
+  });
+
+  it('paymentOrderNotFound responde 404 PAYMENT_ORDER_NOT_FOUND', () => {
+    expect((paymentOrderNotFound() as HttpException).getStatus()).toBe(HttpStatus.NOT_FOUND);
+  });
+
+  it('los errores de transición expuestos son HTTP 409 con código tipado', async () => {
+    const harness = paymentHarness({
+      findOrderById: vi.fn().mockResolvedValue(orderRow({ status: 'FAILED' })),
+    });
+
+    const error = await errorOf(() => harness.service.capture(ctxA, ORDER_ID, {}));
+
+    expect(error).toBeInstanceOf(ConflictException);
+    expect(((error as ConflictException).getResponse() as Record<string, unknown>).error).toBe(
+      'PAYMENT_INVALID_TRANSITION',
     );
   });
 });
