@@ -107,6 +107,8 @@ jobs:
           S3_SECRET_KEY=loadtest123
           S3_BUCKET=mybusiness-documents
           OCR_PROVIDER=stub
+          BANK_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          BANK_ENCRYPTION_KEY_VERSION=v1
           SEED_TENANT_TAX_ID=900123456-7
           SEED_TENANT_LEGAL_NAME="MyBusiness Load Test SAS"
           SEED_TENANT_TRADE_NAME="MyBusiness Load"
