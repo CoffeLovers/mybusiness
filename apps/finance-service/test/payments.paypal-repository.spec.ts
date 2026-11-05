@@ -5,6 +5,7 @@ import {
   PaymentsRepository,
 } from '../src/payments/payments.repository';
 import type { FinanceDatabaseService } from '../src/database/database.service';
+import { paypalWebhookEvents } from '../src/database/schema';
 import type { PayPalOrder, PayPalRefund, PayPalWebhookEvent } from '../src/database/schema';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
@@ -67,6 +68,7 @@ interface FakeChain {
   setArgs: unknown[];
   valuesArgs: unknown[];
   conflictTargets: unknown[];
+  conflictUpdates: unknown[];
   selectResults: unknown[];
   insertResult: unknown;
   updateResult: unknown;
@@ -74,7 +76,8 @@ interface FakeChain {
 
 /**
  * Cadena fluida Drizzle simulada que cubre los tres shapes del repositorio:
- * `select()…where().limit()`, `insert()…values().onConflictDoNothing().returning()`
+ * `select()…where().limit()`, `insert()…values().onConflictDoNothing()
+ * /onConflictDoUpdate().returning()`
  * y `update()…set().where().returning()`.
  */
 function fakeDb(
@@ -89,6 +92,7 @@ function fakeDb(
     setArgs: [],
     valuesArgs: [],
     conflictTargets: [],
+    conflictUpdates: [],
     selectResults: options.selectResults ?? [],
     insertResult: options.insertResult ?? undefined,
     updateResult: options.updateResult ?? undefined,
@@ -103,13 +107,17 @@ function fakeDb(
   const select = vi.fn(() => ({ from: selectFrom }));
 
   const insertReturning = vi.fn().mockImplementation(async () => chain.insertResult);
+  const onConflictDoUpdate = vi.fn((options: unknown) => {
+    chain.conflictUpdates.push(options);
+    return { returning: insertReturning };
+  });
   const onConflictDoNothing = vi.fn((target: unknown) => {
     chain.conflictTargets.push(target);
     return { returning: insertReturning };
   });
   const values = vi.fn((record: unknown) => {
     chain.valuesArgs.push(record);
-    return { onConflictDoNothing };
+    return { onConflictDoNothing, onConflictDoUpdate };
   });
   const insert = vi.fn(() => ({ values }));
 
@@ -286,7 +294,7 @@ describe('PaymentsRepository (SF3-09)', () => {
     expect(chain.whereArgs.length).toBe(1);
   });
 
-  it('createWebhookEvent reserva el event_id y resuelve la carrera con null', async () => {
+  it('createWebhookEvent reserva el event_id con upsert condicionado a FAILED', async () => {
     const insertOk = fakeDb({ insertResult: [webhookEventRow()] });
     const created = await repositoryOf(insertOk.db).createWebhookEvent({
       eventId: 'WH-1',
@@ -301,7 +309,17 @@ describe('PaymentsRepository (SF3-09)', () => {
         processingStatus: PayPalWebhookProcessEventStatus.RECEIVED,
       }),
     );
+    // El conflicto (redelivery/carrera) lleva set condicionado a FAILED.
+    const upsert = insertOk.chain.conflictUpdates[0] as Record<string, unknown>;
+    expect(upsert.target).toBe(paypalWebhookEvents.eventId);
+    expect(upsert.set).toEqual({
+      processingStatus: PayPalWebhookProcessEventStatus.RECEIVED,
+      errorMessage: null,
+      processedAt: null,
+    });
+    expect(upsert.setWhere).toBeDefined();
 
+    // Conflicto con fila en estado final (RECEIVED/PROCESSED/…): sin reset.
     const insertRace = fakeDb({ insertResult: [] });
     const raced = await repositoryOf(insertRace.db).createWebhookEvent({
       eventId: 'WH-1',
@@ -309,6 +327,33 @@ describe('PaymentsRepository (SF3-09)', () => {
       payload: {},
     });
     expect(raced).toBeNull();
+  });
+
+  it('createWebhookEvent resetea y devuelve la fila sólo cuando el conflicto era FAILED', async () => {
+    const resetRow = webhookEventRow({
+      processingStatus: 'RECEIVED',
+      errorMessage: null,
+      processedAt: null,
+    });
+    const reset = fakeDb({ insertResult: [resetRow] });
+    const resetResult = await repositoryOf(reset.db).createWebhookEvent({
+      eventId: 'WH-1',
+      eventType: 'PAYMENT.CAPTURE.COMPLETED',
+      payload: {},
+    });
+    expect(resetResult?.processingStatus).toBe(PayPalWebhookProcessEventStatus.RECEIVED);
+    expect(resetResult?.errorMessage).toBeNull();
+    expect(resetResult?.processedAt).toBeNull();
+
+    // El upsert atómico no produce filas cuando la fila vigente no es FAILED:
+    // el servicio no reprocesa (garantía anti doble-proceso entre réplicas).
+    const conflicted = fakeDb({ insertResult: [] });
+    const conflictedResult = await repositoryOf(conflicted.db).createWebhookEvent({
+      eventId: 'WH-1',
+      eventType: 'PAYMENT.CAPTURE.COMPLETED',
+      payload: {},
+    });
+    expect(conflictedResult).toBeNull();
   });
 
   it('findWebhookEventByEventId y markWebhookEvent actualizan el ciclo de procesado', async () => {

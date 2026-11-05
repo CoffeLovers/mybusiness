@@ -19,9 +19,11 @@ const EVENT_PAYMENT_CAPTURE_REFUNDED = 'PAYMENT.CAPTURE.REFUNDED';
 
 /**
  * Ingesta de webhooks PayPal (SF3-09). Verifica firma fail-closed contra el
- * API del proveedor (como el webhook bancario de #47), deduplica por
- * UNIQUE(event_id) — un duplicado responde `already_processed` sin
- * reprocesar — y mapea los eventos a las reconciliaciones de captura/reembolso
+ * API del proveedor (como el webhook bancario de #47) y deduplica por
+ * UNIQUE(event_id): un duplicado no reprocesado (`already_processed`) y una
+ * redelivery de un evento FAILED se resetea atómicamente y se reprocesa
+ * (`ON CONFLICT DO UPDATE` condicionado a FAILED, sin doble reproceso entre
+ * réplicas). Mapea los eventos a las reconciliaciones de captura/reembolso
  * de `PayPalPaymentService`. La verificación fallida lanza 401 sin escribir
  * nada en la base de datos.
  */
@@ -69,14 +71,18 @@ export class PayPalWebhookService {
       throw this.invalidEvent('El evento no contiene id o event_type válidos.');
     }
 
-    // 2. Deduplicación por event_id: duplicado → 200 sin reprocesar.
+    // 2. Fast-path de deduplicación: duplicado en estado final → 200 sin
+    // reprocesar. FAILED no corta aquí: la reserva atómica de abajo decide.
     const existing = await this.repository.findWebhookEventByEventId(eventId);
     if (existing && existing.processingStatus !== PayPalWebhookProcessEventStatus.FAILED) {
       this.logger.log(`Webhook PayPal duplicado ignorado: ${eventType} (${eventId})`);
       return { status: 'already_processed', eventId };
     }
 
-    // 3. Reserva idempotente del evento (carrera entre réplicas).
+    // 3. Reserva idempotente del evento (carrera entre réplicas): el upsert
+    // sólo reabre el evento si sigue FAILED; si otra réplica lo ganó o ya
+    // está en estado final devuelve null → `already_processed`, sin ventana
+    // de doble reproceso.
     const resource = this.resourceOf(payload);
     const inserted = await this.repository.createWebhookEvent({
       eventId,

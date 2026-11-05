@@ -306,8 +306,16 @@ export class PaymentsRepository {
   }
 
   /**
-   * Inserta el evento con UNIQUE(event_id): si otra réplica lo registró
-   * durante la carrera devuelve null (reentrada ya procesada o en curso).
+   * Reserva atómica del evento sobre UNIQUE(event_id): INSERT con
+   * `ON CONFLICT DO UPDATE` cuya `setWhere` sólo repone el evento cuando el
+   * intento previo quedó FAILED (redelivery del proveedor → se reprocesa).
+   * Conflictos con RECEIVED/PROCESSED/IGNORED no actualizan y devuelven null
+   * (`already_processed`, reentrada en curso o ya resuelta).
+   *
+   * Garantía de carrera entre réplicas: PostgreSQL serializa los INSERT ..
+   * ON CONFLICT DO UPDATE contra el mismo índice único y reevalúa `setWhere`
+   * sobre la versión comprometida de la fila, de modo que sólo UNA réplica
+   * obtiene el reset; no hay ventana SELECT-UPDATE ni doble reproceso.
    */
   async createWebhookEvent(record: {
     eventId: string;
@@ -326,7 +334,16 @@ export class PaymentsRepository {
         payload: record.payload,
         processingStatus: PayPalWebhookProcessEventStatus.RECEIVED,
       })
-      .onConflictDoNothing({ target: paypalWebhookEvents.eventId })
+      .onConflictDoUpdate({
+        target: paypalWebhookEvents.eventId,
+        // Reset para reproceso: sólo si el intento anterior falló.
+        set: {
+          processingStatus: PayPalWebhookProcessEventStatus.RECEIVED,
+          errorMessage: null,
+          processedAt: null,
+        },
+        setWhere: eq(paypalWebhookEvents.processingStatus, PayPalWebhookProcessEventStatus.FAILED),
+      })
       .returning();
 
     return event ?? null;
