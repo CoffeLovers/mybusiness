@@ -71,7 +71,7 @@ async function logout(): Promise<void> {
 function BrandLink() {
   return (
     <Link
-      href="/"
+      href="/resumen"
       aria-label="MyBusiness, ir al resumen"
       className="inline-flex min-h-11 items-center rounded-md px-2 font-mono text-xs tracking-widest text-text-muted uppercase transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
     >

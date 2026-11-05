@@ -72,28 +72,61 @@ export function MetricsCards({
       aria-label="Métricas clave de flujo de caja"
       className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
     >
-      {cards.map((card) => (
-        <article
-          key={card.id}
-          className="flex flex-col justify-between rounded-lg border border-border bg-surface-raised p-5 shadow-xs transition-shadow hover:shadow-sm"
-          aria-describedby={`${card.id}-subtitle`}
-        >
-          <header className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-medium text-text-muted">{card.title}</h2>
-            <span className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-text-muted">
-              {card.badge}
-            </span>
-          </header>
+      {cards.map((card) => {
+        const isFeatured = card.id === 'saldo-consolidado';
 
-          <p className={`mt-3 text-2xl font-bold tracking-tight ${card.valueColorClass}`}>
-            {card.value}
-          </p>
+        return (
+          <article
+            key={card.id}
+            className={
+              isFeatured
+                ? 'flex flex-col justify-between rounded-lg border border-accent bg-accent p-5 text-on-accent shadow-sm sm:col-span-2 lg:col-span-1'
+                : 'flex flex-col justify-between rounded-lg border border-border bg-surface-raised p-5 shadow-xs transition-shadow hover:shadow-sm'
+            }
+            aria-describedby={`${card.id}-subtitle`}
+          >
+            <header className="flex items-center justify-between gap-2">
+              <h2
+                className={
+                  isFeatured
+                    ? 'text-sm font-medium text-on-accent'
+                    : 'text-sm font-medium text-text-muted'
+                }
+              >
+                {card.title}
+              </h2>
+              <span
+                className={
+                  isFeatured
+                    ? 'rounded-full bg-inverse px-2 py-0.5 text-[11px] font-semibold text-accent'
+                    : 'rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-text-muted'
+                }
+              >
+                {card.badge}
+              </span>
+            </header>
 
-          <footer id={`${card.id}-subtitle`} className="mt-2 text-xs text-text-muted">
-            {card.subtitle}
-          </footer>
-        </article>
-      ))}
+            <p
+              className={
+                isFeatured
+                  ? 'mt-3 text-4xl font-light tracking-tight tabular-nums text-on-accent'
+                  : `mt-3 text-3xl font-light tracking-tight tabular-nums ${card.valueColorClass}`
+              }
+            >
+              {card.value}
+            </p>
+
+            <footer
+              id={`${card.id}-subtitle`}
+              className={
+                isFeatured ? 'mt-2 text-xs text-on-accent/80' : 'mt-2 text-xs text-text-muted'
+              }
+            >
+              {card.subtitle}
+            </footer>
+          </article>
+        );
+      })}
     </section>
   );
 }

@@ -23,13 +23,13 @@ async function openLedger(page: Page): Promise<void> {
 }
 
 test.describe('Shell y navegación (Issue #92)', () => {
-  test('el logo del shell devuelve a la raíz desde el libro mayor', async ({ page }) => {
+  test('el logo del shell devuelve al resumen desde el libro mayor', async ({ page }) => {
     await login(page);
     await openLedger(page);
 
     await page.getByRole('link', { name: 'MyBusiness, ir al resumen' }).click();
 
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/resumen$/);
     await expect(page.getByRole('heading', { level: 1, name: 'Resumen' })).toBeVisible();
   });
 
@@ -87,7 +87,7 @@ test.describe('Shell y navegación (Issue #92)', () => {
   test('el drawer móvil atrapa el foco, cierra con Escape y navega', async ({ page }) => {
     await login(page);
     await page.setViewportSize({ width: 320, height: 800 });
-    await page.goto('/');
+    await page.goto('/resumen');
     await expect(page.getByRole('heading', { level: 1, name: 'Resumen' })).toBeVisible();
 
     const hamburger = page.getByRole('button', { name: 'Abrir navegación' });
@@ -132,7 +132,8 @@ test.describe('Shell y navegación (Issue #92)', () => {
     await expect(palette).toBeHidden();
 
     // Atajo Ctrl+K y estado vacío.
-    await page.goto('/');
+    await page.goto('/resumen');
+    await expect(page.locator('div[data-hydrated="true"]')).toBeVisible();
     await page.keyboard.press('Control+k');
     await expect(palette).toBeVisible();
     await input.fill('zzz');
