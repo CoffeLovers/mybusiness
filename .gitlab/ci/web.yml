@@ -1,0 +1,220 @@
+# Pipeline web — MIG-03 (#136)
+#
+# Paridad con `.github/workflows/web-ci.yml` sobre GitLab CI:
+#   validate: web:quality   (lint, format, contraste de tokens, typecheck, unit+cov)
+#   test:     web:e2e, web:a11y, web:visual, web:security, web:sonar
+#
+# El job `contracts` del workflow de GitHub ya está cubierto por
+# `backend:contracts` (`.gitlab/ci/backend.yml`), que ejecuta `contracts:check`
+# (OpenAPI + tipos web) y `contracts:check:kotlin`.
+#
+# Todos los jobs heredan `.pnpm-base` (definido en `.gitlab-ci.yml`) y añaden a
+# su cache el caché de Next.js. Las reglas se centralizan en `.web-rules`.
+#
+# Los jobs de Playwright usan la imagen oficial, cuya versión debe coincidir con
+# la resuelta en `pnpm-lock.yaml` (hoy `@playwright/test@1.64.1`); así los
+# navegadores vienen preinstalados y no hace falta `playwright install`.
+
+# Cambios que invalidan el pipeline web.
+.web-changes: &web-changes
+  - apps/web/**/*
+  - packages/contracts/**/*
+  - packages/common/**/*
+  - docs/design/**/*
+  - docs/openapi/**/*
+  - pnpm-lock.yaml
+  - pnpm-workspace.yaml
+  - .gitlab/ci/web.yml
+  - .gitlab-ci.yml
+
+# Se ejecuta en MRs, `develop` y `main`, solo si cambia código que afecta a web.
+.web-rules: &web-rules
+  - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    changes: *web-changes
+  - if: '$CI_COMMIT_BRANCH == "develop"'
+    changes: *web-changes
+  - if: '$CI_COMMIT_BRANCH == "main"'
+    changes: *web-changes
+
+# Base común: store de pnpm + caché de compilación de Next.js.
+.web-base:
+  extends: .pnpm-base
+  cache:
+    key:
+      files:
+        - pnpm-lock.yaml
+    paths:
+      - .pnpm-store
+      - apps/web/.next/cache
+  variables:
+    NEXT_TELEMETRY_DISABLED: '1'
+  interruptible: true
+
+# Base para jobs de Playwright (imagen con navegadores preinstalados).
+.web-playwright:
+  extends: .web-base
+  image: mcr.microsoft.com/playwright:v1.64.1-noble
+  # La imagen ya trae Chromium y sus dependencias del sistema: se omite
+  # `playwright install --with-deps` para no penalizar el tiempo de arranque.
+
+# ---------------------------------------------------------------------------
+# validate
+# ---------------------------------------------------------------------------
+web:quality:
+  extends: .web-base
+  stage: validate
+  timeout: 20m
+  script:
+    - pnpm --filter @mybusiness/web lint
+    - pnpm exec prettier --check "apps/web/**/*.{ts,tsx,css,json,md}"
+    # Contraste de tokens de diseño (docs/design/tokens.json).
+    - pnpm test:contrast
+    - pnpm --filter @mybusiness/web typecheck
+    - pnpm --filter @mybusiness/web test:cov
+  coverage: '/^All files\s*\|\s*([\d.]+)\s*\|/'
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - apps/web/coverage/
+    exclude:
+      - apps/web/coverage/**/*.html
+    # Nota: Vitest genera `lcov`, que GitLab no parsea como
+    # `reports:coverage_report` (solo admite Cobertura). La cobertura se publica
+    # igualmente en el log, como artefacto y para Sonar.
+  rules: *web-rules
+
+# ---------------------------------------------------------------------------
+# test (Playwright)
+# ---------------------------------------------------------------------------
+web:e2e:
+  extends: .web-playwright
+  stage: test
+  timeout: 25m
+  needs: []
+  # `pnpm test` levanta el mock gateway y el `webServer` (build + start) que
+  # define `apps/web/playwright.config.ts`, y ejecuta todos los specs.
+  script:
+    - pnpm --filter @mybusiness/web test
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - apps/web/playwright-report/
+      - apps/web/test-results/
+    reports:
+      junit: apps/web/test-results/junit.xml
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+  rules: *web-rules
+
+web:a11y:
+  extends: .web-playwright
+  stage: test
+  timeout: 20m
+  needs: []
+  script:
+    - pnpm --filter @mybusiness/web exec playwright test e2e/accessibility.spec.ts
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - apps/web/playwright-report/
+      - apps/web/test-results/
+    reports:
+      junit: apps/web/test-results/junit.xml
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+  rules: *web-rules
+
+web:visual:
+  extends: .web-playwright
+  stage: test
+  timeout: 20m
+  needs: []
+  script:
+    - pnpm --filter @mybusiness/web exec playwright test e2e/visual.spec.ts
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - apps/web/playwright-report/
+      - apps/web/test-results/
+      # Diffs de regresión visual (solo existen en fallo).
+      - apps/web/test-results/**/*-diff.png
+      - apps/web/test-results/**/*-actual.png
+      - apps/web/test-results/**/*-expected.png
+    reports:
+      junit: apps/web/test-results/junit.xml
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+  rules: *web-rules
+
+# ---------------------------------------------------------------------------
+# test (seguridad de la imagen web)
+# ---------------------------------------------------------------------------
+# Adaptación del job `security` de GitHub: los runners compartidos de GitLab no
+# tienen Docker-in-Docker privilegiado, así que se escanea el sistema de
+# archivos (incluye el lockfile y las dependencias instaladas) con Trivy en
+# lugar de construir la imagen. `allow_failure` hasta que haya un runner con
+# dind y se pueda escanear la imagen real.
+web:security:
+  extends: .web-base
+  stage: test
+  timeout: 15m
+  needs: []
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: ['']
+  before_script: []
+  cache: {}
+  variables:
+    TRIVY_CACHE_DIR: '$CI_PROJECT_DIR/.trivy-cache'
+    TRIVY_NO_PROGRESS: 'true'
+  script:
+    - trivy fs --scanners vuln,secret --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 --format table .
+  allow_failure: true
+  rules: *web-rules
+
+# ---------------------------------------------------------------------------
+# test (SonarCloud)
+# ---------------------------------------------------------------------------
+# Solo se ejecuta si `SONAR_TOKEN` está definido en las variables del proyecto
+# (Settings > CI/CD > Variables). `allow_failure` hasta que el token real esté
+# cargado y el quality gate se estabilice.
+web:sonar:
+  stage: test
+  timeout: 15m
+  needs:
+    - job: web:quality
+      artifacts: true
+  allow_failure: true
+  interruptible: true
+  image:
+    name: sonarsource/sonar-scanner-cli:11
+    entrypoint: ['']
+  variables:
+    SONAR_USER_HOME: '$CI_PROJECT_DIR/.sonar'
+    GIT_DEPTH: '0'
+  cache:
+    key: sonar-scanner
+    paths:
+      - .sonar/cache
+  before_script: []
+  script:
+    # `sonar-project.properties` define proyecto/organización; se sobreescribe la
+    # ruta de lcov porque la cobertura web vive en `apps/web/coverage`.
+    - sonar-scanner -Dsonar.javascript.lcov.reportPaths=apps/web/coverage/lcov.info
+  rules:
+    - if: '$SONAR_TOKEN == null || $SONAR_TOKEN == ""'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes: *web-changes
+    - if: '$CI_COMMIT_BRANCH =~ /^(develop|main)$/'
+      changes: *web-changes

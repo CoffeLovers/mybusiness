@@ -4,12 +4,28 @@ const PORT = 3100;
 const baseURL = `http://127.0.0.1:${PORT}`;
 const GATEWAY_URL = 'http://127.0.0.1:3200';
 
+const IS_CI = Boolean(process.env.CI);
+// GitLab CI expone `GITLAB_CI=true`; el reporter `github` no aporta nada allí.
+const IS_GITLAB = Boolean(process.env.GITLAB_CI);
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
-  forbidOnly: Boolean(process.env.CI),
-  retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
+  forbidOnly: IS_CI,
+  retries: IS_CI ? 1 : 0,
+  // Runners compartidos de GitLab: 2 vCPU. Limitar workers evita contención de
+  // CPU con el `webServer` (build + start) y flakiness en snapshots visuales.
+  workers: IS_GITLAB ? 2 : undefined,
+  reporter: IS_GITLAB
+    ? [
+        ['list'],
+        ['html', { open: 'never' }],
+        // Publicado como `reports:junit` en `.gitlab/ci/web.yml`.
+        ['junit', { outputFile: 'test-results/junit.xml' }],
+      ]
+    : IS_CI
+      ? [['github'], ['html', { open: 'never' }]]
+      : 'list',
   expect: {
     timeout: 10_000,
     toHaveScreenshot: {

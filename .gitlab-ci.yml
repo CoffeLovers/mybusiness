@@ -3,8 +3,11 @@
 # MIG-01 (#134): pipeline mínimo para demostrar ejecución y bloqueo de MR.
 # MIG-02 (#135): paridad con `.github/workflows/ci.yml` — lint, format, typecheck,
 #                tests unitarios, contratos (OpenAPI + Kotlin), build y e2e.
+# MIG-03 (#136): paridad con `.github/workflows/web-ci.yml` — calidad web,
+#                Playwright (E2E, a11y, visual), seguridad y Sonar.
 #
-# Los jobs de backend viven en `.gitlab/ci/backend.yml`.
+# Los jobs de backend viven en `.gitlab/ci/backend.yml` y los de web en
+# `.gitlab/ci/web.yml`.
 # Decisiones de plataforma, runners y registry: docs/adr/009-gitlab-ci-cd-platform.md
 
 stages:
@@ -14,6 +17,7 @@ stages:
 
 include:
   - local: .gitlab/ci/backend.yml
+  - local: .gitlab/ci/web.yml
 
 default:
   image: node:20-bookworm
