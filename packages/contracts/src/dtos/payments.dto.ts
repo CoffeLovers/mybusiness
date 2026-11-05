@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
 import { UserRole } from '../enums';
 import { PayPalOrderStatus } from '../enums/payments.enum';
 import { CURRENCY_CODE_PATTERN, MAX_MONEY_MINOR_DIGITS } from '../money';
