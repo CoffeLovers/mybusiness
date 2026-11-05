@@ -9,7 +9,7 @@ export default function NotFound() {
         movido.
       </p>
       <Link
-        href="/"
+        href="/resumen"
         className="rounded-md bg-primary px-4 py-2 text-base font-medium text-on-primary"
       >
         Volver al resumen

@@ -70,7 +70,7 @@ export function MetricsCards({
   return (
     <section
       aria-label="Métricas clave de flujo de caja"
-      className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
+      className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
     >
       {cards.map((card) => {
         const isFeatured = card.id === 'saldo-consolidado';
@@ -85,7 +85,7 @@ export function MetricsCards({
             }
             aria-describedby={`${card.id}-subtitle`}
           >
-            <header className="flex items-center justify-between gap-2">
+            <header className="flex flex-wrap items-center justify-between gap-2">
               <h2
                 className={
                   isFeatured
@@ -110,7 +110,7 @@ export function MetricsCards({
               className={
                 isFeatured
                   ? 'mt-3 text-4xl font-light tracking-tight tabular-nums text-on-accent'
-                  : `mt-3 text-3xl font-light tracking-tight tabular-nums ${card.valueColorClass}`
+                  : `mt-3 text-2xl font-light tracking-tight tabular-nums ${card.valueColorClass}`
               }
             >
               {card.value}
