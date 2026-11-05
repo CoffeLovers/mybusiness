@@ -9,14 +9,14 @@ import { of } from 'rxjs';
 import { HttpTelemetryAttributesInterceptor, RpcTelemetryInterceptor } from '../src/interceptors';
 import { isTelemetryActive } from '../src/lifecycle';
 
-function fakeHttpClient(id: string): ExecutionContext {
+function fakeHttpClient(): ExecutionContext {
   return {
     switchToHttp: () => ({
       getRequest: () => ({ user: { tenantId: 't_1', role: 'owner' }, headers: {} }),
       getResponse: () => ({}),
     }),
     getType: () => 'http',
-    getArgs: execventArgsRef(id),
+    getArgs: () => [],
     getClass: () => ({}),
     getHandler: () => ({}),
     switchToRpc: () => {
@@ -27,15 +27,6 @@ function fakeHttpClient(id: string): ExecutionContext {
     },
   } as unknown as ExecutionContext;
 }
-
-function execventArgsRef(_id: string): () => unknown[] {
-  return () => [];
-}
-
-const handler: CallHandler = {
-  intercept: undefined,
-  handle: () => of(42),
-} as unknown as CallHandler;
 
 describe('guard de wiring: el SDK nunca arranca en tests/builds sin entorno', () => {
   it('isTelemetryActive es false por defecto', () => {
@@ -77,7 +68,7 @@ describe('guard de wiring: el SDK nunca arranca en tests/builds sin entorno', ()
     expect(spy).toHaveBeenCalledOnce(); // ejecutado sin spans ni tapas extra
   });
 
-  it('necesita observables reales para retornar (nof error contract)', () => {
+  it('consume observables reales para retornar (contrato de interceptores Nest)', () => {
     const interceptor = new HttpTelemetryAttributesInterceptor();
     const execContext = {
       switchToHttp: () => ({ getRequest: () => undefined }),
@@ -94,7 +85,7 @@ describe('guard de wiring: el SDK nunca arranca en tests/builds sin entorno', ()
 
 describe('fakeHttpClient', () => {
   it('retorna http execution context utilizable por interceptores', () => {
-    const ctx = fakeHttpClient('abc');
+    const ctx = fakeHttpClient();
     expect(ctx.getType()).toBe('http');
   });
 });

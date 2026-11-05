@@ -26,7 +26,7 @@ import { UndiciInstrumentation, type UndiciRequest } from '@opentelemetry/instru
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { ParentBasedSampler, TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace';
 import { resourceFromAttributes } from '@opentelemetry/resources';
-import { resolveTelemetryConfig, type TelemetryConfig } from './config/telemetry-config';
+import type { TelemetryConfig } from './config/telemetry-config';
 
 const DEPLOYMENT_ENVIRONMENT_ATTRIBUTE = 'deployment.environment.name';
 

@@ -11,7 +11,7 @@ import {
   W3CTraceContextPropagator,
 } from '@opentelemetry/core';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
-import { RPC_CARRIER_WIRE_KEY, injectRpcCarrier, peekRpcCarrierContext } from '../src/carrier';
+import { RPC_CARRIER_WIRE_KEY, peekRpcCarrierContext } from '../src/carrier';
 import { TelemetryRpcDeserializer, TelemetryRpcSerializer } from '../src/redis-transport';
 
 const TRACE_ID = '4bf92f3577b34da6a3ce929d0e0e4736';
@@ -84,10 +84,9 @@ describe('propagaciÃ³n del carrier en el transporte Redis', () => {
 
   it('roundtrip: wire JSON â†’ deserializador retira el carrier del payload y mantiene passthrough', () => {
     const spanCtx = { traceId: TRACE_ID, spanId: SPAN_ID, traceFlags: 1, isRemote: false };
-    const span = fakeSpan(spanCtx);
 
     const payload: Record<string, unknown> = { tenantId: 't_1', role: 'owner' };
-    context.with(trace.setSpan(ROOT_CONTEXT, span), () => {
+    context.with(trace.setSpan(ROOT_CONTEXT, fakeSpan(spanCtx)), () => {
       serializer.serialize({ id: 'abc-2', pattern: 'agent.chat', data: payload });
     });
 
@@ -109,7 +108,6 @@ describe('propagaciÃ³n del carrier en el transporte Redis', () => {
 
   it('el contexto descargado materializa el parentId del lado consumidor', () => {
     const spanCtx = { traceId: TRACE_ID, spanId: SPAN_ID, traceFlags: 1, isRemote: false };
-    const span = fakeSpan(spanCtx);
 
     const payload: Record<string, unknown> = { tenantId: 't_1' };
     const withChannel = propagation.setBaggage(
