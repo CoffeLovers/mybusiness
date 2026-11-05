@@ -20,20 +20,16 @@ import type {
 } from '@mybusiness/contracts';
 
 import { formatMinorUnitsString } from '@/lib/format';
+import { Button, Select, fieldControlClasses } from '@/components/ui';
 import { parseLedgerQuery } from '@/lib/ledger/query';
 import type { LedgerQuery, LedgerStatus } from '@/lib/ledger/query';
+import type { LedgerDensity } from '@/components/ledger/ledger-preferences';
 
 /** Límite del lote aceptado por el BFF (`BulkCategorizeDto`). */
 export const MAX_BULK_ROWS = 500;
 
 /** Cookie CSRF de doble envío (la única legible por el cliente). */
 const CSRF_COOKIE = 'mb_csrf';
-
-export const INPUT_CLASS =
-  'rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
-
-export const BUTTON_CLASS =
-  'rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text transition-colors hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50';
 
 /**
  * Los estados se declaran aquí (no se importa el enum de `@mybusiness/contracts`)
@@ -200,9 +196,11 @@ export interface LedgerFiltersProps {
   query: LedgerQuery;
   searchInput: string;
   isPending: boolean;
+  density: LedgerDensity;
   viewsControl: ReactNode;
   onSearchChange: (value: string) => void;
   onFilterChange: (patch: Partial<LedgerQuery>) => void;
+  onDensityChange: (density: LedgerDensity) => void;
   onClear: () => void;
   onExport: () => void;
 }
@@ -211,9 +209,11 @@ export function LedgerFilters({
   query,
   searchInput,
   isPending,
+  density,
   viewsControl,
   onSearchChange,
   onFilterChange,
+  onDensityChange,
   onClear,
   onExport,
 }: LedgerFiltersProps) {
@@ -231,7 +231,7 @@ export function LedgerFilters({
             onChange={(event) => {
               onSearchChange(event.target.value);
             }}
-            className={INPUT_CLASS}
+            className={fieldControlClasses}
           />
         </label>
 
@@ -243,7 +243,7 @@ export function LedgerFilters({
             onChange={(event) => {
               onFilterChange({ from: event.target.value === '' ? undefined : event.target.value });
             }}
-            className={INPUT_CLASS}
+            className={fieldControlClasses}
           />
         </label>
 
@@ -255,20 +255,19 @@ export function LedgerFilters({
             onChange={(event) => {
               onFilterChange({ to: event.target.value === '' ? undefined : event.target.value });
             }}
-            className={INPUT_CLASS}
+            className={fieldControlClasses}
           />
         </label>
 
         <label className="flex flex-col gap-1 text-sm font-medium text-text">
           Conciliación
-          <select
+          <Select
             value={query.reconciliationStatus ?? ''}
             onChange={(event) => {
               onFilterChange({
                 reconciliationStatus: STATUS_VALUES.find((value) => value === event.target.value),
               });
             }}
-            className={INPUT_CLASS}
           >
             <option value="">Todos</option>
             {STATUS_VALUES.map((status) => (
@@ -276,19 +275,41 @@ export function LedgerFilters({
                 {STATUS_LABELS[status]}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
 
-        <button type="button" onClick={onClear} className={BUTTON_CLASS}>
+        <Button variant="secondary" onClick={onClear}>
           Limpiar
-        </button>
-        <button type="button" onClick={onExport} className={BUTTON_CLASS}>
+        </Button>
+        <Button variant="secondary" onClick={onExport}>
           Exportar CSV
-        </button>
+        </Button>
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
         {viewsControl}
+
+        <div role="group" aria-label="Densidad de la tabla" className="flex items-center gap-2">
+          <span className="text-sm font-medium text-text">Densidad</span>
+          <Button
+            variant={density === 'comfortable' ? 'primary' : 'secondary'}
+            aria-pressed={density === 'comfortable'}
+            onClick={() => {
+              onDensityChange('comfortable');
+            }}
+          >
+            Cómoda
+          </Button>
+          <Button
+            variant={density === 'compact' ? 'primary' : 'secondary'}
+            aria-pressed={density === 'compact'}
+            onClick={() => {
+              onDensityChange('compact');
+            }}
+          >
+            Compacta
+          </Button>
+        </div>
 
         {isPending ? (
           <span role="status" className="text-sm text-text-muted">
@@ -296,6 +317,11 @@ export function LedgerFilters({
           </span>
         ) : null}
       </div>
+
+      <p className="text-xs text-text-muted">
+        Atajos: <kbd>j</kbd>/<kbd>k</kbd> para moverte entre filas, <kbd>Enter</kbd> para editar la
+        categoría y <kbd>Escape</kbd> para salir.
+      </p>
     </div>
   );
 }
@@ -379,13 +405,12 @@ export function SavedViewsControl({ initialViews, currentQuery, onApply }: Saved
 
       <label className="flex flex-col gap-1 text-sm font-medium text-text">
         Vista guardada
-        <select
+        <Select
           value={activeId}
           aria-label="Vistas guardadas"
           onChange={(event) => {
             selectView(event.target.value);
           }}
-          className={INPUT_CLASS}
         >
           <option value="">Ninguna</option>
           {views.map((view) => (
@@ -393,28 +418,26 @@ export function SavedViewsControl({ initialViews, currentQuery, onApply }: Saved
               {view.name}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
 
-      <button
-        type="button"
+      <Button
+        variant="secondary"
         onClick={() => {
           void saveView();
         }}
-        className={BUTTON_CLASS}
       >
         Guardar vista
-      </button>
-      <button
-        type="button"
+      </Button>
+      <Button
+        variant="secondary"
         onClick={() => {
           void deleteView();
         }}
         disabled={activeId === ''}
-        className={BUTTON_CLASS}
       >
         Eliminar vista
-      </button>
+      </Button>
     </>
   );
 }
@@ -440,28 +463,26 @@ export function LedgerPagination({
         Página {page} de {totalPages} · {total} movimientos
       </p>
       <div className="flex items-center gap-2">
-        <button
-          type="button"
+        <Button
+          variant="secondary"
           onClick={() => {
             onChange(Math.max(1, page - 1));
           }}
           disabled={page <= 1 || isPending}
           aria-label="Página anterior"
-          className={BUTTON_CLASS}
         >
           Anterior
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="secondary"
           onClick={() => {
             onChange(Math.min(totalPages, page + 1));
           }}
           disabled={page >= totalPages || isPending}
           aria-label="Página siguiente"
-          className={BUTTON_CLASS}
         >
           Siguiente
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -506,21 +527,20 @@ export function LedgerBulkBar({
           onChange={(event) => {
             onCategoryChange(event.target.value);
           }}
-          className={INPUT_CLASS}
+          className={fieldControlClasses}
         />
       </label>
 
-      <button
-        type="button"
+      <Button
         onClick={onApply}
         disabled={isPending || overLimit || category.trim().length === 0}
-        className={BUTTON_CLASS}
+        loading={isPending}
       >
         {isPending ? 'Aplicando…' : `Aplicar a ${String(selectedCount)}`}
-      </button>
-      <button type="button" onClick={onCancel} className={BUTTON_CLASS}>
+      </Button>
+      <Button variant="secondary" onClick={onCancel}>
         Cancelar
-      </button>
+      </Button>
 
       {overLimit ? (
         <p role="alert" className="w-full text-sm text-expense">

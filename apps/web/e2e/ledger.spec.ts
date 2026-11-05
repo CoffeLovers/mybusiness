@@ -248,18 +248,14 @@ test.describe('Libro mayor (Issue #51)', () => {
     ).toContainText('eliminada');
   });
 
-  test('g. accesibilidad: sin violaciones críticas en /libro-mayor', async ({ page }) => {
+  test('g. accesibilidad: sin violaciones axe en /libro-mayor', async ({ page }) => {
     await openLedger(page);
 
     const accessibilityScanResults = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa'])
       .analyze();
 
-    const criticalViolations = accessibilityScanResults.violations.filter(
-      (violation) => violation.impact === 'critical',
-    );
-
-    expect(criticalViolations).toEqual([]);
+    expect(accessibilityScanResults.violations).toEqual([]);
   });
 
   test('h. teclado: Tab alcanza la celda, Enter abre y Escape cierra el editor', async ({
@@ -284,6 +280,153 @@ test.describe('Libro mayor (Issue #51)', () => {
     }
 
     expect(reached).toBe(true);
+
+    await page.keyboard.press('Enter');
+
+    const editor = page.getByRole('textbox', { name: /^Categoría de / }).first();
+
+    await expect(editor).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(editor).toHaveCount(0);
+  });
+
+  test('i. densidad conmutable conserva selección y scroll y persiste', async ({ page }) => {
+    await openLedger(page);
+
+    const checkboxes = page.locator('tbody input[type="checkbox"]');
+
+    for (let index = 0; index < 3; index += 1) {
+      await checkboxes.nth(index).check();
+    }
+
+    const scroller = page.getByTestId('ledger-scroll');
+
+    await scroller.evaluate((element) => {
+      element.scrollTop = 400;
+    });
+
+    const before = await scroller.evaluate((element) => element.scrollTop);
+
+    // El scroll debe ser real: comparar dos ceros no probaría nada.
+    expect(before).toBeGreaterThan(0);
+
+    await page.getByRole('button', { name: 'Compacta' }).click();
+
+    await expect(page.getByRole('button', { name: 'Compacta' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(page.getByRole('region', { name: 'Acciones masivas' })).toContainText(
+      '3 seleccionados',
+    );
+    await expect(page.locator('tbody tr').first()).toBeVisible();
+
+    await expect
+      .poll(async () =>
+        Math.abs((await scroller.evaluate((element) => element.scrollTop)) - before),
+      )
+      .toBeLessThanOrEqual(3);
+
+    // La preferencia sobrevive a la recarga (localStorage por usuario).
+    await page.reload();
+    await expect(page.getByRole('heading', { level: 1, name: 'Libro mayor' })).toBeVisible();
+    await expect
+      .poll(async () =>
+        page.evaluate(() => window.localStorage.getItem('mybusiness.ledger.density')),
+      )
+      .toBe('compact');
+    await expect(page.getByRole('button', { name: 'Compacta' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
+  test('j. columnas prioritarias en móvil sin scroll horizontal', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openLedger(page);
+
+    for (const column of ['date', 'name', 'amount', 'status']) {
+      await expect(page.locator(`thead th[data-column="${column}"]`)).toBeVisible();
+    }
+
+    for (const column of ['category', 'currency', 'evidence', 'notes']) {
+      await expect(page.locator(`thead th[data-column="${column}"]`)).toBeHidden();
+      await expect(page.locator(`tbody td[data-column="${column}"]`).first()).toBeHidden();
+    }
+
+    const overflow = await page.getByTestId('ledger-scroll').evaluate((element) => ({
+      scrollWidth: element.scrollWidth,
+      clientWidth: element.clientWidth,
+    }));
+
+    expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
+  });
+
+  test('k. importes alineados a la derecha con cifras tabulares', async ({ page }) => {
+    await openLedger(page);
+
+    const header = page.locator('thead th[data-column="amount"]');
+    const cell = page.locator('tbody td[data-column="amount"]').first();
+
+    await expect(header).toHaveCSS('text-align', 'right');
+    await expect(header).toHaveCSS('font-variant-numeric', 'tabular-nums');
+    await expect(cell).toHaveCSS('text-align', 'right');
+    await expect(cell).toHaveCSS('font-variant-numeric', 'tabular-nums');
+  });
+
+  test('l. cabecera sticky al hacer scroll', async ({ page }) => {
+    await openLedger(page);
+
+    const thead = page.locator('thead');
+
+    await expect(thead).toHaveCSS('position', 'sticky');
+    await expect(thead).toHaveCSS('top', '0px');
+
+    await page.getByTestId('ledger-scroll').evaluate((element) => {
+      element.scrollTop = 400;
+    });
+
+    await expect(thead).toBeVisible();
+  });
+
+  test('m. error inline: conserva el borrador, aria-invalid y describedby', async ({ page }) => {
+    await openLedger(page);
+
+    await page.locator('button[data-editable="category"]').first().click();
+
+    const editor = page.getByRole('textbox', { name: /^Categoría de / }).first();
+
+    await editor.fill('__fail');
+    await editor.press('Enter');
+
+    await expect(editor).toBeVisible();
+    await expect(editor).toHaveValue('__fail');
+    await expect(editor).toHaveAttribute('aria-invalid', 'true');
+
+    const describedBy = await editor.getAttribute('aria-describedby');
+
+    expect(describedBy).not.toBeNull();
+    await expect(page.locator(`[id="${describedBy ?? ''}"]`)).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(editor).toHaveCount(0);
+  });
+
+  test('n. atajos j/k, Enter y Escape sobre las filas', async ({ page }) => {
+    await openLedger(page);
+
+    const firstRow = page.locator('tbody tr[data-row-index="0"]');
+    const secondRow = page.locator('tbody tr[data-row-index="1"]');
+
+    await firstRow.focus();
+    await expect(firstRow).toBeFocused();
+
+    await page.keyboard.press('j');
+    await expect(secondRow).toBeFocused();
+
+    await page.keyboard.press('k');
+    await expect(firstRow).toBeFocused();
 
     await page.keyboard.press('Enter');
 

@@ -20,6 +20,7 @@ import {
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { KeyboardEvent } from 'react';
 
 import type {
   LedgerPageResponse,
@@ -28,6 +29,8 @@ import type {
 } from '@mybusiness/contracts';
 
 import { InlineEditCell } from '@/components/ledger/inline-edit-cell';
+import { LEDGER_ROW_HEIGHT, useLedgerDensity } from '@/components/ledger/ledger-preferences';
+import type { LedgerDensity } from '@/components/ledger/ledger-preferences';
 import {
   AmountCell,
   LedgerBulkBar,
@@ -54,8 +57,32 @@ export interface LedgerViewProps {
 type EditableField = 'category' | 'notes';
 
 const PAGE_PATH = '/libro-mayor';
-const ROW_HEIGHT = 44;
 const SEARCH_DEBOUNCE_MS = 300;
+
+/**
+ * Anchos responsive por columna. En móvil sólo quedan las columnas
+ * prioritarias (fecha, descripción, importe y conciliación); las demás se
+ * ocultan con `hidden md:table-cell` en cabecera y celdas.
+ */
+const COLUMN_CLASSES: Record<string, { th: string; td: string }> = {
+  select: { th: 'w-11', td: 'w-11' },
+  date: { th: 'w-20 text-left md:w-28', td: 'w-20 md:w-28' },
+  name: { th: 'text-left', td: '' },
+  category: { th: 'hidden text-left md:table-cell md:w-44', td: 'hidden md:table-cell' },
+  amount: {
+    th: 'w-24 text-right tabular-nums md:w-32',
+    td: 'w-24 text-right tabular-nums md:w-32',
+  },
+  currency: { th: 'hidden text-left md:table-cell md:w-20', td: 'hidden md:table-cell' },
+  status: { th: 'w-32 text-left md:w-44', td: 'w-32 md:w-44' },
+  evidence: { th: 'hidden text-left md:table-cell md:w-36', td: 'hidden md:table-cell' },
+  notes: { th: 'hidden text-left md:table-cell md:w-56', td: 'hidden md:table-cell' },
+};
+
+/** Rellena la clase de la columna (o vacía si aún no está mapeada). */
+function columnClass(columnId: string, part: 'th' | 'td'): string {
+  return COLUMN_CLASSES[columnId]?.[part] ?? '';
+}
 
 /** Columnas ordenables: `id` de columna → campo del contrato. */
 const SORTABLE_COLUMNS: Record<string, LedgerSortField> = {
@@ -67,7 +94,7 @@ const SORTABLE_COLUMNS: Record<string, LedgerSortField> = {
 };
 
 const CHECKBOX_CLASS =
-  'h-4 w-4 accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
+  'size-6 accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
 
 const columnHelper = createColumnHelper<LedgerRowResponse>();
 
@@ -108,12 +135,14 @@ function SortHeader({
   activeField,
   dir,
   onSort,
+  align = 'left',
 }: {
   label: string;
   field: LedgerSortField;
   activeField: LedgerSortField;
   dir: 'asc' | 'desc';
   onSort: (field: LedgerSortField) => void;
+  align?: 'left' | 'right';
 }) {
   const isActive = activeField === field;
   const direction = isActive ? (dir === 'asc' ? ' (ascendente)' : ' (descendente)') : '';
@@ -125,7 +154,9 @@ function SortHeader({
         onSort(field);
       }}
       aria-label={`Ordenar por ${label}${direction}`}
-      className="flex items-center gap-1 rounded-sm text-left text-xs font-semibold tracking-wide text-text-muted uppercase hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      className={`flex items-center gap-1 rounded-sm text-xs font-semibold tracking-wide text-text-muted uppercase hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+        align === 'right' ? 'ml-auto justify-end text-right' : 'text-left'
+      }`}
     >
       {label}
       <span aria-hidden="true">{isActive ? (dir === 'asc' ? '↑' : '↓') : '↕'}</span>
@@ -160,10 +191,13 @@ export function LedgerView({
   const [isBulkPending, setIsBulkPending] = useState(false);
   const [searchInput, setSearchInput] = useState(initialQuery.q ?? '');
   const [reloadToken, setReloadToken] = useState(0);
+  const { density, setDensity } = useLedgerDensity();
 
   const rowsRef = useRef<LedgerRowResponse[]>(rows);
   const headerCheckboxRef = useRef<HTMLInputElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const rowRefs = useRef<Map<number, HTMLTableRowElement>>(new Map());
+  const focusedRowIndexRef = useRef<number | null>(null);
   const didMountRef = useRef(false);
 
   useEffect(() => {
@@ -378,7 +412,7 @@ export function LedgerView({
   }, []);
 
   const columns = useMemo(() => {
-    function sortHeaderFor(label: string, field: LedgerSortField) {
+    function sortHeaderFor(label: string, field: LedgerSortField, align?: 'left' | 'right') {
       function SortableHeader() {
         return (
           <SortHeader
@@ -387,6 +421,7 @@ export function LedgerView({
             activeField={query.sortBy}
             dir={query.sortDir}
             onSort={toggleSort}
+            align={align}
           />
         );
       }
@@ -452,6 +487,7 @@ export function LedgerView({
             value={info.row.original.category ?? ''}
             label={`Categoría de ${info.row.original.name}`}
             maxLength={200}
+            field="category"
             onSave={(next) => saveField(info.row.original.id, 'category', next)}
           />
         ),
@@ -459,7 +495,7 @@ export function LedgerView({
       columnHelper.accessor('amountMinor', {
         id: 'amount',
         size: 132,
-        header: sortHeaderFor('Importe', 'amount'),
+        header: sortHeaderFor('Importe', 'amount', 'right'),
         cell: (info) => <AmountCell row={info.row.original} />,
       }),
       columnHelper.accessor('isoCurrencyCode', {
@@ -506,6 +542,7 @@ export function LedgerView({
             label={`Notas de ${info.row.original.name}`}
             maxLength={1000}
             multiline
+            field="notes"
             onSave={(next) => saveField(info.row.original.id, 'notes', next)}
           />
         ),
@@ -531,19 +568,138 @@ export function LedgerView({
   });
 
   const tableRows = table.getRowModel().rows;
+  const rowHeight = LEDGER_ROW_HEIGHT[density];
   const virtualizer = useVirtualizer({
     count: tableRows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
+    estimateSize: () => rowHeight,
     overscan: 12,
   });
+
+  // Al cambiar la densidad las mediciones previas dejan de ser válidas.
+  useEffect(() => {
+    virtualizer.measure();
+  }, [density, virtualizer]);
+
+  /** Conmuta la densidad conservando la selección, los filtros y el scroll. */
+  const changeDensity = useCallback(
+    (next: LedgerDensity) => {
+      if (next === density) {
+        return;
+      }
+
+      const node = scrollRef.current;
+      const scrollTop = node?.scrollTop ?? 0;
+
+      setDensity(next);
+
+      window.requestAnimationFrame(() => {
+        const current = scrollRef.current;
+
+        if (current !== null) {
+          current.scrollTop = scrollTop;
+        }
+
+        virtualizer.measure();
+
+        // Segunda pasada: el virtualizador puede recalcular alturas tras medir.
+        window.requestAnimationFrame(() => {
+          const restored = scrollRef.current;
+
+          if (restored !== null) {
+            restored.scrollTop = scrollTop;
+          }
+        });
+      });
+    },
+    [density, setDensity, virtualizer],
+  );
+
+  /** Enfoca una fila virtualizada, desplazándola a la vista si hace falta. */
+  const focusRow = useCallback(
+    (index: number) => {
+      if (index < 0 || index >= tableRows.length) {
+        return;
+      }
+
+      virtualizer.scrollToIndex(index, { align: 'auto' });
+
+      window.requestAnimationFrame(() => {
+        const element = rowRefs.current.get(index);
+
+        if (element !== undefined) {
+          element.focus();
+          focusedRowIndexRef.current = index;
+        }
+      });
+    },
+    [tableRows.length, virtualizer],
+  );
+
+  const handleTableKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+
+      const target = event.target;
+
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+
+      const tag = target.tagName;
+
+      if (target.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+        return;
+      }
+
+      if (event.key === 'j' || event.key === 'k') {
+        event.preventDefault();
+        const current = focusedRowIndexRef.current;
+        const next = current === null ? 0 : current + (event.key === 'j' ? 1 : -1);
+
+        focusRow(next);
+
+        return;
+      }
+
+      if (event.key === 'Enter') {
+        if (target instanceof HTMLTableRowElement) {
+          const editable = target.querySelector<HTMLButtonElement>(
+            'button[data-editable="category"]',
+          );
+
+          if (editable !== null) {
+            event.preventDefault();
+            editable.click();
+          }
+        }
+
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        const row = target.closest('tr');
+
+        if (row !== null) {
+          (document.activeElement as HTMLElement | null)?.blur();
+          focusedRowIndexRef.current = null;
+        }
+      }
+    },
+    [focusRow],
+  );
 
   const virtualRows = virtualizer.getVirtualItems();
   const selectedCount = selectedIds.size;
   const overLimit = selectedCount > MAX_BULK_ROWS;
 
   return (
-    <section className="flex flex-col gap-4" aria-busy={isPending}>
+    <section
+      className={`flex flex-col gap-4 ${selectedCount > 0 ? 'pb-28' : ''}`}
+      aria-busy={isPending}
+    >
       <p role="status" aria-live="polite" className="sr-only">
         {announcement}
       </p>
@@ -563,11 +719,13 @@ export function LedgerView({
         query={query}
         searchInput={searchInput}
         isPending={isPending}
+        density={density}
         viewsControl={
           <SavedViewsControl initialViews={savedViews} currentQuery={query} onApply={setQuery} />
         }
         onSearchChange={setSearchInput}
         onFilterChange={updateFilter}
+        onDensityChange={changeDensity}
         onClear={() => {
           setQuery(DEFAULT_LEDGER_QUERY);
         }}
@@ -578,6 +736,8 @@ export function LedgerView({
 
       <div
         ref={scrollRef}
+        data-testid="ledger-scroll"
+        onKeyDown={handleTableKeyDown}
         className="max-h-[70vh] overflow-auto rounded-xl border border-border bg-surface"
       >
         <table className="w-full table-fixed border-collapse text-sm" aria-rowcount={total}>
@@ -595,7 +755,7 @@ export function LedgerView({
                     <th
                       key={header.id}
                       scope="col"
-                      style={{ width: header.getSize() }}
+                      data-column={header.column.id}
                       aria-sort={
                         field === undefined
                           ? undefined
@@ -605,7 +765,7 @@ export function LedgerView({
                               : 'descending'
                             : 'none'
                       }
-                      className="border-b border-border px-2 py-2 text-left align-middle"
+                      className={`border-b border-border px-2 py-2 align-middle ${columnClass(header.column.id, 'th')}`}
                     >
                       {header.isPlaceholder
                         ? null
@@ -636,20 +796,39 @@ export function LedgerView({
                 return (
                   <tr
                     key={tableRow.id}
+                    ref={(element) => {
+                      if (element === null) {
+                        rowRefs.current.delete(virtualRow.index);
+                      } else {
+                        rowRefs.current.set(virtualRow.index, element);
+                      }
+                    }}
+                    tabIndex={-1}
+                    data-row-index={virtualRow.index}
                     aria-selected={selectedIds.has(tableRow.original.id)}
                     aria-rowindex={virtualRow.index + 2}
+                    onFocus={() => {
+                      focusedRowIndexRef.current = virtualRow.index;
+                    }}
                     style={{
                       position: 'absolute',
                       top: 0,
                       left: 0,
                       right: 0,
+                      display: 'table',
+                      tableLayout: 'fixed',
+                      width: '100%',
                       height: `${String(virtualRow.size)}px`,
                       transform: `translateY(${String(virtualRow.start)}px)`,
                     }}
-                    className="border-b border-border/60 hover:bg-surface-raised"
+                    className="border-b border-border/60 hover:bg-surface-raised focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
                   >
                     {tableRow.getVisibleCells().map((cell) => (
-                      <td key={cell.id} className="overflow-hidden px-2 py-1 align-middle">
+                      <td
+                        key={cell.id}
+                        data-column={cell.column.id}
+                        className={`overflow-hidden px-2 align-middle ${density === 'compact' ? 'py-0.5' : 'py-2'} ${columnClass(cell.column.id, 'td')}`}
+                      >
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
                     ))}
