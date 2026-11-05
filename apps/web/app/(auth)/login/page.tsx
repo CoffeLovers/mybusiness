@@ -12,7 +12,7 @@ export default async function LoginPage() {
   const session = await readSession();
 
   if (session !== null) {
-    redirect('/');
+    redirect('/resumen');
   }
 
   return (

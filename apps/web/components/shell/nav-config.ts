@@ -13,7 +13,7 @@ export type NavItem = {
 };
 
 export const NAV_ITEMS: readonly NavItem[] = [
-  { id: 'resumen', label: 'Resumen', href: '/' },
+  { id: 'resumen', label: 'Resumen', href: '/resumen' },
   { id: 'libro-mayor', label: 'Libro mayor', href: '/libro-mayor' },
   { id: 'facturas', label: 'Facturas', href: null },
   { id: 'bancos', label: 'Bancos', href: null },
@@ -28,6 +28,7 @@ export const LINKED_NAV_ITEMS: readonly LinkedNavItem[] = NAV_ITEMS.filter(
 );
 
 const SEGMENT_LABELS: Record<string, string> = {
+  resumen: 'Resumen',
   'libro-mayor': 'Libro mayor',
   movimientos: 'Movimientos',
   facturas: 'Facturas',
@@ -62,13 +63,27 @@ export function readableSegment(segment: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
-/** Migas derivadas de la ruta; la raíz siempre es "Resumen". */
+/** Migas derivadas de la ruta; la raíz de la app es siempre "Resumen" (`/resumen`). */
 export function buildCrumbs(pathname: string): readonly Crumb[] {
   const segments = pathname.split('/').filter((segment) => segment !== '');
-  const crumbs: Crumb[] = [{ label: 'Resumen', href: '/' }];
+  const rootCrumb: Crumb = { label: 'Resumen', href: '/resumen' };
 
-  let accumulated = '';
-  for (const segment of segments) {
+  if (segments.length === 0) {
+    return [rootCrumb];
+  }
+
+  // `/resumen` es la raíz de la app: no se duplica la miga.
+  const isRoot = segments[0] === 'resumen';
+  const rest = isRoot ? segments.slice(1) : segments;
+
+  if (rest.length === 0) {
+    return [rootCrumb];
+  }
+
+  const crumbs: Crumb[] = [rootCrumb];
+  let accumulated = isRoot ? '/resumen' : '';
+
+  for (const segment of rest) {
     accumulated += `/${segment}`;
     crumbs.push({ label: readableSegment(segment), href: accumulated });
   }
@@ -77,7 +92,7 @@ export function buildCrumbs(pathname: string): readonly Crumb[] {
 }
 
 /**
- * Mejor coincidencia por sección: `"/"` solo exacta y el resto por prefijo,
+ * Mejor coincidencia por sección: coincidencia exacta o por prefijo,
  * quedándose con el `href` más largo para no marcar dos ítems a la vez.
  */
 export function getActiveHref(pathname: string): string | undefined {

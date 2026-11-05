@@ -32,8 +32,8 @@ async function cookieValue(page: Page, name: string): Promise<string | undefined
 }
 
 test.describe('sesión del BFF', () => {
-  test('sin sesión, la portada redirige al login', async ({ page }) => {
-    await page.goto('/');
+  test('sin sesión, /resumen redirige al login', async ({ page }) => {
+    await page.goto('/resumen');
 
     await expect(page).toHaveURL(/\/login$/);
     await expect(page.getByRole('heading', { level: 2, name: 'Iniciar sesión' })).toBeVisible();
@@ -42,7 +42,7 @@ test.describe('sesión del BFF', () => {
   test('login correcto deja la sesión sólo en cookies httpOnly', async ({ page }) => {
     await login(page);
 
-    await expect(page).toHaveURL(`${ORIGIN}/`);
+    await expect(page).toHaveURL(`${ORIGIN}/resumen`);
     await expect(page.getByRole('heading', { level: 1, name: 'Resumen' })).toBeVisible();
 
     const storage = await page.evaluate(() => ({
@@ -124,7 +124,7 @@ test.describe('sesión del BFF', () => {
 
     expect(response.status()).toBe(200);
 
-    await page.goto('/');
+    await page.goto('/resumen');
 
     await expect(page).toHaveURL(/\/login$/);
   });

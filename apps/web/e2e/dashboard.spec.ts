@@ -8,7 +8,7 @@ async function login(page: Page): Promise<void> {
   await page.getByLabel('Correo electrónico').fill('ada@example.com');
   await page.getByLabel('Contraseña').fill('correct-password');
   await Promise.all([
-    page.waitForURL((url) => url.pathname === '/'),
+    page.waitForURL((url) => url.pathname === '/resumen'),
     page.getByRole('button', { name: 'Entrar' }).click(),
   ]);
   await page.waitForLoadState('load');
@@ -98,7 +98,7 @@ test.describe('Dashboard de Flujo de Caja (Issue #50)', () => {
     await login(page);
 
     // Forzar escenario de datos vacíos mediante parámetro
-    await page.goto('/?currency=EMPTY');
+    await page.goto('/resumen?currency=EMPTY');
 
     await expect(
       page.getByRole('heading', { level: 2, name: 'Sin movimientos en el período' }),
@@ -120,7 +120,7 @@ test.describe('Dashboard de Flujo de Caja (Issue #50)', () => {
     await login(page);
 
     // Forzar escenario de error
-    await page.goto('/?currency=ERROR');
+    await page.goto('/resumen?currency=ERROR');
 
     await expect(
       page.getByRole('heading', { level: 2, name: 'Error al cargar el resumen' }),

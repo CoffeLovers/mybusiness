@@ -67,12 +67,21 @@ Notas de estado actual:
 | `neutral`        | Importes sin signo y estados neutros                    | Sí          | `#4b5563` | `#9aa5b4` | semántica |
 | `alert`          | Advertencias y errores de estado de baja severidad      | Sí          | `#92400e` | `#fbbf24` | semántica |
 | `focus-ring`     | Anillo de foco visible sobre superficies adyacentes     | Sí          | `#1d4ed8` | `#7aa2ff` | semántica |
+| `accent`         | Acento de marca lima: realces y texto sobre `inverse`   | Sí          | `#ddf84b` | `#ddf84b` | semántica |
+| `on-accent`      | Texto e iconos sobre `accent`                           | Sí          | `#000000` | `#000000` | semántica |
+| `inverse`        | Superficie de sección invertida (no fondo global)       | Sí          | `#1a1a1a` | `#1a1a1a` | semántica |
+| `inverse-raised` | Tarjetas y paneles dentro de una sección invertida      | Sí          | `#262626` | `#262626` | semántica |
+| `on-inverse`     | Texto e iconos primarios sobre `inverse`                | Sí          | `#ffffff` | `#ffffff` | semántica |
+| `inverse-muted`  | Metadatos y etiquetas secundarias sobre `inverse`       | Sí          | `#b3b3b3` | `#b3b3b3` | semántica |
 
 Reglas asociadas:
 
 - Convención de nombres: el contrato JSON usa `camelCase` (`surfaceRaised`, `borderStrong`, `focusRing`); CSS usa `kebab-case` (`--color-surface-raised`, `--color-border-strong`) y Compose usa el slot M3 correspondiente.
 - `border` es decorativo: WCAG 1.4.11 no aplica. Si un borde delimita un control, se usa `border-strong`.
 - `focus-ring` no reutiliza `primary` por conveniencia: se declara como rol propio para poder ajustarlo por superficie sin tocar la marca. En web hoy el anillo usa `--color-primary` (`globals.css:183`); RD-02 debe introducir `--color-focus-ring`.
+- **`accent`, `on-accent`, `inverse`, `inverse-raised`, `on-inverse` e `inverse-muted` son idénticos en claro y oscuro.** La sección invertida siempre es oscura y el acento es de marca, por lo que no dependen del tema.
+- **`inverse` no es un fondo global.** Delimita secciones invertidas concretas (héroe, CTA, cinta); el fondo base de la vista sigue siendo `surface`.
+- **`accent` no se usa como texto sobre superficies claras** (`surface`/`surface-raised`): 1.19:1, no alcanza AA. Como texto solo se usa sobre `inverse` (14.59:1).
 - **`on-primary` es el único nombre canónico.** `DESIGN-RULES` §3 fija la convergencia a `on-primary`; el renombrado se completó en RD-02 (#91): `primary-contrast`/`primaryContrast` ya no existen y el único nombre es `on-primary`/`onPrimary`. Android ya usa `onPrimary` y no requirió cambios.
 
 ## 5. Ratios de contraste verificados
@@ -135,10 +144,27 @@ Verificación WCAG 2.1 con luminancia relativa, redondeo a dos decimales. Genera
 
 Aclaraciones:
 
-- Total: 44 pares validados (22 por tema).
+- Total: 54 pares validados (27 por tema).
 - `border` decorativo está exento: 1.62:1 en claro y 2.17:1 en oscuro. No se usa para delimitar controles ni para transmitir estado.
 - `border-strong` cumple 3:1 en ambos temas y ambas superficies; es el borde permitido en inputs, botones secundarios y contenedores interactivos.
 - El mínimo global del contrato es 4.46:1 (`border-strong` sobre `surface-raised` en claro), por encima del 3:1 exigido a componentes de UI.
+
+### Acento y sección invertida
+
+Estos seis pares usan los mismos valores en claro y oscuro. Aparecen duplicados en el script para ambos temas porque la paridad de roles es obligatoria.
+
+| Par (fg / bg)               | Ratio | Umbral | Resultado |
+| --------------------------- | ----- | ------ | --------- |
+| `on-accent` / `accent`      | 17.60 | 4.5    | PASS      |
+| `on-inverse` / `inverse`    | 17.40 | 4.5    | PASS      |
+| `inverse-muted` / `inverse` | 8.30  | 4.5    | PASS      |
+| `accent` / `inverse`        | 14.59 | 4.5    | PASS      |
+| `accent` / `inverse` (UI)   | 14.59 | 3.0    | PASS      |
+
+- `on-accent` (negro) sobre `accent` (lima) alcanza 17.60:1: apto para texto e iconos, incluido AAA.
+- `on-inverse` y `inverse-muted` sobre `inverse` cumplen AA con holgura (17.40:1 y 8.30:1).
+- `accent` sobre `inverse` sirve como texto de acento y como indicador de UI (14.59:1).
+- **`accent` NO se usa como texto sobre `surface` claro**: 1.19:1, muy por debajo de 4.5:1. Sobre `surface` oscuro daría 16.09:1, pero se evita depender del tema y el acento se reserva para la sección invertida o como fondo con `on-accent`.
 
 ## 6. Escala de espaciado 4/8
 
@@ -238,6 +264,7 @@ Reduced motion:
 - Web: `@media (prefers-reduced-motion: reduce)` desactiva animaciones, transiciones no esenciales y parallax. Ya existe el bloque en `globals.css:195-206`; todo componente nuevo debe respetarlo.
 - Compose: se respeta la escala de animación del sistema (`Settings.Global.ANIMATOR_DURATION_SCALE`); con animaciones desactivadas no se ejecutan transiciones no esenciales.
 - Las duraciones viven en tokens, no en clases sueltas ni en `animate-*` arbitrarios.
+- Excepción acotada: `globals.css` declara `@keyframes marquee` y la utilidad `.animate-marquee` (28 s lineal infinita) como animación reutilizable de cintas de logos/texto. No es un token de duración nuevo; el bloque global de `prefers-reduced-motion` la detiene.
 
 ## 11. Correspondencia web ↔ Android
 
@@ -334,6 +361,7 @@ ECharts recibe números, no variables CSS, de modo que estos dos valores no pued
 8. **Movimiento solo con las duraciones y easings de §10**, respetando reduced motion.
 9. **El alias del color de contraste de `primary` fue eliminado en RD-02 (#91).** Código nuevo y existente usa `--color-on-primary` (web) y `onPrimary` (Compose); `DESIGN-RULES` §3 fija `on-primary` como el único nombre canónico. No quedan alias ni nombres alternativos en el contrato.
 10. **La elevación no sustituye al contraste.**
+11. **`inverse` no es un fondo global.** Se usa solo en secciones invertidas; el fondo base siempre es `surface`. `accent` se reserva para realces y para texto sobre `inverse`, nunca como texto sobre `surface` claro.
 
 ## 14. Validación reproducible y criterios de aceptación
 
@@ -342,14 +370,14 @@ node scripts/design/check-contrast.mjs
 pnpm lint
 ```
 
-Resultado esperado del script: `OK: 44 pares de contraste cumplen los umbrales; 11 tokens de spacing, 5 radios y 3 duraciones de motion son coherentes.` con exit code `0`. Cualquier par por debajo del umbral, un spacing fuera de la escala, un radio inválido o una duración con formato incorrecto produce exit code `1` y un listado de fallos con tema, token, ratio y mínimo exigido.
+Resultado esperado del script: `OK: 54 pares de contraste cumplen los umbrales; 11 tokens de spacing, 5 radios y 3 duraciones de motion son coherentes.` con exit code `0`. Cualquier par por debajo del umbral, un spacing fuera de la escala, un radio inválido o una duración con formato incorrecto produce exit code `1` y un listado de fallos con tema, token, ratio y mínimo exigido.
 
 El script:
 
 - Lee `docs/design/tokens.json` con una ruta relativa al propio archivo, no a `process.cwd()`.
 - Admite `#rgb` y `#rrggbb`; un color inválido produce error explícito.
 - Calcula luminancia relativa y ratio según WCAG 2.1, redondeado a dos decimales.
-- Valida los 22 pares por tema y exige paridad de roles entre `light` y `dark`.
+- Valida los 27 pares por tema y exige paridad de roles entre `light` y `dark`.
 - Valida la escala cerrada de spacing (`spacing.escala`): cada token debe pertenecer a la lista permitida, además de ser múltiplo de `allowedMultiplesOf`.
 - No tiene dependencias externas.
 

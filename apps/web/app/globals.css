@@ -40,6 +40,16 @@
    | alert / surface                  | 11.50  | PASS      | PASS   |
    | alert / surface-raised           | 10.36  | PASS      | PASS   |
 
+   SECCIÓN INVERTIDA Y ACENTO (idénticos en claro y oscuro)
+   | Par (texto / fondo)              | Ratio  | AA texto  |
+   |----------------------------------|--------|-----------|
+   | on-accent / accent               | 17.60  | PASS      |
+   | on-inverse / inverse             | 17.40  | PASS      |
+   | inverse-muted / inverse          |  8.30  | PASS      |
+   | accent / inverse                 | 14.59  | PASS      |
+   `--color-accent` NO se usa como texto sobre `surface` claro: 1.19:1
+   (falla AA). Sobre `inverse` cumple con holgura (14.59:1).
+
    Mínimo global texto/fondo: 5.06:1 (income sobre surface-raised, claro) -> AA.
    `--color-border` es decorativo (no transmite información por sí solo:
    1.62:1 en claro, 2.17:1 en oscuro); los estados interactivos y el foco
@@ -77,6 +87,15 @@
   --color-expense: #b91c1c;
   --color-neutral: #4b5563;
   --color-alert: #92400e;
+
+  /* Acento de marca y superficie inversa (identicos en claro y oscuro:
+     la seccion inversa siempre es oscura y el acento es de marca). */
+  --color-accent: #ddf84b;
+  --color-on-accent: #000000;
+  --color-inverse: #1a1a1a;
+  --color-inverse-raised: #262626;
+  --color-on-inverse: #ffffff;
+  --color-inverse-muted: #b3b3b3;
 }
 
 :root.dark {
@@ -102,6 +121,14 @@
   --color-expense: #f87171;
   --color-neutral: #9aa5b4;
   --color-alert: #fbbf24;
+
+  /* Acento de marca y superficie inversa: mismos valores que en claro. */
+  --color-accent: #ddf84b;
+  --color-on-accent: #000000;
+  --color-inverse: #1a1a1a;
+  --color-inverse-raised: #262626;
+  --color-on-inverse: #ffffff;
+  --color-inverse-muted: #b3b3b3;
 }
 
 /* Mapeo de tokens a utilidades de Tailwind v4.
@@ -128,6 +155,12 @@
   --color-expense: var(--color-expense);
   --color-neutral: var(--color-neutral);
   --color-alert: var(--color-alert);
+  --color-accent: var(--color-accent);
+  --color-on-accent: var(--color-on-accent);
+  --color-inverse: var(--color-inverse);
+  --color-inverse-raised: var(--color-inverse-raised);
+  --color-on-inverse: var(--color-on-inverse);
+  --color-inverse-muted: var(--color-inverse-muted);
 
   /* Tipografia: fuentes del sistema (sin descarga de webfonts) */
   --font-sans:
@@ -195,6 +228,23 @@
   ::selection {
     background-color: var(--color-primary);
     color: var(--color-on-primary);
+  }
+}
+
+/* Marquee reutilizable (logos, cintas de texto). La animacion se anula sola
+   bajo `prefers-reduced-motion: reduce` por el bloque global de mas abajo. */
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@layer utilities {
+  .animate-marquee {
+    animation: marquee 28s linear infinite;
   }
 }
 

@@ -10,7 +10,7 @@ import { gatewayFetch } from '@/lib/server/gateway-client';
 import { readSession } from '@/lib/session/server';
 
 export const metadata = {
-  title: 'Resumen · Asistente Financiero',
+  title: 'Resumen · MyBusiness',
 };
 
 interface PageProps {
@@ -57,8 +57,11 @@ export default async function ResumenPage(props: PageProps) {
 
   return (
     <section className="flex flex-col gap-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-3xl font-semibold text-text">Resumen</h1>
+      <header className="flex flex-col gap-2">
+        <span className="w-fit rounded-full bg-accent px-3 py-1 text-[11px] font-semibold tracking-wider text-on-accent uppercase">
+          Panel financiero
+        </span>
+        <h1 className="text-4xl font-semibold tracking-tight text-text">Resumen</h1>
         <p className="text-base text-text-muted">Hola, {firstName}. Bienvenido de nuevo.</p>
       </header>
 

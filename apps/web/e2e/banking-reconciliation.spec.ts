@@ -64,7 +64,7 @@ test.describe('E2E Multi-canal: Banking, Conciliación y Aislamiento Tenant (Iss
     expect(syncData.added).toBeGreaterThan(0);
 
     // 3. Verificar en UI que el Dashboard muestra las métricas consolidadas del tenant
-    await page.goto('/');
+    await page.goto('/resumen');
     await expect(page.getByRole('heading', { level: 1, name: 'Resumen' })).toBeVisible();
     await expect(page.getByText('45.000,00 €')).toBeVisible(); // Saldo consolidado
     await expect(page.getByText('12.500,00 €')).toBeVisible(); // Ingresos

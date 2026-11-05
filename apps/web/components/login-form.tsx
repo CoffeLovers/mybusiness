@@ -42,7 +42,7 @@ export function LoginForm() {
 
       if (response.ok) {
         // Navegación completa: el Server Component vuelve a leer la cookie httpOnly.
-        window.location.assign('/');
+        window.location.assign('/resumen');
         return;
       }
 

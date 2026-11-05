@@ -7,6 +7,7 @@ async function login(page: Page): Promise<void> {
   await page.getByLabel('Correo electrónico').fill('ada@example.com');
   await page.getByLabel('Contraseña').fill('correct-password');
   await page.getByRole('button', { name: 'Entrar' }).click();
+  await page.waitForURL((url) => url.pathname === '/resumen');
   await expect(page.getByRole('heading', { level: 1, name: 'Resumen' })).toBeVisible();
 }
 
@@ -21,8 +22,19 @@ test.describe('smoke del portal', () => {
     expect(body).toMatchObject({ status: 'ok', service: 'web' });
   });
 
-  test('sin sesión, la portada redirige al login', async ({ page }) => {
+  test('sin sesión, la portada pública muestra la landing', async ({ page }) => {
     await page.goto('/');
+
+    await expect(
+      page.getByRole('heading', { level: 1, name: /La confianza se construye/ }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('banner').getByRole('link', { name: 'Iniciar sesión' }),
+    ).toBeVisible();
+  });
+
+  test('sin sesión, /resumen redirige al login', async ({ page }) => {
+    await page.goto('/resumen');
 
     await expect(page).toHaveURL(/\/login$/);
     await expect(page.getByRole('heading', { level: 2, name: 'Iniciar sesión' })).toBeVisible();
