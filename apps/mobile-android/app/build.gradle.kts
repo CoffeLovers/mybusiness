@@ -80,6 +80,8 @@ dependencies {
 
     implementation(libs.timber)
 
+    testImplementation(libs.junit)
+
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
