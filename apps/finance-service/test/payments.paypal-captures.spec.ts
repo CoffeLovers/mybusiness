@@ -796,6 +796,86 @@ describe('PayPalWebhookService (SF3-09)', () => {
     expect(result).toMatchObject({ status: 'ignored', reason: 'orden_no_resuelta' });
     expect(h.paymentService.reconcileCapture).not.toHaveBeenCalled();
   });
+
+  it('el fallback por invoice_id resuelve la orden cuando no hay custom_id', async () => {
+    const h = webhookHarness({
+      findOrdersByInvoiceId: vi.fn().mockResolvedValue([orderRow({ status: 'APPROVED' })]),
+    });
+
+    const result = await h.service.handleWebhook(
+      {
+        id: 'WH-11',
+        event_type: 'PAYMENT.CAPTURE.COMPLETED',
+        resource: {
+          id: 'CAPTURE-6',
+          amount: { value: '25.00', currency_code: 'USD' },
+          invoice_id: INVOICE_ID,
+        },
+      },
+      HEADERS,
+      RAW_BODY,
+    );
+
+    expect(result.status).toBe('processed');
+    expect(h.repository.findOrdersByInvoiceId).toHaveBeenCalledWith(INVOICE_ID);
+    expect(h.paymentService.reconcileCapture).toHaveBeenCalledWith(
+      expect.objectContaining({ id: ORDER_ID }),
+      'CAPTURE-6',
+      2500n,
+    );
+  });
+
+  it('sin headers ni rawBody la verificación usa el cuerpo serializado y cabeceras vacías', async () => {
+    const h = webhookHarness();
+    const payload = {
+      id: 'WH-12',
+      event_type: 'CHECKOUT.ORDER.APPROVED',
+      resource: { id: 'PAYPAL-123' },
+    };
+
+    const result = await h.service.handleWebhook(
+      payload as Record<string, unknown>,
+      undefined,
+      undefined,
+    );
+
+    expect(h.client.verifyWebhookSignature).toHaveBeenCalledWith(JSON.stringify(payload), {});
+    // La firma simulada pasa, pero la orden no existe: ignorado sin mutar.
+    expect(result).toMatchObject({ status: 'ignored', reason: 'orden_no_resuelta' });
+  });
+
+  it('un importe del proveedor no normalizable responde 400 y deja el evento FAILED', async () => {
+    const h = webhookHarness({
+      findOrdersByIdempotencyKey: vi.fn().mockResolvedValue([orderRow({ status: 'APPROVED' })]),
+    });
+
+    const error = await errorOf(() =>
+      h.service.handleWebhook(
+        {
+          id: 'WH-13',
+          event_type: 'PAYMENT.CAPTURE.COMPLETED',
+          resource: {
+            id: 'CAPTURE-7',
+            amount: { value: '1.005', currency_code: 'USD' },
+            custom_id: 'idem-1',
+          },
+        },
+        HEADERS,
+        RAW_BODY,
+      ),
+    );
+
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect(((error as BadRequestException).getResponse() as Record<string, unknown>).error).toBe(
+      'PAYMENT_WEBHOOK_EVENT_INVALID',
+    );
+    // El fallo queda registrado para que el proveedor redeliveree el evento.
+    expect(h.repository.markWebhookEvent).toHaveBeenCalledWith(
+      'WH-13',
+      'FAILED',
+      expect.any(String),
+    );
+  });
 });
 
 // ─── Reconciliación webhook → servicio (con real PayPalPaymentService) ───────
