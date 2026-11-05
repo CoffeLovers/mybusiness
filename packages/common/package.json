@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@mybusiness/contracts": "workspace:*",
+    "@mybusiness/telemetry": "workspace:*",
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
     "bullmq": "^6.4.2",
