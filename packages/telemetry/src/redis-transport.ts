@@ -13,11 +13,16 @@
  */
 import type { Deserializer, Serializer } from '@nestjs/microservices';
 import { injectRpcCarrier, takeAndAttachRpcCarrier } from './carrier';
-
-/** Reemplaza a `IdentitySerializer`: identidad + inyección de carrier OTel. */
+/** Reemplaza a `IdentitySerializer`: identidad + inyección de carrier OTel en el payload. */
 export class TelemetryRpcSerializer implements Serializer {
-  serialize(value: unknown): unknown {
-    injectRpcCarrier(value);
+  serialize(value: unknown, _options?: Record<string, unknown>): unknown {
+    if (
+      value !== null &&
+      typeof value === 'object' &&
+      'data' in (value as Record<string, unknown>)
+    ) {
+      injectRpcCarrier((value as Record<string, unknown>)['data']);
+    }
     return value;
   }
 }
@@ -76,12 +81,12 @@ export interface TelemetryTransportOptions {
 }
 
 /** Adjunta los hooks de transporte OTel a unas opciones de transporte Redis de Nest. */
-export function withTelemetryTransport(
-  options: Record<string, unknown>,
-): Record<string, unknown> & TelemetryTransportOptions {
+export function withTelemetryTransport<T extends object>(
+  options: T,
+): T & TelemetryTransportOptions {
   return {
     ...options,
     serializer: new TelemetryRpcSerializer(),
     deserializer: new TelemetryRpcDeserializer(),
-  };
+  } as T & TelemetryTransportOptions;
 }
