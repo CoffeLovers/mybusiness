@@ -8,40 +8,63 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 
-private val LightColorScheme = lightColorScheme(
-    primary = BrandPrimaryLight,
-    onPrimary = BrandOnPrimaryLight,
-    primaryContainer = BrandPrimaryContainerLight,
-    onPrimaryContainer = BrandOnPrimaryContainerLight,
-    secondary = BrandSecondaryLight,
-    onSecondary = BrandOnSecondaryLight,
-    secondaryContainer = BrandSecondaryContainerLight,
-    onSecondaryContainer = BrandOnSecondaryContainerLight,
-    background = BackgroundLight,
-    surface = SurfaceLight,
-    onSurface = OnSurfaceLight,
-    surfaceVariant = SurfaceVariantLight,
-    onSurfaceVariant = OnSurfaceVariantLight,
-    error = ErrorRed
+internal val LightColorScheme = lightColorScheme(
+    primary = LightPrimary,
+    onPrimary = LightOnPrimary,
+    primaryContainer = LightSurfaceRaised,
+    onPrimaryContainer = LightText,
+    secondary = LightIncome,
+    onSecondary = LightOnPrimary,
+    secondaryContainer = LightSurfaceRaised,
+    onSecondaryContainer = LightIncome,
+    tertiary = LightAlert,
+    onTertiary = LightOnPrimary,
+    tertiaryContainer = LightSurfaceRaised,
+    onTertiaryContainer = LightAlert,
+    error = LightExpense,
+    onError = LightOnPrimary,
+    errorContainer = LightSurfaceRaised,
+    onErrorContainer = LightExpense,
+    background = LightSurface,
+    onBackground = LightText,
+    surface = LightSurface,
+    onSurface = LightText,
+    surfaceVariant = LightSurfaceRaised,
+    onSurfaceVariant = LightTextMuted,
+    outline = LightBorderStrong,
+    outlineVariant = LightBorder,
+    scrim = Scrim
 )
 
-private val DarkColorScheme = darkColorScheme(
-    primary = BrandPrimaryDark,
-    onPrimary = BrandOnPrimaryDark,
-    primaryContainer = BrandPrimaryContainerDark,
-    onPrimaryContainer = BrandOnPrimaryContainerDark,
-    secondary = BrandSecondaryDark,
-    onSecondary = BrandOnSecondaryDark,
-    secondaryContainer = BrandSecondaryContainerDark,
-    onSecondaryContainer = BrandOnSecondaryContainerDark,
-    background = BackgroundDark,
-    surface = SurfaceDark,
-    onSurface = OnSurfaceDark,
-    surfaceVariant = SurfaceVariantDark,
-    onSurfaceVariant = OnSurfaceVariantDark,
-    error = ErrorRed
+internal val DarkColorScheme = darkColorScheme(
+    primary = DarkPrimary,
+    onPrimary = DarkOnPrimary,
+    primaryContainer = DarkSurfaceRaised,
+    onPrimaryContainer = DarkText,
+    secondary = DarkIncome,
+    onSecondary = DarkOnPrimary,
+    secondaryContainer = DarkSurfaceRaised,
+    onSecondaryContainer = DarkIncome,
+    tertiary = DarkAlert,
+    onTertiary = DarkOnPrimary,
+    tertiaryContainer = DarkSurfaceRaised,
+    onTertiaryContainer = DarkAlert,
+    error = DarkExpense,
+    onError = DarkOnPrimary,
+    errorContainer = DarkSurfaceRaised,
+    onErrorContainer = DarkExpense,
+    background = DarkSurface,
+    onBackground = DarkText,
+    surface = DarkSurface,
+    onSurface = DarkText,
+    surfaceVariant = DarkSurfaceRaised,
+    onSurfaceVariant = DarkTextMuted,
+    outline = DarkBorderStrong,
+    outlineVariant = DarkBorder,
+    scrim = Scrim
 )
 
 @Composable
@@ -58,11 +81,14 @@ fun MyBusinessTheme(
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }
+    val businessColors = if (darkTheme) DarkBusinessColors else LightBusinessColors
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        shapes = Shapes,
-        content = content
-    )
+    CompositionLocalProvider(LocalBusinessColors provides businessColors) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = Typography,
+            shapes = Shapes,
+            content = content
+        )
+    }
 }
