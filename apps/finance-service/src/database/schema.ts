@@ -86,6 +86,18 @@ export const reconciliationRunStatusEnum = pgEnum('reconciliation_run_status', [
 export const reconciliationTriggerEnum = pgEnum('reconciliation_trigger', ['MANUAL', 'NIGHTLY']);
 
 /**
+ * Estados de una orden PayPal, alineados con `PayPalOrderStatus` de
+ * `@mybusiness/contracts` (ADR 003/004).
+ */
+export const paypalOrderStatusEnum = pgEnum('paypal_order_status', [
+  'CREATED',
+  'APPROVED',
+  'CAPTURED',
+  'FAILED',
+  'REFUNDED',
+]);
+
+/**
  * Tabla: bank_connections
  * Conexión unificada a agregadores bancarios (Plaid / Belvo).
  * Almacena credenciales de acceso cifradas (AES-256-GCM) sin exponerlas nunca en claro.
@@ -548,6 +560,54 @@ export const ledgerSavedViews = pgTable(
   ],
 );
 
+/**
+ * Tabla: paypal_orders
+ * Órdenes PayPal asociadas a facturas del libro mayor (SF3-08).
+ * Importe en unidad mínima BIGINT (ADR 003); idempotencia garantizada por la
+ * base de datos con UNIQUE (tenant_id, idempotency_key) devolviendo la
+ * respuesta original del proveedor en `provider_response`.
+ */
+export const paypalOrders = pgTable(
+  'paypal_orders',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    invoiceId: uuid('invoice_id')
+      .notNull()
+      .references(() => invoices.id, { onDelete: 'restrict' }),
+    status: paypalOrderStatusEnum('status').notNull().default('CREATED'),
+    amountMinor: bigint('amount_minor', { mode: 'bigint' }).notNull(),
+    currency: varchar('currency', { length: 3 }).notNull(),
+    paypalOrderId: varchar('paypal_order_id', { length: 255 }).notNull(),
+    idempotencyKey: varchar('idempotency_key', { length: 255 }).notNull(),
+    checkoutUrl: text('checkout_url').notNull(),
+    /** Respuesta cruda del proveedor, base del replay idempotente y de SF3-09. */
+    providerResponse: jsonb('provider_response')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex('paypal_orders_tenant_idempotency_uq').on(table.tenantId, table.idempotencyKey),
+    uniqueIndex('paypal_orders_paypal_order_id_uq').on(table.paypalOrderId),
+    index('paypal_orders_tenant_id_idx').on(table.tenantId),
+    index('paypal_orders_invoice_id_idx').on(table.invoiceId),
+    index('paypal_orders_tenant_created_at_idx').on(table.tenantId, table.createdAt),
+  ],
+);
+
+export const paypalOrdersRelations = relations(paypalOrders, ({ one }) => ({
+  invoice: one(invoices, {
+    fields: [paypalOrders.invoiceId],
+    references: [invoices.id],
+  }),
+}));
+
 export const bankConnectionsRelations = relations(bankConnections, ({ many, one }) => ({
   accounts: many(bankAccounts),
   syncState: one(bankTransactionSyncState, {
@@ -654,3 +714,5 @@ export type ReconciliationRun = typeof reconciliationRuns.$inferSelect;
 export type NewReconciliationRun = typeof reconciliationRuns.$inferInsert;
 export type LedgerSavedView = typeof ledgerSavedViews.$inferSelect;
 export type NewLedgerSavedView = typeof ledgerSavedViews.$inferInsert;
+export type PayPalOrder = typeof paypalOrders.$inferSelect;
+export type NewPayPalOrder = typeof paypalOrders.$inferInsert;
