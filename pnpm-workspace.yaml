@@ -4,6 +4,14 @@ packages:
 
 overrides:
   postcss: ^8.5.18
+  esbuild: ^0.25.0
+  glob: ^14.0.2
+  js-yaml: ^5.4.1
+  minimatch: ^11.0.1
+  # @nestjs/platform-express pinnea multer a 2.4.0 (afectado por GHSA-q7qp-rjg7-q26m).
+  # Override con scope: parcheamos solo la copia transitiva, la dependencia
+  # directa de api-gateway ya declara ^2.5.0.
+  '@nestjs/platform-express>multer': ^2.5.0
 
 allowBuilds:
   '@scarf/scarf': false

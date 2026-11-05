@@ -24,7 +24,7 @@ export type McpRpcPayload = WithContext<McpJsonRpcRequest>;
 const CallToolParamsSchema = z
   .object({
     name: McpToolNameSchema,
-    arguments: z.record(z.unknown()).optional(),
+    arguments: z.record(z.string(), z.unknown()).optional(),
   })
   .strict();
 
