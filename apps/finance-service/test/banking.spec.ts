@@ -151,7 +151,9 @@ describe('Banking Module Unit Tests', () => {
       const encrypted = await service.encrypt(secret);
 
       const parts = encrypted.ciphertext.split(':');
-      parts[2] = '00' + parts[2].slice(2);
+      const tamperedBytes = Buffer.from(parts[2] ?? '', 'hex');
+      tamperedBytes[0] = (tamperedBytes[0] ?? 0) ^ 0x01;
+      parts[2] = tamperedBytes.toString('hex');
       const tampered = parts.join(':');
 
       await expect(service.decrypt(tampered, encrypted.keyVersion)).rejects.toThrow();
