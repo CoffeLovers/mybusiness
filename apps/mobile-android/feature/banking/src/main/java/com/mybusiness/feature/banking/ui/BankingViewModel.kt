@@ -8,6 +8,9 @@ import androidx.lifecycle.viewModelScope
 import com.mybusiness.core.biometric.BiometricGate
 import com.mybusiness.core.biometric.BiometricResult
 import com.mybusiness.core.biometric.SensitiveAction
+import com.mybusiness.core.common.extensions.ErrorKind
+import com.mybusiness.core.common.extensions.toErrorKind
+import com.mybusiness.core.common.extensions.toUserMessage
 import com.mybusiness.core.common.result.Result
 import com.mybusiness.core.model.BankProvider
 import com.mybusiness.feature.banking.data.deeplink.BankLinkDeepLinkStore
@@ -55,7 +58,7 @@ class BankingViewModel @Inject constructor(
 
     fun loadOverview() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            _uiState.update { it.copy(isLoading = true, errorMessage = null, errorKind = null) }
             when (val result = getBankingOverviewUseCase()) {
                 is Result.Success -> {
                     val overview = result.data
@@ -65,13 +68,26 @@ class BankingViewModel @Inject constructor(
                             connections = overview.connections,
                             accountsByConnection = overview.accounts.groupBy { account -> account.connectionId },
                             hasLoadedOnce = true,
-                            errorMessage = null
+                            errorMessage = null,
+                            errorKind = null
                         )
                     }
                 }
 
-                is Result.Error -> _uiState.update {
-                    it.copy(isLoading = false, errorMessage = result.message)
+                is Result.Error -> {
+                    val kind = result.toErrorKind()
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = when (kind) {
+                                ErrorKind.Unauthorized -> "Tu sesión expiró. Vuelve a iniciar sesión."
+                                ErrorKind.Network, ErrorKind.Generic -> result.toUserMessage(
+                                    "No pudimos cargar tus cuentas. Inténtalo de nuevo."
+                                )
+                            },
+                            errorKind = kind
+                        )
+                    }
                 }
 
                 is Result.Loading -> _uiState.update { it.copy(isLoading = true) }
@@ -81,14 +97,24 @@ class BankingViewModel @Inject constructor(
 
     fun startLink(provider: BankProvider) {
         viewModelScope.launch {
-            _uiState.update { it.copy(errorMessage = null) }
+            _uiState.update { it.copy(errorMessage = null, errorKind = null) }
             when (val result = startBankLinkUseCase(provider)) {
                 is Result.Success -> {
                     activeProvider = provider
-                    _uiState.update { it.copy(linkSession = result.data) }
+                    _uiState.update { it.copy(linkSession = result.data, errorKind = null) }
                 }
 
-                is Result.Error -> _uiState.update { it.copy(errorMessage = result.message) }
+                is Result.Error -> {
+                    val kind = result.toErrorKind()
+                    _uiState.update {
+                        it.copy(
+                            errorMessage = result.toUserMessage(
+                                "No pudimos iniciar la vinculación. Inténtalo de nuevo."
+                            ),
+                            errorKind = kind
+                        )
+                    }
+                }
 
                 is Result.Loading -> Unit
             }
@@ -107,14 +133,25 @@ class BankingViewModel @Inject constructor(
                     is Result.Success -> {
                         _uiState.update {
                             it.copy(
-                                infoMessage = "Cuenta vinculada correctamente",
-                                errorMessage = null
+                                infoMessage = "Cuenta vinculada correctamente.",
+                                errorMessage = null,
+                                errorKind = null
                             )
                         }
                         loadOverview()
                     }
 
-                    is Result.Error -> _uiState.update { it.copy(errorMessage = result.message) }
+                    is Result.Error -> {
+                        val kind = result.toErrorKind()
+                        _uiState.update {
+                            it.copy(
+                                errorMessage = result.toUserMessage(
+                                    "No pudimos completar la vinculación. Inténtalo de nuevo."
+                                ),
+                                errorKind = kind
+                            )
+                        }
+                    }
 
                     is Result.Loading -> Unit
                 }
@@ -127,22 +164,36 @@ class BankingViewModel @Inject constructor(
     fun sync(connectionId: String) {
         viewModelScope.launch {
             _uiState.update {
-                it.copy(isSyncing = true, errorMessage = null, infoMessage = null)
+                it.copy(
+                    isSyncing = true,
+                    errorMessage = null,
+                    infoMessage = null,
+                    errorKind = null
+                )
             }
             when (val result = syncBankConnectionUseCase(connectionId)) {
                 is Result.Success -> {
-                    val summary = result.data
                     _uiState.update {
                         it.copy(
                             isSyncing = false,
-                            infoMessage = "Sincronización completada (${summary.added} nuevas, ${summary.modified} actualizadas)"
+                            infoMessage = "Sincronización completada.",
+                            errorKind = null
                         )
                     }
                     loadOverview()
                 }
 
-                is Result.Error -> _uiState.update {
-                    it.copy(isSyncing = false, errorMessage = result.message)
+                is Result.Error -> {
+                    val kind = result.toErrorKind()
+                    _uiState.update {
+                        it.copy(
+                            isSyncing = false,
+                            errorMessage = result.toUserMessage(
+                                "No pudimos sincronizar la cuenta. Inténtalo de nuevo."
+                            ),
+                            errorKind = kind
+                        )
+                    }
                 }
 
                 is Result.Loading -> _uiState.update { it.copy(isSyncing = true) }
@@ -156,21 +207,31 @@ class BankingViewModel @Inject constructor(
      */
     fun disconnect(activity: FragmentActivity, connectionId: String) {
         viewModelScope.launch {
+            _uiState.update { it.copy(errorMessage = null, infoMessage = null, errorKind = null) }
             when (val auth = biometricGate.authenticate(activity, SensitiveAction.DISCONNECT_BANK)) {
                 is BiometricResult.Success -> {
                     when (val result = disconnectBankConnectionUseCase(connectionId)) {
                         is Result.Success -> {
                             _uiState.update {
                                 it.copy(
-                                    infoMessage = "Cuenta desvinculada correctamente",
-                                    errorMessage = null
+                                    infoMessage = "Cuenta desvinculada correctamente.",
+                                    errorMessage = null,
+                                    errorKind = null
                                 )
                             }
                             loadOverview()
                         }
 
-                        is Result.Error -> _uiState.update {
-                            it.copy(errorMessage = result.message)
+                        is Result.Error -> {
+                            val kind = result.toErrorKind()
+                            _uiState.update {
+                                it.copy(
+                                    errorMessage = result.toUserMessage(
+                                        "No pudimos desvincular la cuenta. Inténtalo de nuevo."
+                                    ),
+                                    errorKind = kind
+                                )
+                            }
                         }
 
                         is Result.Loading -> Unit
@@ -178,18 +239,28 @@ class BankingViewModel @Inject constructor(
                 }
 
                 is BiometricResult.Unavailable -> _uiState.update {
-                    it.copy(errorMessage = "No se desvinculó la cuenta: autenticación no disponible")
+                    it.copy(
+                        errorMessage = "Para desvincular, configura la huella o la credencial del dispositivo.",
+                        errorKind = ErrorKind.Generic
+                    )
                 }
 
-                else -> _uiState.update {
-                    it.copy(errorMessage = "No se desvinculó la cuenta: autenticación no superada")
+                is BiometricResult.Cancelled -> _uiState.update {
+                    it.copy(infoMessage = "Desvinculación cancelada.", errorMessage = null, errorKind = null)
+                }
+
+                is BiometricResult.Failure -> _uiState.update {
+                    it.copy(
+                        errorMessage = "No pudimos verificar tu identidad. Inténtalo de nuevo.",
+                        errorKind = ErrorKind.Generic
+                    )
                 }
             }
         }
     }
 
     fun clearMessages() {
-        _uiState.update { it.copy(errorMessage = null, infoMessage = null) }
+        _uiState.update { it.copy(errorMessage = null, infoMessage = null, errorKind = null) }
     }
 
     private fun observeDeepLinks() {

@@ -1,6 +1,7 @@
 package com.mybusiness.feature.banking.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -42,11 +43,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.mybusiness.core.common.extensions.formatIsoDateTime
+import com.mybusiness.core.common.extensions.formatRelativeTime
 import com.mybusiness.core.designsystem.component.ErrorCard
 import com.mybusiness.core.designsystem.component.LoadingView
 import com.mybusiness.core.designsystem.component.MyBusinessTopAppBar
 import com.mybusiness.core.designsystem.component.PrimaryButton
+import com.mybusiness.core.designsystem.theme.minimumTouchTarget
 import com.mybusiness.core.model.BankProvider
 import com.mybusiness.core.model.ConnectionStatus
 import com.mybusiness.core.model.LinkedAccount
@@ -63,6 +65,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun BankingScreen(
     onBack: () -> Unit,
+    onSessionExpired: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: BankingViewModel = hiltViewModel()
 ) {
@@ -71,9 +74,13 @@ fun BankingScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var showProviderDialog by remember { mutableStateOf(false) }
+    var pendingDisconnect by remember { mutableStateOf<LinkedConnection?>(null) }
 
     LaunchedEffect(uiState.errorMessage) {
         val message = uiState.errorMessage ?: return@LaunchedEffect
+        // Con conexiones visibles el error es transitorio (snackbar); sin conexiones
+        // se mantiene la tarjeta de estado para que la acción de reintento siga disponible.
+        if (uiState.connections.isEmpty()) return@LaunchedEffect
         snackbarHostState.showSnackbar(message)
         viewModel.clearMessages()
     }
@@ -95,7 +102,10 @@ fun BankingScreen(
             MyBusinessTopAppBar(
                 title = "Cuentas bancarias",
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.minimumTouchTarget()
+                    ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Volver"
@@ -131,6 +141,12 @@ fun BankingScreen(
 
             when {
                 uiState.isLoading && !uiState.hasLoadedOnce -> LoadingView()
+                uiState.isUnauthorized && uiState.connections.isEmpty() -> Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    SessionExpiredState(onLogin = onSessionExpired)
+                }
                 uiState.errorMessage != null && uiState.connections.isEmpty() -> ErrorCard(
                     message = uiState.errorMessage.orEmpty(),
                     onRetry = { viewModel.loadOverview() }
@@ -141,18 +157,7 @@ fun BankingScreen(
                 else -> ConnectionsList(
                     uiState = uiState,
                     onSync = { connectionId -> viewModel.sync(connectionId) },
-                    onDisconnect = { connection ->
-                        val activity = BankLinkLauncher.run { context.findFragmentActivity() }
-                        if (activity == null) {
-                            scope.launch {
-                                snackbarHostState.showSnackbar(
-                                    "No se pudo verificar tu identidad"
-                                )
-                            }
-                        } else {
-                            viewModel.disconnect(activity, connection.id)
-                        }
-                    }
+                    onDisconnect = { connection -> pendingDisconnect = connection }
                 )
             }
         }
@@ -166,6 +171,77 @@ fun BankingScreen(
                 viewModel.startLink(provider)
             }
         )
+    }
+
+    pendingDisconnect?.let { connection ->
+        AlertDialog(
+            onDismissRequest = { pendingDisconnect = null },
+            title = { Text("Desvincular cuenta") },
+            text = {
+                Text(
+                    "Para continuar, confirma tu identidad con huella o con la credencial del dispositivo."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDisconnect = null
+                        val activity = BankLinkLauncher.run { context.findFragmentActivity() }
+                        if (activity == null) {
+                            scope.launch {
+                                snackbarHostState.showSnackbar(
+                                    "No pudimos verificar tu identidad. Inténtalo de nuevo."
+                                )
+                            }
+                        } else {
+                            viewModel.disconnect(activity, connection.id)
+                        }
+                    },
+                    modifier = Modifier.minimumTouchTarget()
+                ) {
+                    Text("Usar huella")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { pendingDisconnect = null },
+                    modifier = Modifier.minimumTouchTarget()
+                ) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun SessionExpiredState(onLogin: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Tu sesión expiró",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Vuelve a iniciar sesión para continuar.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            PrimaryButton(text = "Iniciar sesión", onClick = onLogin)
+        }
     }
 }
 
@@ -187,7 +263,11 @@ private fun HeaderRow(
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface
         )
-        IconButton(onClick = onRefresh, enabled = !isSyncing) {
+        IconButton(
+            onClick = onRefresh,
+            enabled = !isSyncing,
+            modifier = Modifier.minimumTouchTarget()
+        ) {
             Icon(
                 imageVector = Icons.Default.Refresh,
                 contentDescription = "Actualizar"
@@ -275,7 +355,7 @@ private fun ConnectionCard(
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = "Última sincronización: " +
-                    (connection.lastSuccessfulSyncAt.formatIsoDateTime() ?: "Sin sincronizar"),
+                    (connection.lastSuccessfulSyncAt.formatRelativeTime() ?: "Sin sincronizar"),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -293,10 +373,17 @@ private fun ConnectionCard(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(onClick = onSync, enabled = !isSyncing) {
+                TextButton(
+                    onClick = onSync,
+                    enabled = !isSyncing,
+                    modifier = Modifier.minimumTouchTarget()
+                ) {
                     Text("Sincronizar")
                 }
-                TextButton(onClick = onDisconnect) {
+                TextButton(
+                    onClick = onDisconnect,
+                    modifier = Modifier.minimumTouchTarget()
+                ) {
                     Text(
                         text = "Desvincular",
                         color = MaterialTheme.colorScheme.error
@@ -340,7 +427,7 @@ private fun AccountRow(account: LinkedAccount) {
             )
         }
         Text(
-            text = "Sincronizada: " + (account.lastSyncedAt.formatIsoDateTime() ?: "—"),
+            text = "Sincronizada: " + (account.lastSyncedAt.formatRelativeTime() ?: "Sin datos"),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -390,16 +477,25 @@ private fun ProviderDialog(
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                TextButton(onClick = { onSelect(BankProvider.PLAID) }) {
+                TextButton(
+                    onClick = { onSelect(BankProvider.PLAID) },
+                    modifier = Modifier.minimumTouchTarget()
+                ) {
                     Text("Plaid")
                 }
-                TextButton(onClick = { onSelect(BankProvider.BELVO) }) {
+                TextButton(
+                    onClick = { onSelect(BankProvider.BELVO) },
+                    modifier = Modifier.minimumTouchTarget()
+                ) {
                     Text("Belvo")
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.minimumTouchTarget()
+            ) {
                 Text("Cancelar")
             }
         }
@@ -413,8 +509,8 @@ private fun BankProvider.displayName(): String = when (this) {
 
 private fun ConnectionStatus.label(): String = when (this) {
     ConnectionStatus.ACTIVE -> "Activa"
-    ConnectionStatus.NEEDS_REAUTH -> "Requiere reautenticación"
-    ConnectionStatus.PENDING -> "Pendiente"
-    ConnectionStatus.ERROR -> "Error"
+    ConnectionStatus.NEEDS_REAUTH -> "Necesita reconectar"
+    ConnectionStatus.PENDING -> "Conectando"
+    ConnectionStatus.ERROR -> "No se pudo conectar"
     ConnectionStatus.DISCONNECTED -> "Desconectada"
 }
