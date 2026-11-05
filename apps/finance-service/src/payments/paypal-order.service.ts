@@ -8,7 +8,6 @@ import {
 import { randomUUID } from 'node:crypto';
 import {
   AuditEvents,
-  PayPalOrderStatus,
   PAYMENT_AMOUNT_MINOR_PATTERN,
   type CreatePayPalOrderDto,
   type PayPalOrderView,

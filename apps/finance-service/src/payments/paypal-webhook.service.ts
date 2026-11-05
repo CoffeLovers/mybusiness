@@ -10,7 +10,7 @@ import { payPalDecimalToMinor } from '@mybusiness/contracts';
 import { PayPalClient } from './paypal-client';
 import { isPayPalTransitionAllowed } from './paypal-state-machine';
 import { PayPalWebhookProcessEventStatus, PaymentsRepository } from './payments.repository';
-import { WEBHOOK_ACTOR, PayPalPaymentService } from './paypal-payment.service';
+import { PayPalPaymentService } from './paypal-payment.service';
 
 /** Tipos de evento PayPal soportados; los demás se registran como IGNORED. */
 const EVENT_CHECKOUT_ORDER_APPROVED = 'CHECKOUT.ORDER.APPROVED';

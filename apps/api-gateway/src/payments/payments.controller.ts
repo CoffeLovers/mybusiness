@@ -13,7 +13,7 @@ import {
 import { ClientProxy } from '@nestjs/microservices';
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { Observable } from 'rxjs';
 import {
