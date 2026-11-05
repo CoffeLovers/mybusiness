@@ -3,23 +3,24 @@
 > Las issues se crearán en GitHub a partir de este documento; **este archivo es la fuente de verdad del alcance**.
 > Convención de ID: `SF4-NN`; la columna `GitHub` se rellena cuando exista el número.
 > Ventana: **Sprint 7** 2026-12-28 → 2027-01-08 · **Sprint 8** 2027-01-11 → 2027-01-22 · **Capacidad:** 84 SP.
+> Epic: **#126** · Issues: **#114–#125**
 
 ## Resumen
 
 | ID     | Título                                                         | Labels                       | Owner    | SP  | Sprint | GitHub |
 | ------ | -------------------------------------------------------------- | ---------------------------- | -------- | --- | ------ | ------ |
-| SF4-01 | [Web] Streaming del asistente con SSE                          | `web`, `frontend`, `agent`   | Umbrex47 | 8   | 7      | —      |
-| SF4-02 | [Mobile] Streaming del asistente en Android                    | `mobile`, `agent`            | JuanchR4 | 8   | 7      | —      |
-| SF4-03 | [Web] Passkeys/WebAuthn                                        | `web`, `security`            | Umbrex47 | 8   | 7      | —      |
-| SF4-06 | [Mobile] Glance widget y Quick Settings Tile                   | `mobile`, `design`           | JuanchR4 | 8   | 7      | —      |
-| SF4-09 | [Agent] Historial de conversaciones y feedback                 | `agent`, `backend`           | Umbrex47 | 5   | 7      | —      |
-| SF4-10 | [Web] Accesibilidad avanzada y modo denso                      | `web`, `accessibility`, `ux` | Umbrex47 | 5   | 7      | —      |
-| SF4-04 | [Web] Administración de tenant: usuarios, roles e invitaciones | `web`, `security`, `backend` | Umbrex47 | 8   | 8      | —      |
-| SF4-05 | [Web] Visor de auditoría y consumo por tenant                  | `devops`, `web`              | Umbrex47 | 5   | 8      | —      |
-| SF4-07 | [Mobile] Notificaciones push con FCM                           | `mobile`, `security`         | JuanchR4 | 8   | 8      | —      |
-| SF4-08 | [Mobile] `VoiceInteractionService`                             | `mobile`, `agent`            | JuanchR4 | 8   | 8      | —      |
-| SF4-11 | [QA] E2E de streaming, passkeys, admin y push                  | `qa`, `web`, `mobile`        | JuanchR4 | 8   | 8      | —      |
-| SF4-12 | [Observability] SLOs y alertas de streaming/chat               | `devops`, `observability`    | Umbrex47 | 5   | 8      | —      |
+| SF4-01 | [Web] Streaming del asistente con SSE                          | `web`, `frontend`, `agent`   | Umbrex47 | 8   | 7      | #114   |
+| SF4-02 | [Mobile] Streaming del asistente en Android                    | `mobile`, `agent`            | JuanchR4 | 8   | 7      | #115   |
+| SF4-03 | [Web] Passkeys/WebAuthn                                        | `web`, `security`            | Umbrex47 | 8   | 7      | #116   |
+| SF4-06 | [Mobile] Glance widget y Quick Settings Tile                   | `mobile`, `design`           | JuanchR4 | 8   | 7      | #119   |
+| SF4-09 | [Agent] Historial de conversaciones y feedback                 | `agent`, `backend`           | Umbrex47 | 5   | 7      | #122   |
+| SF4-10 | [Web] Accesibilidad avanzada y modo denso                      | `web`, `accessibility`, `ux` | Umbrex47 | 5   | 7      | #123   |
+| SF4-04 | [Web] Administración de tenant: usuarios, roles e invitaciones | `web`, `security`, `backend` | Umbrex47 | 8   | 8      | #117   |
+| SF4-05 | [Web] Visor de auditoría y consumo por tenant                  | `devops`, `web`              | Umbrex47 | 5   | 8      | #118   |
+| SF4-07 | [Mobile] Notificaciones push con FCM                           | `mobile`, `security`         | JuanchR4 | 8   | 8      | #120   |
+| SF4-08 | [Mobile] `VoiceInteractionService`                             | `mobile`, `agent`            | JuanchR4 | 8   | 8      | #121   |
+| SF4-11 | [QA] E2E de streaming, passkeys, admin y push                  | `qa`, `web`, `mobile`        | JuanchR4 | 8   | 8      | #124   |
+| SF4-12 | [Observability] SLOs y alertas de streaming/chat               | `devops`, `observability`    | Umbrex47 | 5   | 8      | #125   |
 
 Todas las issues llevan además los labels `phase-4` y el correspondiente `sprint-7` o `sprint-8`.
 
