@@ -83,7 +83,7 @@ export function PeriodSelector({
               aria-pressed={isActive}
               className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
                 isActive
-                  ? 'bg-primary text-primary-contrast shadow-xs'
+                  ? 'bg-primary text-on-primary shadow-xs'
                   : 'bg-surface-raised text-text hover:bg-border/40'
               }`}
             >

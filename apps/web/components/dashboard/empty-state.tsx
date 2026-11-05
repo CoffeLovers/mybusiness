@@ -37,7 +37,7 @@ export function EmptyState({ message }: EmptyStateProps) {
       <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
         <Link
           href="/bancos"
-          className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-contrast shadow-xs transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-on-primary shadow-xs transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
           Vincular cuenta bancaria
         </Link>

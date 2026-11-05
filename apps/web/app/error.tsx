@@ -17,7 +17,7 @@ export default function GlobalError({ error, reset }: { error: Error; reset: () 
       <button
         type="button"
         onClick={reset}
-        className="rounded-md bg-primary px-4 py-2 text-base font-medium text-primary-contrast"
+        className="rounded-md bg-primary px-4 py-2 text-base font-medium text-on-primary"
       >
         Reintentar
       </button>

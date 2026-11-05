@@ -99,7 +99,7 @@ export function LoginForm() {
       <button
         type="submit"
         disabled={pending}
-        className="mt-2 w-full rounded-md bg-primary px-4 py-2 text-base font-medium text-primary-contrast transition-opacity focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
+        className="mt-2 w-full rounded-md bg-primary px-4 py-2 text-base font-medium text-on-primary transition-opacity focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60"
       >
         {pending ? 'Entrando…' : 'Entrar'}
       </button>
