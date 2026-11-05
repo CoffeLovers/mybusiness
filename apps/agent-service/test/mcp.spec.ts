@@ -26,6 +26,7 @@ import { MCP_TOOLS } from '../src/mcp/tool-schemas';
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
 const INVOICE_ID = '44444444-4444-4444-8444-444444444444';
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const ROLE: UserRole = 'ADMIN';
 interface Harness {
   controller: McpController;
@@ -267,7 +268,7 @@ describe('McpController', () => {
         amountMinor: '250000',
         currency: 'COP',
         invoiceRef: INVOICE_ID,
-        idempotencyKey: 'mcp:1',
+        idempotencyKey: expect.stringMatching(UUID_PATTERN) as string,
         tenantId: TENANT_ID,
         userId: USER_ID,
       }),
@@ -325,6 +326,66 @@ describe('McpController', () => {
       expect(harness.send).not.toHaveBeenCalled();
     },
   );
+
+  it('create_payment_link sin clave genera UUID servidor-side y NO hace replay entre invocaciones con el mismo JSON-RPC id', async () => {
+    harness.send.mockReturnValue(
+      of({
+        id: 'a',
+        paypalOrderId: 'P',
+        status: 'CREATED',
+        checkoutUrl: 'https://x/y',
+        amountMinor: '1',
+        currency: 'USD',
+      }),
+    );
+
+    // Ambas invocaciones comparten el mismo `id` JSON-RPC (1) y no proveen
+    // idempotencyKey: deben producir claves servidor-side distintas, nunca una
+    // colisión en UNIQUE (tenant_id, idempotency_key) que replaye una orden ajena.
+    await harness.controller.handle(
+      callToolAs(
+        'create_payment_link',
+        { amountMinor: '1000', currency: 'COP', invoiceId: INVOICE_ID },
+        UserRole.ACCOUNTANT,
+      ),
+    );
+    await harness.controller.handle(
+      callToolAs(
+        'create_payment_link',
+        { amountMinor: '2000', currency: 'USD', invoiceId: INVOICE_ID },
+        UserRole.ACCOUNTANT,
+      ),
+    );
+
+    expect(harness.send).toHaveBeenCalledTimes(2);
+    const [, firstPayload] = harness.send.mock.calls[0];
+    const [, secondPayload] = harness.send.mock.calls[1];
+    expect(firstPayload.idempotencyKey).toMatch(UUID_PATTERN);
+    expect(secondPayload.idempotencyKey).toMatch(UUID_PATTERN);
+    expect(firstPayload.idempotencyKey).not.toBe(secondPayload.idempotencyKey);
+
+    // Idempotentemente, cada una creó su propia orden: no hay deduplicación cruzada.
+    expect(firstPayload.amountMinor).toBe('1000');
+    expect(secondPayload.amountMinor).toBe('2000');
+  });
+
+  it('create_payment_link rechaza una clave de idempotencia mayor a 255 caracteres', async () => {
+    const response = await harness.controller.handle(
+      callToolAs(
+        'create_payment_link',
+        {
+          amountMinor: '1000',
+          currency: 'COP',
+          invoiceId: INVOICE_ID,
+          idempotencyKey: 'k'.repeat(256),
+        },
+        UserRole.ACCOUNTANT,
+      ),
+    );
+
+    expect(expectFailure(response).data?.code).toBe(McpErrorCodes.TOOL_INVALID_INPUT);
+    expect(harness.send).not.toHaveBeenCalled();
+  });
 
   it('create_payment_link exige permiso de cobro incluso con contexto válido', async () => {
     // El rol del sobre por defecto (ADMIN) no está en la matriz payments:write.
