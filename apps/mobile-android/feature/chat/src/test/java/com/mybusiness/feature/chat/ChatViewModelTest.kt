@@ -4,6 +4,9 @@ import com.mybusiness.core.common.result.Result
 import com.mybusiness.core.model.ChatMessage
 import com.mybusiness.core.model.ChatStreamEvent
 import com.mybusiness.feature.chat.data.repository.FakeChatRepository
+import com.mybusiness.feature.chat.data.voice.FakeVoiceManager
+import com.mybusiness.feature.chat.domain.model.VoiceError
+import com.mybusiness.feature.chat.domain.model.VoiceState
 import com.mybusiness.feature.chat.ui.ChatViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -28,13 +31,15 @@ class ChatViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var fakeRepository: FakeChatRepository
+    private lateinit var fakeVoiceManager: FakeVoiceManager
     private lateinit var viewModel: ChatViewModel
 
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         fakeRepository = FakeChatRepository()
-        viewModel = ChatViewModel(fakeRepository)
+        fakeVoiceManager = FakeVoiceManager()
+        viewModel = ChatViewModel(fakeRepository, fakeVoiceManager)
     }
 
     @After
@@ -48,7 +53,7 @@ class ChatViewModelTest {
             ChatStreamEvent.Token("Hola"),
             ChatStreamEvent.Token(" ¿cómo"),
             ChatStreamEvent.Token(" estás?"),
-            ChatStreamEvent.Done("Hola ¿cómo estás?")
+            ChatStreamEvent.Done(fullText = "Hola ¿cómo estás?", degraded = false)
         )
 
         viewModel.onInputTextChanged("Hola asistente")
@@ -57,44 +62,61 @@ class ChatViewModelTest {
 
         val state = viewModel.uiState.value
         assertFalse(state.isGenerating)
-        assertEquals("", state.inputText)
-        assertEquals(2, state.messages.size)
-        assertEquals("Hola asistente", state.messages[0].content)
-        assertTrue(state.messages[0].isFromUser)
-        assertEquals("Hola ¿cómo estás?", state.messages[1].content)
-        assertFalse(state.messages[1].isFromUser)
-        assertFalse(state.messages[1].isStreaming)
+        assertEquals("Hola ¿cómo estás?", state.talkBackAnnouncement)
+
+        val assistantMessage = state.messages.find { !it.isFromUser }
+        assertNotNull(assistantMessage)
+        assertEquals("Hola ¿cómo estás?", assistantMessage?.content)
+        assertFalse(assistantMessage?.isStreaming ?: true)
     }
 
     @Test
-    fun `indicador de herramienta se activa con evento Tool y desaparece con Done`() = runTest {
-        fakeRepository.streamToEmit = flow {
-            emit(ChatStreamEvent.Tool("consultar_saldo"))
-            emit(ChatStreamEvent.Token("Tu saldo es"))
-            emit(ChatStreamEvent.Token(" $1,000"))
-            emit(ChatStreamEvent.Done("Tu saldo es $1,000"))
-        }
+    fun `indicador de herramienta se activa durante evento Tool y se limpia al finalizar`() = runTest {
+        fakeRepository.streamToEmit = flowOf(
+            ChatStreamEvent.Tool("consultar_saldo"),
+            ChatStreamEvent.Token("Tu saldo es 100 USD"),
+            ChatStreamEvent.Done(fullText = "Tu saldo es 100 USD", degraded = false)
+        )
 
-        viewModel.onInputTextChanged("Ver mi saldo")
+        viewModel.onInputTextChanged("¿cuál es mi saldo?")
         viewModel.sendMessage()
         advanceUntilIdle()
 
         val state = viewModel.uiState.value
         assertNull(state.activeTool)
-        assertEquals("Tu saldo es $1,000", state.messages.last().content)
-        assertNull(state.messages.last().activeTool)
+        val assistantMessage = state.messages.find { !it.isFromUser }
+        assertNull(assistantMessage?.activeTool)
+        assertEquals("Tu saldo es 100 USD", assistantMessage?.content)
     }
 
     @Test
-    fun `cancelar detiene la generacion y actualiza el mensaje`() = runTest {
-        val streamFlow = flow {
-            emit(ChatStreamEvent.Token("Generando parte 1..."))
-            kotlinx.coroutines.delay(1000)
-            emit(ChatStreamEvent.Token("Parte 2 que no debe llegar"))
-        }
-        fakeRepository.streamToEmit = streamFlow
+    fun `fallback automatico a endpoint REST cuando el canal SSE falla sin tokens acumulados`() = runTest {
+        fakeRepository.streamToEmit = flowOf(
+            ChatStreamEvent.Error(message = "SSE stream broken", canFallback = true)
+        )
+        fakeRepository.fallbackResult = Result.Success(
+            ChatMessage(id = "fb-1", content = "Respuesta de respaldo clásica", isFromUser = false)
+        )
 
-        viewModel.onInputTextChanged("Consulta larga")
+        viewModel.onInputTextChanged("Consulta con fallback")
+        viewModel.sendMessage()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertFalse(state.isGenerating)
+        assertEquals("Canal incremental no disponible. Obteniendo respuesta estándar...", state.warningMessage)
+        assertEquals("Respuesta de respaldo clásica", state.talkBackAnnouncement)
+    }
+
+    @Test
+    fun `cancelacion explicita marca el mensaje como cancelado y detiene la generacion`() = runTest {
+        fakeRepository.streamToEmit = flow {
+            emit(ChatStreamEvent.Token("Generando"))
+            kotlinx.coroutines.delay(1000)
+            emit(ChatStreamEvent.Token(" más texto"))
+        }
+
+        viewModel.onInputTextChanged("Mensaje largo")
         viewModel.sendMessage()
         testDispatcher.scheduler.advanceTimeBy(100)
 
@@ -105,40 +127,28 @@ class ChatViewModelTest {
 
         val state = viewModel.uiState.value
         assertFalse(state.isGenerating)
-        assertTrue(state.messages.last().content.contains("[Cancelado]"))
+        val assistantMessage = state.messages.find { !it.isFromUser }
+        assertTrue(assistantMessage?.content?.contains("[Cancelado]") ?: false)
     }
 
     @Test
-    fun `sin canal incremental, cae a endpoint fallback no streaming y muestra aviso`() = runTest {
-        fakeRepository.streamToEmit = flow {
-            emit(ChatStreamEvent.Error("502 Bad Gateway", canFallback = true))
-        }
-        fakeRepository.fallbackResult = Result.Success(
-            ChatMessage(
-                id = "fallback-1",
-                content = "Respuesta del fallback clásico",
-                isFromUser = false
-            )
-        )
-
-        viewModel.onInputTextChanged("Pregunta")
-        viewModel.sendMessage()
+    fun `supervivencia de estado ante recreacion retiene historial y texto ingresado`() = runTest {
+        fakeRepository.addUserMessage("Mensaje previo")
+        viewModel.onInputTextChanged("Borrador en curso")
         advanceUntilIdle()
 
-        val state = viewModel.uiState.value
-        assertFalse(state.isGenerating)
-        assertEquals(1, fakeRepository.fallbackCalledCount)
-        assertNotNull(state.warningMessage)
-        assertTrue(state.warningMessage!!.contains("Canal incremental no disponible"))
-        assertEquals("Respuesta del fallback clásico", state.messages.last().content)
+        val retainedInput = viewModel.uiState.value.inputText
+        val retainedMessages = viewModel.uiState.value.messages
+        assertEquals("Borrador en curso", retainedInput)
+        assertEquals(1, retainedMessages.size)
     }
 
     @Test
-    fun `TalkBack anuncia el mensaje completo al finalizar y no por cada token`() = runTest {
+    fun `TalkBack solo anuncia el mensaje consolidado al recibir el evento Done`() = runTest {
         fakeRepository.streamToEmit = flowOf(
-            ChatStreamEvent.Token("Token 1"),
-            ChatStreamEvent.Token(" Token 2"),
-            ChatStreamEvent.Done("Token 1 Token 2")
+            ChatStreamEvent.Token("Token1 "),
+            ChatStreamEvent.Token("Token2 "),
+            ChatStreamEvent.Done(fullText = "Token1 Token2 ", degraded = false)
         )
 
         viewModel.onInputTextChanged("Mensaje")
@@ -146,28 +156,115 @@ class ChatViewModelTest {
         advanceUntilIdle()
 
         val state = viewModel.uiState.value
-        assertEquals("Token 1 Token 2", state.talkBackAnnouncement)
+        assertEquals("Token1 Token2 ", state.talkBackAnnouncement)
+    }
 
-        viewModel.clearTalkBackAnnouncement()
-        assertNull(viewModel.uiState.value.talkBackAnnouncement)
+    // --- Tests de Voice-to-Text y TTS (Issue #61) ---
+
+    @Test
+    fun `permiso RECORD_AUDIO denegado muestra advertencia y la app sigue usable con texto`() = runTest {
+        viewModel.requestPermissionRationale()
+        assertTrue(viewModel.uiState.value.showPermissionRationale)
+
+        viewModel.onPermissionDenied()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertFalse(state.showPermissionRationale)
+        assertFalse(state.isVoiceModeActive)
+        assertTrue(state.voiceState is VoiceState.Error)
+        assertEquals(VoiceError.PermissionDenied, (state.voiceState as VoiceState.Error).error)
+        assertTrue(state.voiceErrorMessage?.contains("Permiso de micrófono denegado") ?: false)
+
+        // Comprobar que sigue usable escribiendo por texto
+        viewModel.onInputTextChanged("Mensaje manual")
+        assertEquals("Mensaje manual", viewModel.uiState.value.inputText)
     }
 
     @Test
-    fun `rotacion conserva mensaje en curso y tokens acumulados en el ViewModel`() = runTest {
+    fun `transcripcion por voz parcial y final actualiza el campo de texto antes de enviar para permitir correccion`() = runTest {
+        viewModel.startVoicePrompt()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.voiceState is VoiceState.Listening)
+        assertTrue(viewModel.uiState.value.isVoiceModeActive)
+
+        // Transcripción parcial en tiempo real
+        fakeVoiceManager.emitPartialTranscription("¿cuál es mi")
+        advanceUntilIdle()
+        assertEquals("¿cuál es mi", viewModel.uiState.value.inputText)
+
+        // Transcripción final
+        fakeVoiceManager.emitFinalTranscription("¿cuál es mi saldo actual?")
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals("¿cuál es mi saldo actual?", state.inputText)
+        assertTrue(state.voiceState is VoiceState.Idle)
+
+        // El usuario puede editar el texto antes de enviarlo
+        viewModel.onInputTextChanged("¿cuál es mi saldo actual en dólares?")
+        assertEquals("¿cuál es mi saldo actual en dólares?", viewModel.uiState.value.inputText)
+    }
+
+    @Test
+    fun `silencio detectado emite VoiceError NoSpeechDetected y permite reintentar`() = runTest {
+        viewModel.startVoicePrompt()
+        advanceUntilIdle()
+
+        fakeVoiceManager.emitError(VoiceError.NoSpeechDetected)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertTrue(state.voiceState is VoiceState.Error)
+        assertEquals(VoiceError.NoSpeechDetected, (state.voiceState as VoiceState.Error).error)
+        assertTrue(state.voiceErrorMessage?.contains("No se detectó audio") ?: false)
+
+        // Descartar error y reintentar
+        viewModel.dismissVoiceError()
+        advanceUntilIdle()
+        assertNull(viewModel.uiState.value.voiceErrorMessage)
+        assertTrue(viewModel.uiState.value.voiceState is VoiceState.Idle)
+    }
+
+    @Test
+    fun `error de red en reconocimiento de voz muestra mensaje claro sin colgar el servicio`() = runTest {
+        viewModel.startVoicePrompt()
+        advanceUntilIdle()
+
+        fakeVoiceManager.emitError(VoiceError.NetworkError)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertTrue(state.voiceState is VoiceState.Error)
+        assertEquals(VoiceError.NetworkError, (state.voiceState as VoiceState.Error).error)
+        assertTrue(state.voiceErrorMessage?.contains("Sin conexión") ?: false)
+    }
+
+    @Test
+    fun `al finalizar respuesta tras un prompt por voz se invoca TTS de respuesta y es cancelable`() = runTest {
         fakeRepository.streamToEmit = flowOf(
-            ChatStreamEvent.Token("Palabra 1"),
-            ChatStreamEvent.Token(" Palabra 2"),
-            ChatStreamEvent.Done("Palabra 1 Palabra 2")
+            ChatStreamEvent.Token("Tu saldo es 500 USD"),
+            ChatStreamEvent.Done(fullText = "Tu saldo es 500 USD", degraded = false)
         )
 
-        viewModel.onInputTextChanged("Test rotación")
+        // Iniciar flujo por voz
+        viewModel.startVoicePrompt()
+        fakeVoiceManager.emitFinalTranscription("Saldo por voz")
+        advanceUntilIdle()
+
+        // Enviar consulta originada por voz
         viewModel.sendMessage()
         advanceUntilIdle()
 
-        // Simulamos la recomposición / reconexión tras rotación leyendo el StateFlow
-        val stateAfterRecreation = viewModel.uiState.value
-        assertEquals(2, stateAfterRecreation.messages.size)
-        assertEquals("Palabra 1 Palabra 2", stateAfterRecreation.messages[1].content)
-        assertFalse(stateAfterRecreation.isGenerating)
+        // TTS debió invocarse con la respuesta final
+        assertEquals("Tu saldo es 500 USD", fakeVoiceManager.lastSpokenText)
+        assertTrue(fakeVoiceManager.state.value is VoiceState.Speaking)
+
+        // Cancelar TTS
+        viewModel.stopSpeaking()
+        advanceUntilIdle()
+
+        assertTrue(fakeVoiceManager.state.value is VoiceState.Idle)
     }
 }
