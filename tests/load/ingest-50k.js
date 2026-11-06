@@ -12,6 +12,12 @@ export const http429 = new Counter('http_429');
 // Parámetros de ejecución: Modo SMOKE (validación rápida del arnés) vs Escenario Completo 50k (30 min)
 const isSmoke = __ENV.SMOKE === 'true';
 
+// Config expuesta por env para la corrida canónica en CI (Issue #54, SF2-12).
+// Sin K6_* definidas, los defaults son los de la corrida canónica: 30 min a
+// 30 req/s = 54.000 peticiones ≥ meta de 50.000 transacciones únicas.
+const durationMinutes = Number(__ENV.K6_DURATION_MINUTES) || 30;
+const targetTransactions = Number(__ENV.K6_TARGET_TRANSACTIONS) || 50000;
+
 const smokeScenario = {
   executor: 'constant-arrival-rate',
   rate: 10,
@@ -25,7 +31,7 @@ const full50kScenario = {
   executor: 'constant-arrival-rate',
   rate: 30,
   timeUnit: '1s',
-  duration: '30m',
+  duration: `${durationMinutes}m`,
   preAllocatedVUs: 200,
   maxVUs: 400,
 };
@@ -47,8 +53,8 @@ export const options = {
         http_req_failed: ['rate<0.01'],
         dropped_iterations: ['count==0'],
         http_429: ['count==0'],
-        transactions_accepted: ['count>=50000'],
-        unique_transactions: ['count>=50000'],
+        transactions_accepted: [`count>=${targetTransactions}`],
+        unique_transactions: [`count>=${targetTransactions}`],
       },
   summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
 };
