@@ -1,0 +1,12 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":dependencyDashboard"],
+  "timezone": "America/Bogota",
+  "schedule": ["before 6am on monday"],
+  "packageRules": [
+    { "matchUpdateTypes": ["patch"], "automerge": true, "automergeType": "mr" },
+    { "matchUpdateTypes": ["major"], "automerge": false, "labels": ["dependencies", "major"] },
+    { "matchManagers": ["npm"], "groupName": "pnpm dependencies" }
+  ],
+  "vulnerabilityAlerts": { "enabled": true, "labels": ["security"] }
+}

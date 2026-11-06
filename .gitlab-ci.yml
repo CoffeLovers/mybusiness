@@ -8,11 +8,12 @@
 # MIG-04 (#137): build Android (SDK 35 + cache Gradle).
 # MIG-05 (#138): seguridad transversal (Trivy, pnpm audit, Sonar opt-in).
 # MIG-06 (#139): imagen web al registry y CD a staging/producción con rollback.
+# MIG-07 (#140): job de carga k6 (manual, runner `load`) y schedules.
 #
 # Los jobs de backend viven en `.gitlab/ci/backend.yml`, los de web en
 # `.gitlab/ci/web.yml`, los de Android en `.gitlab/ci/android.yml`, los de
-# seguridad en `.gitlab/ci/security.yml` y los de despliegue en
-# `.gitlab/ci/deploy.yml`.
+# seguridad en `.gitlab/ci/security.yml`, los de despliegue en
+# `.gitlab/ci/deploy.yml` y la carga k6 en `.gitlab/ci/load.yml`.
 # Decisiones de plataforma, runners y registry: docs/adr/009-gitlab-ci-cd-platform.md
 
 stages:
@@ -28,6 +29,7 @@ include:
   - local: .gitlab/ci/android.yml
   - local: .gitlab/ci/security.yml
   - local: .gitlab/ci/deploy.yml
+  - local: .gitlab/ci/load.yml
 
 default:
   image: node:20-bookworm
