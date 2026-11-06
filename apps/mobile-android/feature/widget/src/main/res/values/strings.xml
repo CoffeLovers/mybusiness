@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dashboard_widget_name">MyBusiness · Resumen</string>
+    <string name="dashboard_widget_description">Saldo total y flujo del día</string>
+</resources>

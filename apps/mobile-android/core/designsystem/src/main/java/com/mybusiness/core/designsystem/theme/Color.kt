@@ -74,3 +74,60 @@ val MaterialTheme.businessColors: BusinessColors
     @Composable
     @ReadOnlyComposable
     get() = LocalBusinessColors.current
+
+/**
+ * Subconjunto de tokens del design system consumible desde fuera de una
+ * composición (por ejemplo, un widget de Glance, que no participa del
+ * CompositionLocal de MaterialTheme).
+ *
+ * Todos los valores provienen de la paleta canónica definida en este archivo;
+ * no introduce colores nuevos.
+ */
+@Immutable
+data class WidgetTokenColors(
+    val surface: Color,
+    val onSurface: Color,
+    val surfaceVariant: Color,
+    val onSurfaceVariant: Color,
+    val background: Color,
+    val onBackground: Color,
+    val primary: Color,
+    val onPrimary: Color,
+    val error: Color,
+    val onError: Color,
+    val income: Color,
+    val expense: Color,
+)
+
+object WidgetDesignTokens {
+
+    val light: WidgetTokenColors = WidgetTokenColors(
+        surface = LightSurface,
+        onSurface = LightText,
+        surfaceVariant = LightSurfaceRaised,
+        onSurfaceVariant = LightTextMuted,
+        background = LightSurface,
+        onBackground = LightText,
+        primary = LightPrimary,
+        onPrimary = LightOnPrimary,
+        error = LightExpense,
+        onError = LightOnPrimary,
+        income = LightIncome,
+        expense = LightExpense,
+    )
+
+    val dark: WidgetTokenColors = WidgetTokenColors(
+        surface = DarkSurface,
+        onSurface = DarkText,
+        surfaceVariant = DarkSurfaceRaised,
+        onSurfaceVariant = DarkTextMuted,
+        background = DarkSurface,
+        onBackground = DarkText,
+        primary = DarkPrimary,
+        onPrimary = DarkOnPrimary,
+        error = DarkExpense,
+        onError = DarkSurface,
+        income = DarkIncome,
+        expense = DarkExpense,
+    )
+}
