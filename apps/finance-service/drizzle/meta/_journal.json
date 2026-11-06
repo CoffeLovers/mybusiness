@@ -50,6 +50,13 @@
       "when": 1793716131722,
       "tag": "0006_slippery_nitro",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793901755920,
+      "tag": "0007_certain_luminals",
+      "breakpoints": true
     }
   ]
 }

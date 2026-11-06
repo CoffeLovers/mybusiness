@@ -612,6 +612,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/payments/paypal/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["PaymentsGatewayController_createPayPalOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/webhooks/{id}/replay": {
         parameters: {
             query?: never;
@@ -781,6 +797,13 @@ export interface components {
             subtotalMinor: string;
             taxAmountMinor: string;
             totalAmountMinor: string;
+        };
+        CreatePayPalOrderDto: {
+            amountMinor: string;
+            currency: string;
+            description: string;
+            idempotencyKey: string;
+            invoiceRef: string;
         };
         CreateTransactionDto: {
             amountMinor: string;
@@ -1842,6 +1865,27 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CreateTransactionDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    PaymentsGatewayController_createPayPalOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePayPalOrderDto"];
             };
         };
         responses: {
