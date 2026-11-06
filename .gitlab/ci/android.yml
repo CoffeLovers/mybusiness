@@ -1,0 +1,60 @@
+# Pipeline Android — MIG-04 (#137)
+#
+# Paridad con el job `android` de `.github/workflows/ci.yml`: tests unitarios de
+# JVM (designsystem, common y app) y ensamblado del APK de debug.
+#
+# La imagen `ghcr.io/cirruslabs/android-sdk:35` trae el SDK de Android 35 y un
+# JDK 17 (requerido por AGP 8.7). Fallback documentado: `mingc/android-build-box`.
+# No se necesita Docker-in-Docker: Gradle compila contra el SDK preinstalado.
+
+# Cambios que invalidan el pipeline Android.
+.android-changes: &android-changes
+  - apps/mobile-android/**/*
+  - .gitlab/ci/android.yml
+  - .gitlab-ci.yml
+
+# MRs, `develop` y `main`, solo si cambia código Android o el propio pipeline.
+.android-rules: &android-rules
+  - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    changes: *android-changes
+  - if: '$CI_COMMIT_BRANCH == "develop"'
+    changes: *android-changes
+  - if: '$CI_COMMIT_BRANCH == "main"'
+    changes: *android-changes
+
+android:build:
+  stage: test
+  needs: []
+  interruptible: true
+  timeout: 35m
+  image: ghcr.io/cirruslabs/android-sdk:35
+  variables:
+    GRADLE_USER_HOME: '$CI_PROJECT_DIR/.gradle'
+    GRADLE_OPTS: '-Dorg.gradle.daemon=false'
+  cache:
+    key:
+      files:
+        - apps/mobile-android/gradle/libs.versions.toml
+        - apps/mobile-android/build.gradle.kts
+    paths:
+      - .gradle/
+  before_script:
+    - chmod +x apps/mobile-android/gradlew
+  script:
+    - cd apps/mobile-android
+    - >-
+      ./gradlew
+      :core:designsystem:testDebugUnitTest
+      :core:common:testDebugUnitTest
+      :app:testDebugUnitTest
+      :app:assembleDebug
+      --no-daemon --stacktrace --console=plain
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - apps/mobile-android/app/build/outputs/apk/debug/*.apk
+    reports:
+      junit:
+        - apps/mobile-android/**/build/test-results/**/*.xml
+  rules: *android-rules
