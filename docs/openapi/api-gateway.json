@@ -1218,6 +1218,29 @@
   },
   "openapi": "3.0.0",
   "paths": {
+    "/api/v1/agent/budget": {
+      "get": {
+        "operationId": "AgentGatewayController_budget",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "periodKey",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Agent"
+        ]
+      }
+    },
     "/api/v1/agent/chat": {
       "post": {
         "operationId": "AgentGatewayController_chat",

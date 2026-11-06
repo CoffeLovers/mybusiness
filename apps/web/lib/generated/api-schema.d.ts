@@ -4,6 +4,22 @@
  */
 
 export interface paths {
+    "/api/v1/agent/budget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["AgentGatewayController_budget"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agent/chat": {
         parameters: {
             query?: never;
@@ -996,6 +1012,25 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    AgentGatewayController_budget: {
+        parameters: {
+            query?: {
+                periodKey?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     AgentGatewayController_chat: {
         parameters: {
             query?: never;
