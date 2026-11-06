@@ -1,0 +1,218 @@
+# Pipeline de despliegue web — MIG-06 (#139)
+#
+# Construye la imagen de la web y la publica en el Container Registry del
+# proyecto. El despliegue se hace por SSH a un host con Docker:
+#   develop -> staging (automático)
+#   main    -> producción (manual)
+#
+# El pipeline de esta rama NUNCA despliega: las reglas exigen `develop`/`main`.
+# Los secretos viven en variables protegidas de CI/CD y no se imprimen
+# (`set +x`). El env-file remoto se escribe con `umask 077`.
+#
+# Rollback: si el contenedor no llega a `healthy` o el smoke test falla, se
+# restaura la imagen previa y el job termina en error.
+
+# Cambios que invalidan la imagen/despliegue web.
+.deploy-changes: &deploy-changes
+  - apps/web/**/*
+  - packages/contracts/**/*
+  - packages/common/**/*
+  - pnpm-lock.yaml
+  - pnpm-workspace.yaml
+  - apps/web/Dockerfile
+  - .gitlab/ci/deploy.yml
+  - .gitlab-ci.yml
+
+# ---------------------------------------------------------------------------
+# build: imagen web en el registry
+# ---------------------------------------------------------------------------
+.docker-build:
+  stage: build
+  image: docker:27-cli
+  services:
+    - docker:27-dind
+  variables:
+    DOCKER_TLS_CERTDIR: '/certs'
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_JOB_TOKEN" "$CI_REGISTRY"
+
+web:image:
+  extends: .docker-build
+  needs: []
+  interruptible: true
+  timeout: 30m
+  cache: {}
+  script:
+    - docker pull "$CI_REGISTRY_IMAGE/web:buildcache" || true
+    - >-
+      docker build
+      -f apps/web/Dockerfile
+      -t "$CI_REGISTRY_IMAGE/web:$CI_COMMIT_SHA"
+      -t "$CI_REGISTRY_IMAGE/web:$CI_COMMIT_REF_SLUG"
+      --cache-from "$CI_REGISTRY_IMAGE/web:buildcache"
+      --build-arg BUILDKIT_INLINE_CACHE=1
+      .
+    - docker push "$CI_REGISTRY_IMAGE/web:$CI_COMMIT_SHA"
+    - docker push "$CI_REGISTRY_IMAGE/web:$CI_COMMIT_REF_SLUG"
+    # La tag de commit se reutiliza como fuente de caché en el siguiente build.
+    - docker tag "$CI_REGISTRY_IMAGE/web:$CI_COMMIT_SHA" "$CI_REGISTRY_IMAGE/web:buildcache"
+    - docker push "$CI_REGISTRY_IMAGE/web:buildcache"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+      changes: *deploy-changes
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes: *deploy-changes
+
+# ---------------------------------------------------------------------------
+# deploy: plantilla SSH común
+# ---------------------------------------------------------------------------
+.deploy-ssh:
+  stage: deploy
+  image: docker:27-cli
+  interruptible: false
+  before_script:
+    - apk add --no-cache openssh-client curl
+    - mkdir -p ~/.ssh
+    # `DEPLOY_KEY` apunta al archivo de la variable File del entorno activo.
+    - eval "KEY_PATH=\$DEPLOY_KEY"
+    - chmod 600 "$KEY_PATH"
+    - eval "REMOTE_HOST=\$DEPLOY_HOST"
+    - ssh-keyscan -H "$REMOTE_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+# ---------------------------------------------------------------------------
+# deploy: staging (automático en develop)
+# ---------------------------------------------------------------------------
+web:deploy:staging:
+  extends: .deploy-ssh
+  needs:
+    - job: web:image
+      artifacts: false
+  environment:
+    name: staging
+    url: '$STAGING_URL'
+  resource_group: web-staging
+  timeout: 15m
+  variables:
+    DEPLOY_HOST: '$STAGING_HOST'
+    DEPLOY_USER: '$STAGING_USER'
+    DEPLOY_KEY: '$STAGING_SSH_KEY'
+    DEPLOY_URL: '$STAGING_URL'
+    DEPLOY_IMAGE: '$CI_REGISTRY_IMAGE/web:$CI_COMMIT_SHA'
+  script:
+    - set +x
+    - |
+      SSH="ssh -i $KEY_PATH -o StrictHostKeyChecking=yes $DEPLOY_USER@$REMOTE_HOST"
+      IMAGE="$DEPLOY_IMAGE"
+
+      # 1. env-file remoto (permisos 600, sin exponer secretos en el log).
+      $SSH "mkdir -p /home/deploy/mybusiness && umask 077 && cat > /home/deploy/mybusiness/web.env" <<EOF
+      NODE_ENV=production
+      PORT=3000
+      WEB_SESSION_SECRET=$WEB_SESSION_SECRET
+      WEB_GATEWAY_URL=$WEB_GATEWAY_URL
+      WEB_ALLOWED_ORIGINS=$WEB_ALLOWED_ORIGINS
+      WEB_SECURE_COOKIES=$WEB_SECURE_COOKIES
+      EOF
+
+      # 2. login al registry con el deploy token (password por stdin).
+      printf '%s' "$REGISTRY_DEPLOY_PASSWORD" | $SSH "docker login $CI_REGISTRY -u '$REGISTRY_DEPLOY_USER' --password-stdin"
+
+      # 3. guardar la imagen previa para rollback.
+      PREV_IMAGE=$($SSH "docker inspect -f '{{.Config.Image}}' mybusiness-web 2>/dev/null" || true)
+      echo "Imagen previa: ${PREV_IMAGE:-<ninguna>}"
+
+      # 4. recrear el contenedor.
+      $SSH "docker rm -f mybusiness-web 2>/dev/null || true"
+      $SSH "docker run -d --name mybusiness-web --restart unless-stopped -p 3000:3000 --memory=340m --memory-swap=640m --env-file /home/deploy/mybusiness/web.env $IMAGE"
+
+      # 5. esperar a que el healthcheck pase (30 intentos x 2s).
+      ok=0
+      for i in $(seq 1 30); do
+        status=$($SSH "docker inspect -f '{{.State.Health.Status}}' mybusiness-web 2>/dev/null" || echo unknown)
+        if [ "$status" = "healthy" ]; then ok=1; break; fi
+        sleep 2
+      done
+
+      # 6. smoke test HTTP.
+      if [ "$ok" -eq 1 ] && curl -fsS "$DEPLOY_URL/healthz" >/dev/null; then
+        echo "Despliegue OK en $DEPLOY_URL con $IMAGE"
+      else
+        echo "Health check o smoke test falló; iniciando rollback a ${PREV_IMAGE:-<ninguna>}"
+        $SSH "docker logs --tail 60 mybusiness-web 2>&1" || true
+        $SSH "docker rm -f mybusiness-web 2>/dev/null || true"
+        if [ -n "$PREV_IMAGE" ]; then
+          $SSH "docker run -d --name mybusiness-web --restart unless-stopped -p 3000:3000 --memory=340m --memory-swap=640m --env-file /home/deploy/mybusiness/web.env $PREV_IMAGE"
+          echo "Rollback ejecutado a $PREV_IMAGE"
+        fi
+        exit 1
+      fi
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+      changes: *deploy-changes
+
+# ---------------------------------------------------------------------------
+# deploy: producción (manual en main)
+# ---------------------------------------------------------------------------
+web:deploy:production:
+  extends: .deploy-ssh
+  needs:
+    - job: web:image
+      artifacts: false
+  environment:
+    name: production
+    url: '$PRODUCTION_URL'
+  resource_group: web-production
+  when: manual
+  allow_failure: false
+  timeout: 15m
+  variables:
+    DEPLOY_HOST: '$PRODUCTION_HOST'
+    DEPLOY_USER: '$PRODUCTION_USER'
+    DEPLOY_KEY: '$PRODUCTION_SSH_KEY'
+    DEPLOY_URL: '$PRODUCTION_URL'
+    DEPLOY_IMAGE: '$CI_REGISTRY_IMAGE/web:$CI_COMMIT_SHA'
+  script:
+    - set +x
+    - |
+      SSH="ssh -i $KEY_PATH -o StrictHostKeyChecking=yes $DEPLOY_USER@$REMOTE_HOST"
+      IMAGE="$DEPLOY_IMAGE"
+
+      $SSH "mkdir -p /home/deploy/mybusiness && umask 077 && cat > /home/deploy/mybusiness/web.env" <<EOF
+      NODE_ENV=production
+      PORT=3000
+      WEB_SESSION_SECRET=$WEB_SESSION_SECRET
+      WEB_GATEWAY_URL=$WEB_GATEWAY_URL
+      WEB_ALLOWED_ORIGINS=$WEB_ALLOWED_ORIGINS
+      WEB_SECURE_COOKIES=$WEB_SECURE_COOKIES
+      EOF
+
+      printf '%s' "$REGISTRY_DEPLOY_PASSWORD" | $SSH "docker login $CI_REGISTRY -u '$REGISTRY_DEPLOY_USER' --password-stdin"
+
+      PREV_IMAGE=$($SSH "docker inspect -f '{{.Config.Image}}' mybusiness-web 2>/dev/null" || true)
+      echo "Imagen previa: ${PREV_IMAGE:-<ninguna>}"
+
+      $SSH "docker rm -f mybusiness-web 2>/dev/null || true"
+      $SSH "docker run -d --name mybusiness-web --restart unless-stopped -p 3000:3000 --memory=340m --memory-swap=640m --env-file /home/deploy/mybusiness/web.env $IMAGE"
+
+      ok=0
+      for i in $(seq 1 30); do
+        status=$($SSH "docker inspect -f '{{.State.Health.Status}}' mybusiness-web 2>/dev/null" || echo unknown)
+        if [ "$status" = "healthy" ]; then ok=1; break; fi
+        sleep 2
+      done
+
+      if [ "$ok" -eq 1 ] && curl -fsS "$DEPLOY_URL/healthz" >/dev/null; then
+        echo "Despliegue OK en $DEPLOY_URL con $IMAGE"
+      else
+        echo "Health check o smoke test falló; iniciando rollback a ${PREV_IMAGE:-<ninguna>}"
+        $SSH "docker logs --tail 60 mybusiness-web 2>&1" || true
+        $SSH "docker rm -f mybusiness-web 2>/dev/null || true"
+        if [ -n "$PREV_IMAGE" ]; then
+          $SSH "docker run -d --name mybusiness-web --restart unless-stopped -p 3000:3000 --memory=340m --memory-swap=640m --env-file /home/deploy/mybusiness/web.env $PREV_IMAGE"
+          echo "Rollback ejecutado a $PREV_IMAGE"
+        fi
+        exit 1
+      fi
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes: *deploy-changes

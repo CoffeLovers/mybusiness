@@ -27,6 +27,7 @@ include:
   - local: .gitlab/ci/web.yml
   - local: .gitlab/ci/android.yml
   - local: .gitlab/ci/security.yml
+  - local: .gitlab/ci/deploy.yml
 
 default:
   image: node:20-bookworm
