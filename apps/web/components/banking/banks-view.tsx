@@ -3,14 +3,14 @@
 /**
  * Vista de bancos: conexiones, cuentas y acciones de sincronización.
  *
- * Es de sólo lectura salvo dos mutaciones (sincronizar y desvincular), que
- * pasan por el BFF con el token CSRF de doble envío. La vinculación de nuevas
- * cuentas no se ofrece aquí porque requiere el widget de Plaid (SDK y
- * credenciales públicas): el usuario la completa desde la app Android o por API.
+ * Es de sólo lectura salvo tres mutaciones (sincronizar, desvincular y
+ * vincular), que pasan por el BFF con el token CSRF de doble envío. "Vincular
+ * cuenta" pide un `link_token` de Plaid y navega a `/banking/link`; al volver
+ * con `public_token` se canjea y se refresca la lista.
  */
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import type {
   BankAccountResponse,
@@ -264,6 +264,8 @@ export function BanksView({
 }: BanksViewProps) {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
+  const [linking, setLinking] = useState(false);
+  const [exchanging, setExchanging] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState('');
@@ -276,6 +278,117 @@ export function BanksView({
   const refresh = () => {
     setRefreshing(true);
     router.refresh();
+  };
+
+  const exchangeHandled = useRef(false);
+
+  useEffect(() => {
+    if (exchangeHandled.current) {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const publicToken = params.get('public_token');
+    const wasCancelled = params.get('status') === 'cancelled';
+
+    if (publicToken === null && !wasCancelled) {
+      return;
+    }
+
+    exchangeHandled.current = true;
+
+    // La URL se limpia siempre: recargar no debe reenviar un token de un solo uso.
+    const url = new URL(window.location.href);
+
+    url.searchParams.delete('public_token');
+    url.searchParams.delete('status');
+    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+
+    if (publicToken === null) {
+      setAnnouncement('Vinculación cancelada.');
+      return;
+    }
+
+    let active = true;
+
+    setExchanging(true);
+    setActionError(null);
+
+    void (async () => {
+      try {
+        const response = await fetch('/api/banking/exchange', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { ...csrfHeaders(), 'content-type': 'application/json' },
+          body: JSON.stringify({ provider: 'plaid', publicToken }),
+        });
+
+        if (!response.ok) {
+          throw new Error(await readErrorCode(response));
+        }
+
+        if (!active) {
+          return;
+        }
+
+        setAnnouncement('Banco vinculado. Actualizando tus cuentas…');
+        refresh();
+      } catch (cause) {
+        if (!active) {
+          return;
+        }
+
+        const message = `No se pudo completar la vinculación (${errorCode(cause)}).`;
+
+        setActionError(message);
+        setAnnouncement(message);
+      } finally {
+        if (active) {
+          setExchanging(false);
+        }
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+    // `refresh` depende de `router`, que es estable entre renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]);
+
+  const handleLink = async () => {
+    setActionError(null);
+    setLinking(true);
+
+    try {
+      const response = await fetch('/api/banking/link-token', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { ...csrfHeaders(), 'content-type': 'application/json' },
+        body: JSON.stringify({ provider: 'plaid' }),
+      });
+
+      if (!response.ok) {
+        throw new Error(await readErrorCode(response));
+      }
+
+      const result = (await response.json()) as { linkToken?: unknown };
+
+      if (typeof result.linkToken !== 'string' || result.linkToken.length === 0) {
+        throw new Error('invalid_link_token');
+      }
+
+      router.push(
+        `/banking/link?token=${encodeURIComponent(result.linkToken)}&redirect_uri=/bancos&provider=plaid`,
+      );
+    } catch (cause) {
+      const message = `No se pudo iniciar la vinculación (${errorCode(cause)}).`;
+
+      setActionError(message);
+      setAnnouncement(message);
+    } finally {
+      setLinking(false);
+    }
   };
 
   const handleSync = async (connection: BankConnectionResponse) => {
@@ -355,13 +468,30 @@ export function BanksView({
     }
   };
 
-  const isBusy = syncingId !== null || disconnectingId !== null;
+  const isBusy = syncingId !== null || disconnectingId !== null || linking || exchanging;
 
   return (
     <section className="flex flex-col gap-4" aria-busy={isBusy}>
       <p role="status" aria-live="polite" className="sr-only">
         {announcement}
       </p>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-text-muted">
+          Conecta tu banco para importar cuentas y movimientos automáticamente.
+        </p>
+        <Button
+          variant="primary"
+          size="lg"
+          onClick={() => {
+            void handleLink();
+          }}
+          loading={linking}
+          disabled={isBusy}
+        >
+          Vincular cuenta
+        </Button>
+      </div>
 
       {initialError ? (
         <Card role="alert" className="flex flex-col items-start gap-3 border-expense/30">
@@ -391,7 +521,7 @@ export function BanksView({
         <Card className="flex flex-col gap-2">
           <h2 className="text-lg font-semibold text-text">No hay cuentas vinculadas</h2>
           <p className="text-sm text-text-muted">
-            Vincula tu banco desde la app Android o completa el exchange por API
+            Vincula tu banco para empezar a sincronizar tus cuentas.
           </p>
         </Card>
       ) : (

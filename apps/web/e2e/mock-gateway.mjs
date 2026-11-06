@@ -552,8 +552,20 @@ async function handleBankingConnect(request, response) {
   });
 }
 
-async function handleBankingExchange(request, response) {
+/** Token de Plaid Link determinista para que los E2E puedan afirmarlo. */
+function handleBankingLinkToken(request, response) {
   const tenantId = getTenantIdFromRequest(request);
+  if (!tenantId) {
+    sendError(response, 401, 'unauthorized');
+    return;
+  }
+  sendJson(response, 200, {
+    linkToken: 'link-sandbox-test',
+    expiration: '2030-01-01T00:00:00Z',
+  });
+}
+
+async function handleBankingExchange(request, response) {  const tenantId = getTenantIdFromRequest(request);
   if (!tenantId) {
     sendError(response, 401, 'unauthorized');
     return;
@@ -1281,11 +1293,13 @@ const server = createServer((request, response) => {
   }
 
   // Banking endpoints
-  if (
-    method === 'POST' &&
-    (path === '/api/v1/banking/connect' || path === '/api/v1/banking/link-token')
-  ) {
+  if (method === 'POST' && path === '/api/v1/banking/connect') {
     void handleBankingConnect(request, response);
+    return;
+  }
+
+  if (method === 'POST' && path === '/api/v1/banking/link-token') {
+    handleBankingLinkToken(request, response);
     return;
   }
 
