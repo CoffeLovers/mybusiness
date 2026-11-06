@@ -1,0 +1,91 @@
+# Pipeline de seguridad — MIG-05 (#138)
+#
+# Tres controles independientes sobre el árbol de trabajo:
+#   security:trivy  — vulnerabilidades HIGH/CRITICAL en dependencias y SO.
+#   security:audit  — advisories de npm/pnpm (nivel high).
+#   security:sonar  — análisis estático en SonarCloud (opt-in por token).
+#
+# Los dos primeros son bloqueantes; Sonar se mantiene en `allow_failure` hasta
+# que el `SONAR_TOKEN` real esté cargado y el quality gate se estabilice.
+# Ningún secreto se hardcodea: todo llega por variables de CI/CD.
+
+# Se ejecuta en MRs y en cualquier pipeline de push.
+.security-rules: &security-rules
+  - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+  - if: '$CI_PIPELINE_SOURCE == "push"'
+
+security:trivy:
+  stage: security
+  timeout: 15m
+  interruptible: true
+  needs: []
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: ['']
+  variables:
+    TRIVY_CACHE_DIR: '$CI_PROJECT_DIR/.trivy-cache'
+    TRIVY_NO_PROGRESS: 'true'
+  cache:
+    key: trivy-db
+    paths:
+      - .trivy-cache/
+  script:
+    - >-
+      trivy fs
+      --scanners vuln
+      --severity HIGH,CRITICAL
+      --exit-code 1
+      --no-progress
+      --skip-dirs '**/node_modules'
+      --skip-dirs '**/.next'
+      .
+  allow_failure: false
+  rules: *security-rules
+
+security:audit:
+  stage: security
+  timeout: 15m
+  interruptible: true
+  needs: []
+  image: node:20-bookworm
+  variables:
+    PNPM_STORE_DIR: '$CI_PROJECT_DIR/.pnpm-store'
+  cache:
+    key:
+      files:
+        - pnpm-lock.yaml
+    paths:
+      - .pnpm-store
+  before_script:
+    - corepack enable
+    - corepack prepare pnpm@12.9.1 --activate
+    - pnpm config set store-dir "$PNPM_STORE_DIR" --global
+    - pnpm install --frozen-lockfile
+  script:
+    - pnpm audit --audit-level high
+  allow_failure: false
+  rules: *security-rules
+
+security:sonar:
+  stage: security
+  timeout: 20m
+  interruptible: true
+  image:
+    name: sonarsource/sonar-scanner-cli:latest
+    entrypoint: ['']
+  variables:
+    SONAR_USER_HOME: '$CI_PROJECT_DIR/.sonar'
+    GIT_DEPTH: '0'
+  cache:
+    key: sonar-scanner
+    paths:
+      - .sonar/cache
+  before_script: []
+  script:
+    - >-
+      sonar-scanner
+      -Dsonar.host.url=https://sonarcloud.io
+      -Dsonar.token=$SONAR_TOKEN
+  allow_failure: true
+  rules:
+    - if: '$SONAR_TOKEN'

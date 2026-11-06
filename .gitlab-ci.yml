@@ -5,19 +5,29 @@
 #                tests unitarios, contratos (OpenAPI + Kotlin), build y e2e.
 # MIG-03 (#136): paridad con `.github/workflows/web-ci.yml` — calidad web,
 #                Playwright (E2E, a11y, visual), seguridad y Sonar.
+# MIG-04 (#137): build Android (SDK 35 + cache Gradle).
+# MIG-05 (#138): seguridad transversal (Trivy, pnpm audit, Sonar opt-in).
+# MIG-06 (#139): imagen web al registry y CD a staging/producción con rollback.
 #
-# Los jobs de backend viven en `.gitlab/ci/backend.yml` y los de web en
-# `.gitlab/ci/web.yml`.
+# Los jobs de backend viven en `.gitlab/ci/backend.yml`, los de web en
+# `.gitlab/ci/web.yml`, los de Android en `.gitlab/ci/android.yml`, los de
+# seguridad en `.gitlab/ci/security.yml` y los de despliegue en
+# `.gitlab/ci/deploy.yml`.
 # Decisiones de plataforma, runners y registry: docs/adr/009-gitlab-ci-cd-platform.md
 
 stages:
   - validate
   - test
   - build
+  - security
+  - deploy
 
 include:
   - local: .gitlab/ci/backend.yml
   - local: .gitlab/ci/web.yml
+  - local: .gitlab/ci/android.yml
+  - local: .gitlab/ci/security.yml
+  - local: .gitlab/ci/deploy.yml
 
 default:
   image: node:20-bookworm
