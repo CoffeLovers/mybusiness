@@ -1210,6 +1210,98 @@ function handleGetTransactions(request, response) {
   });
 }
 
+/* ------------------------------------------------------------------------- */
+/* Agente conversacional (SF3-05)                                            */
+/* ------------------------------------------------------------------------- */
+
+const AGENT_BUDGET = {
+  limitMicroUsd: 50_000_000,
+  spentMicroUsd: 12_000_000,
+  reservedMicroUsd: 0,
+  availableMicroUsd: 38_000_000,
+  warnRatio: 0.8,
+  hardLimit: true,
+  isExhausted: false,
+  isWarning: false,
+  periodKey: '2026-11',
+};
+
+/** Restante decreciente entre respuestas para verificar la barra en la UI. */
+let agentBudgetRemainingMicroUsd = 38_000_000;
+
+function handleAgentBudget(request, response) {
+  const authorization = request.headers.authorization ?? '';
+
+  if (!/^Bearer access-[A-Za-z0-9._-]+$/.test(authorization)) {
+    sendError(response, 401, 'unauthorized');
+    return;
+  }
+
+  sendJson(response, 200, AGENT_BUDGET);
+}
+
+async function handleAgentChat(request, response) {
+  const authorization = request.headers.authorization ?? '';
+
+  if (!/^Bearer access-[A-Za-z0-9._-]+$/.test(authorization)) {
+    sendError(response, 401, 'unauthorized');
+    return;
+  }
+
+  const body = await readJson(request);
+  const message = body !== null && typeof body.message === 'string' ? body.message : '';
+
+  if (message.includes('fail')) {
+    sendError(response, 502, 'provider_error');
+    return;
+  }
+
+  if (message.includes('degraded')) {
+    sendJson(response, 200, {
+      answer: 'No puedo consultar el modelo ahora. Estos son los datos verificados disponibles.',
+      citations: [],
+      degraded: true,
+      reason: message.includes('budget') ? 'BUDGET_EXHAUSTED' : 'PROVIDER_UNAVAILABLE',
+      usage: {
+        promptTokens: 0,
+        completionTokens: 0,
+        costMicroUsd: 0,
+        budgetRemainingMicroUsd: agentBudgetRemainingMicroUsd,
+        cacheHit: false,
+      },
+    });
+    return;
+  }
+
+  agentBudgetRemainingMicroUsd = Math.max(0, agentBudgetRemainingMicroUsd - 500_000);
+
+  sendJson(response, 200, {
+    answer: 'Tu saldo actual es 45.000,00 € y el flujo de caja del mes es positivo.',
+    citations: [
+      {
+        source: 'tool',
+        ref: 'cashflow-2026-11',
+        tool: 'get_cashflow_summary',
+        period: '2026-11',
+        label: 'Resumen de flujo de caja',
+      },
+      {
+        source: 'memory',
+        ref: 'memory-currency-preference',
+        label: 'Preferencia de moneda EUR',
+      },
+    ],
+    degraded: false,
+    usage: {
+      promptTokens: 120,
+      completionTokens: 48,
+      costMicroUsd: 320,
+      budgetRemainingMicroUsd: agentBudgetRemainingMicroUsd,
+      cacheHit: false,
+    },
+  });
+}
+
 const server = createServer((request, response) => {
   response.on('finish', () => {
     request.resume();
@@ -1217,6 +1309,16 @@ const server = createServer((request, response) => {
   const method = request.method ?? 'GET';
   const url = new URL(request.url ?? '/', `http://${HOST}:${PORT}`);
   const path = url.pathname;
+
+  if (method === 'GET' && path === '/api/v1/agent/budget') {
+    handleAgentBudget(request, response);
+    return;
+  }
+
+  if (method === 'POST' && path === '/api/v1/agent/chat') {
+    void handleAgentChat(request, response);
+    return;
+  }
 
   if (
     method === 'GET' &&

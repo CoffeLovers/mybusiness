@@ -1,10 +1,20 @@
-import { Body, Controller, HttpCode, Inject, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Inject,
+  Post,
+  Query,
+  ValidationPipe,
+} from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
 import { ApiTags } from '@nestjs/swagger';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import {
   AgentChatDto,
   AgentPatterns,
+  GetAgentBudgetDto,
   QueryAgentMemoryDto,
   StoreAgentMemoryDto,
   UserRole,
@@ -47,6 +57,21 @@ export class AgentGatewayController {
   @Post('chat')
   chat(@CurrentUser() user: UserContext, @Body() dto: AgentChatDto) {
     return rpcSend(this.agentClient, AgentPatterns.CHAT, {
+      ...dto,
+      tenantId: user.tenantId,
+      userId: user.userId,
+      role: user.role,
+    });
+  }
+
+  @Roles(UserRole.ACCOUNTANT, UserRole.TENANT_ADMIN, UserRole.SUPER_ADMIN)
+  @HttpCode(200)
+  @Get('budget')
+  budget(
+    @CurrentUser() user: UserContext,
+    @Query(new ValidationPipe({ transform: true, whitelist: true })) dto: GetAgentBudgetDto,
+  ) {
+    return rpcSend(this.agentClient, AgentPatterns.GET_BUDGET, {
       ...dto,
       tenantId: user.tenantId,
       userId: user.userId,

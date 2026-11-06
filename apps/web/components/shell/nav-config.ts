@@ -17,7 +17,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { id: 'libro-mayor', label: 'Libro mayor', href: '/libro-mayor' },
   { id: 'facturas', label: 'Facturas', href: null },
   { id: 'bancos', label: 'Bancos', href: '/bancos' },
-  { id: 'agente', label: 'Agente', href: null },
+  { id: 'agente', label: 'Agente', href: '/agente' },
 ];
 
 export type LinkedNavItem = NavItem & { href: string };
