@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 
+import { Skeleton } from './skeleton';
+
 export interface DelayedSkeletonProps {
   /** Retardo en milisegundos antes de mostrar el bloque visual. */
   delayMs?: number;
@@ -41,11 +43,13 @@ export function DelayedSkeleton({ delayMs = 300, label = 'Cargando…' }: Delaye
     <div role="status" aria-live="polite" className="flex flex-col gap-4">
       <span className="sr-only">{label}</span>
       {visible ? (
-        <div className="flex flex-col gap-4" data-testid="delayed-skeleton" aria-hidden="true">
-          <div className="h-8 w-48 animate-pulse rounded-md bg-surface-raised" />
-          <div className="h-24 w-full animate-pulse rounded-lg bg-surface-raised" />
-          <div className="h-24 w-full animate-pulse rounded-lg bg-surface-raised" />
-        </div>
+        <Skeleton
+          lines={3}
+          data-testid="delayed-skeleton"
+          // Alturas y separación del bloque decorativo, aplicadas sobre las
+          // líneas que genera la primitiva Skeleton.
+          className="gap-4 [&>div]:h-24 [&>div]:w-full [&>div:first-child]:h-8 [&>div:first-child]:w-48"
+        />
       ) : null}
     </div>
   );

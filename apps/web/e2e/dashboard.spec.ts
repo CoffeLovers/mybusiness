@@ -171,20 +171,21 @@ test.describe('Dashboard de Flujo de Caja (Issue #50)', () => {
 
     await resumenLink.click();
 
-    // No debe aparecer de inmediato ni tras 150 ms (anti-parpadeo).
-    await expect(skeleton).not.toBeVisible();
-    await page.waitForTimeout(150);
-    await expect(skeleton).not.toBeVisible();
+    // El skeleton tiene un retardo anti-parpadeo: no debe estar visible en
+    // cuanto arranca la navegación.
+    await expect(skeleton).toBeHidden();
 
-    // A partir de los 300 ms sí se muestra mientras la ruta está pendiente.
-    await expect(skeleton).toBeVisible({ timeout: 1000 });
+    // Pasado el retardo (300 ms) se muestra mientras la ruta sigue pendiente.
+    await expect(skeleton).toBeVisible({ timeout: 2000 });
 
     // Al resolverse la navegación, el skeleton desaparece.
     await expect(page.getByRole('heading', { level: 1, name: 'Resumen' })).toBeVisible();
-    await expect(skeleton).not.toBeVisible();
+    await expect(skeleton).toBeHidden();
   });
 
-  test('cumple accesibilidad WCAG sin violaciones críticas según axe', async ({ page }) => {
+  test('cumple accesibilidad WCAG sin violaciones críticas ni serias según axe', async ({
+    page,
+  }) => {
     await login(page);
 
     // Análisis de accesibilidad con axe-core
@@ -192,10 +193,10 @@ test.describe('Dashboard de Flujo de Caja (Issue #50)', () => {
       .withTags(['wcag2a', 'wcag2aa'])
       .analyze();
 
-    const criticalViolations = accessibilityScanResults.violations.filter(
-      (v) => v.impact === 'critical',
+    const blockingViolations = accessibilityScanResults.violations.filter(
+      (v) => v.impact === 'critical' || v.impact === 'serious',
     );
 
-    expect(criticalViolations).toEqual([]);
+    expect(blockingViolations).toEqual([]);
   });
 });

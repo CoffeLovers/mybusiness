@@ -320,6 +320,45 @@ describe('InlineBanner', () => {
     expect(container.firstElementChild?.className).toContain('extra');
     expect(screen.getByRole('alert')).not.toBeNull();
   });
+
+  it('renders the title as a paragraph by default', () => {
+    render(
+      <InlineBanner tone="info" title="Aviso">
+        Todo en orden
+      </InlineBanner>,
+    );
+
+    const title = screen.getByText('Aviso');
+
+    expect(title.tagName).toBe('P');
+    expect(screen.queryByRole('heading', { name: 'Aviso' })).toBeNull();
+  });
+
+  it('renders the title as an h2 when titleAs="h2"', () => {
+    render(
+      <InlineBanner tone="info" title="Aviso" titleAs="h2">
+        Todo en orden
+      </InlineBanner>,
+    );
+
+    const heading = screen.getByRole('heading', { level: 2, name: 'Aviso' });
+
+    expect(heading.tagName).toBe('H2');
+    expect(heading.textContent).toBe('Aviso');
+  });
+
+  it('renders the title as an h3 when titleAs="h3"', () => {
+    render(
+      <InlineBanner tone="danger" title="Error" titleAs="h3">
+        Algo falló
+      </InlineBanner>,
+    );
+
+    const heading = screen.getByRole('heading', { level: 3, name: 'Error' });
+
+    expect(heading.tagName).toBe('H3');
+    expect(heading.textContent).toBe('Error');
+  });
 });
 
 describe('Skeleton', () => {
@@ -353,6 +392,33 @@ describe('EmptyState', () => {
   it('renders without action/description when omitted', () => {
     render(<EmptyState title="Vacío" />);
     expect(screen.getByText('Vacío')).not.toBeNull();
+  });
+
+  it('renders the title as a paragraph by default', () => {
+    render(<EmptyState title="Sin movimientos" />);
+
+    const title = screen.getByText('Sin movimientos');
+
+    expect(title.tagName).toBe('P');
+    expect(screen.queryByRole('heading', { name: 'Sin movimientos' })).toBeNull();
+  });
+
+  it('renders the title as an h2 when titleAs="h2"', () => {
+    render(<EmptyState title="Sin movimientos" titleAs="h2" />);
+
+    const heading = screen.getByRole('heading', { level: 2, name: 'Sin movimientos' });
+
+    expect(heading.tagName).toBe('H2');
+    expect(heading.textContent).toBe('Sin movimientos');
+  });
+
+  it('renders the title as an h3 when titleAs="h3"', () => {
+    render(<EmptyState title="Sin movimientos" titleAs="h3" />);
+
+    const heading = screen.getByRole('heading', { level: 3, name: 'Sin movimientos' });
+
+    expect(heading.tagName).toBe('H3');
+    expect(heading.textContent).toBe('Sin movimientos');
   });
 });
 
