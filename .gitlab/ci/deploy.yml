@@ -29,10 +29,16 @@
 .docker-build:
   stage: build
   image: docker:27-cli
-  services:
-    - docker:27-dind
+  # El runner local registrado usa Docker rootless en el host
+  # (unix:///run/user/1000/docker.sock) y monta ese socket en el contenedor de
+  # CI como /var/run/docker.sock. Por eso NO se levanta un servicio dind: el CLI
+  # habla directamente con el daemon del host a través del socket montado.
+  # Si este job se ejecuta en un runner basado en dind, hay que restaurar
+  # `services: [docker:27-dind]` y DOCKER_TLS_CERTDIR=/certs, y eliminar
+  # DOCKER_HOST.
   variables:
-    DOCKER_TLS_CERTDIR: '/certs'
+    DOCKER_HOST: 'unix:///var/run/docker.sock'
+    DOCKER_TLS_CERTDIR: ''
   before_script:
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_JOB_TOKEN" "$CI_REGISTRY"
 
