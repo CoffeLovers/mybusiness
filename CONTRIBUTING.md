@@ -23,6 +23,29 @@ Guía normativa para trabajar en este repositorio. Cualquier desviación debe ju
 - Una PR abierta contra `main` se **cierra y se reabre contra `develop`**. No se mergea a `main` desde una PR.
 - La PR debe referenciar la issue (`Closes #<issue>`) y describir el alcance, el riesgo y cómo se validó.
 
+## CI/CD (GitLab)
+
+- **El pipeline de GitLab es el gate real.** Un cambio solo está listo cuando su pipeline en
+  <https://gitlab.com/coffelovers2/mybusiness/-/pipelines> está verde (lint, tipos, tests,
+  contratos, seguridad y build).
+- **GitHub Actions está deshabilitado por facturación.** No esperes checks de Actions: si la PR
+  de GitHub aparece sin checks, es lo esperado; la evidencia es el job de GitLab.
+- **Empuja la rama a ambos remotos** para que exista el MR en GitLab y el espejo en GitHub:
+
+  ```bash
+  git push origin <rama>
+  git push gitlab <rama>
+  # o, tras configurar los push URLs:
+  git push --all origin
+  ```
+
+- **Los merges a `develop` y `main` en GitLab van por MR.** Ambas ramas están protegidas: no se
+  admite push directo ni force-push. Abre el MR contra `develop`, adjunta la URL del pipeline verde
+  y mergea desde la UI (merge train / `merge_when_pipeline_succeeds`).
+- `main` solo avanza por **fast-forward desde `develop`**; los tags de release se crean en GitLab.
+- Guía operativa (stages, runners, variables y schedules): [`.gitlab/ci/README.md`](.gitlab/ci/README.md).
+- Procedimiento de cutover, espejo y rollback: [`docs/migration/gitlab-ci-cd/RUNBOOK.md`](docs/migration/gitlab-ci-cd/RUNBOOK.md).
+
 ## Commits
 
 Formato **Conventional Commits**:
