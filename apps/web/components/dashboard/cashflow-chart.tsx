@@ -1,10 +1,11 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import type { CashflowBucket } from '@mybusiness/contracts';
 import { formatBucketLabel } from '@/lib/date-utils';
 import { formatMinorUnitsString } from '@/lib/format';
+import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 
 // Dynamic import para evitar problemas de SSR con canvas / window en Next.js
 const ReactECharts = dynamic(() => import('echarts-for-react'), {
@@ -26,17 +27,7 @@ interface CashflowChartProps {
 }
 
 export function CashflowChart({ series, currency }: CashflowChartProps) {
-  const [reduceMotion, setReduceMotion] = useState(false);
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const handleChange = () => setReduceMotion(mediaQuery.matches);
-
-    handleChange();
-    mediaQuery.addEventListener('change', handleChange);
-
-    return () => mediaQuery.removeEventListener('change', handleChange);
-  }, []);
+  const reduceMotion = usePrefersReducedMotion();
 
   const firstBucket = series[0];
   const isMonthly = Boolean(
