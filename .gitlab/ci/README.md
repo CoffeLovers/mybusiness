@@ -76,9 +76,11 @@ se imprime. Son credenciales de prueba: no reutilizar las de staging/producción
 | **Android** | `android`   | Imagen con JDK 17, Android SDK 35, `build-tools;35.0.0`; ≥ 4 vCPU / 8 GB / 60 GB; cache de Gradle.                                   |
 | **Load**    | `load`      | ≥ 4 vCPU / **≥ 4 GB RAM** / ≥ 40 GB; `/var/run/docker.sock` **montado** (Compose in-place, no dind); idealmente dedicado y nocturno. |
 
-`load:ingest-50k` usa la imagen `grafana/k6:latest` e instala `docker-cli`, `docker-cli-compose`
-y Node 20 en `before_script` (apk + corepack + pnpm 12.9.1). Si el runner no expone el socket de
-Docker, el job falla en el primer paso con un mensaje explícito.
+`load:ingest-50k` usa `docker:27-cli` como imagen del job (necesita Docker Compose, Node y
+pnpm) y ejecuta los escenarios dentro de la imagen oficial `grafana/k6:latest` con
+`docker run --network host`. La imagen de k6 corre como uid 12345 y no puede instalar paquetes,
+por eso no se usa directamente como imagen del job. Si el runner no expone el socket de Docker,
+el job falla en el primer paso con un mensaje explícito.
 
 > **Estado actual:** el runner con tag `load` aún no está registrado. Por eso el job es manual y
 > `allow_failure: true`: los schedules no se quedan bloqueados esperándolo.

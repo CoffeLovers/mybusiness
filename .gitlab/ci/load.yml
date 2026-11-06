@@ -11,7 +11,7 @@
 # deja el job esperando intervención, sin bloquear el resto.
 #
 # Requisitos del runner (ver .gitlab/ci/README.md §Runners):
-#   - tag `load`, `run_untagged: false`
+#   - tag `load`, `run_untagged: false`, Linux (k6 usa `--network host`)
 #   - `/var/run/docker.sock` montado (Docker Compose in-place, no dind)
 #   - variables masked: POSTGRES_PASSWORD, AUTH_DB_PASSWORD, FINANCE_DB_PASSWORD,
 #     AGENT_DB_PASSWORD, AUDIT_DB_PASSWORD, REDIS_PASSWORD, JWT_SECRET,
@@ -19,7 +19,11 @@
 
 load:ingest-50k:
   stage: test
-  image: grafana/k6:latest
+  # `grafana/k6:latest` corre como uid 12345 y no trae Docker ni Node, así que
+  # no sirve como imagen del job (no puede instalar dependencias). El job usa
+  # `docker:27-cli` y ejecuta k6 desde la imagen oficial (K6_IMAGE) contra los
+  # contenedores levantados en el runner.
+  image: docker:27-cli
   tags:
     - load
   timeout: 75m
@@ -31,6 +35,7 @@ load:ingest-50k:
   variables:
     # El socket se publica en el host del runner; el job comparte su red.
     DOCKER_HOST: 'unix:///var/run/docker.sock'
+    K6_IMAGE: 'grafana/k6:latest'
     BASE_URL: 'http://127.0.0.1:3000'
     RUN_ID: 'load54-$CI_PIPELINE_ID'
     LOAD_CURRENCY: 'COP'
@@ -44,10 +49,9 @@ load:ingest-50k:
     - when: never
   cache: {}
   before_script:
-    # La imagen de k6 no trae Docker ni Node: se instalan aquí para que el job
-    # sea autocontenido. Si el runner no expone el socket, el script falla con
-    # un mensaje explícito en el primer paso.
-    - apk add --no-cache docker-cli docker-cli-compose nodejs npm git curl bash
+    # `docker:27-cli` ya trae el cliente y el plugin de compose; Node y pnpm se
+    # instalan aquí para compilar el monorepo.
+    - apk add --no-cache nodejs npm git curl bash
     - (corepack enable || (npm install -g corepack && corepack enable))
     - corepack prepare pnpm@12.9.1 --activate
     - pnpm config set store-dir "$CI_PROJECT_DIR/.pnpm-store" --global
@@ -204,17 +208,25 @@ load:ingest-50k:
       # ---------------------------------------------------------------------
       # 4. k6: probe de idempotencia + ingesta (SMOKE o FULL 50k)
       # ---------------------------------------------------------------------
-      K6_ENVS=(
-        -e "BASE_URL=${BASE_URL}"
-        -e "RUN_ID=${RUN_ID}"
-        -e "SEED_ADMIN_EMAIL=${SEED_ADMIN_EMAIL}"
-        -e "SEED_ADMIN_PASSWORD=${SEED_ADMIN_PASSWORD}"
-        -e "LOAD_CURRENCY=${LOAD_CURRENCY}"
-        -e "SMOKE=${SMOKE}"
-      )
+      # k6 se ejecuta en su imagen oficial con `--network host`: el runner es
+      # Linux, así que 127.0.0.1 alcanza los puertos publicados por Compose.
+      k6_run() {
+        local script="$1"
+        docker run --rm \
+          --network host \
+          -v "$CI_PROJECT_DIR":/src \
+          -w /src \
+          -e "BASE_URL=${BASE_URL}" \
+          -e "RUN_ID=${RUN_ID}" \
+          -e "SEED_ADMIN_EMAIL=${SEED_ADMIN_EMAIL}" \
+          -e "SEED_ADMIN_PASSWORD=${SEED_ADMIN_PASSWORD}" \
+          -e "LOAD_CURRENCY=${LOAD_CURRENCY}" \
+          -e "SMOKE=${SMOKE}" \
+          "$K6_IMAGE" run "$script"
+      }
 
-      k6 run "${K6_ENVS[@]}" tests/load/idempotency-check.js 2>&1 | tee tests/load/k6-idempotency.log
-      k6 run "${K6_ENVS[@]}" tests/load/ingest-50k.js 2>&1 | tee tests/load/k6-run.log
+      k6_run tests/load/idempotency-check.js 2>&1 | tee tests/load/k6-idempotency.log
+      k6_run tests/load/ingest-50k.js 2>&1 | tee tests/load/k6-run.log
 
       # ---------------------------------------------------------------------
       # 5. Verificación en PostgreSQL (solo modo FULL)
