@@ -4,6 +4,7 @@ import com.mybusiness.core.common.constants.Constants
 import com.mybusiness.core.network.BuildConfig
 import com.mybusiness.core.network.api.AuthApiService
 import com.mybusiness.core.network.api.BankingApiService
+import com.mybusiness.core.network.interceptor.ApiEnvelopeInterceptor
 import com.mybusiness.core.network.interceptor.AuthInterceptor
 import dagger.Module
 import dagger.Provides
@@ -51,10 +52,12 @@ object NetworkModule {
     @Singleton
     fun provideOkHttpClient(
         authInterceptor: AuthInterceptor,
+        apiEnvelopeInterceptor: ApiEnvelopeInterceptor,
         loggingInterceptor: HttpLoggingInterceptor
     ): OkHttpClient {
         return OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
+            .addInterceptor(apiEnvelopeInterceptor)
             .addInterceptor(loggingInterceptor)
             .connectTimeout(Constants.NETWORK_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .readTimeout(Constants.NETWORK_TIMEOUT_SECONDS, TimeUnit.SECONDS)
