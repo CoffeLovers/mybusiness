@@ -136,6 +136,54 @@ test.describe('Dashboard de Flujo de Caja (Issue #50)', () => {
     await retryButton.click();
   });
 
+  test('muestra el skeleton de carga solo tras 300 ms', async ({ page }) => {
+    await login(page);
+
+    // Intercepta la navegación a /resumen y retrasa ~900 ms la petición de
+    // datos para que el estado `loading` sea observable.
+    //
+    // Los prefetch se dejan pasar sin retardo: `/resumen` es dinámico (lee la
+    // cookie de sesión), así que Next solo cachea el shell de carga, no los
+    // datos. Abortarlos provoca que Next registre "Failed to fetch RSC payload"
+    // y degrade a una navegación completa del navegador, donde `loading.tsx`
+    // nunca llega a renderizarse en cliente.
+    await page.route('**/resumen*', async (route) => {
+      const headers = route.request().headers();
+      const isPrefetch =
+        headers['next-router-prefetch'] === '1' || headers['purpose'] === 'prefetch';
+
+      if (isPrefetch) {
+        await route.continue();
+        return;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      await route.continue();
+    });
+
+    await page.goto('/libro-mayor');
+    await expect(page.getByRole('heading', { level: 1, name: 'Libro mayor' })).toBeVisible();
+
+    const skeleton = page.getByTestId('delayed-skeleton');
+    const resumenLink = page
+      .getByRole('navigation', { name: 'Navegación principal' })
+      .getByRole('link', { name: 'Resumen' });
+
+    await resumenLink.click();
+
+    // No debe aparecer de inmediato ni tras 150 ms (anti-parpadeo).
+    await expect(skeleton).not.toBeVisible();
+    await page.waitForTimeout(150);
+    await expect(skeleton).not.toBeVisible();
+
+    // A partir de los 300 ms sí se muestra mientras la ruta está pendiente.
+    await expect(skeleton).toBeVisible({ timeout: 1000 });
+
+    // Al resolverse la navegación, el skeleton desaparece.
+    await expect(page.getByRole('heading', { level: 1, name: 'Resumen' })).toBeVisible();
+    await expect(skeleton).not.toBeVisible();
+  });
+
   test('cumple accesibilidad WCAG sin violaciones críticas según axe', async ({ page }) => {
     await login(page);
 
