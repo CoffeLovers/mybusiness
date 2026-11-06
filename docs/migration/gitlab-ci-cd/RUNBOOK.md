@@ -193,7 +193,7 @@ Checklist técnico (todo debe pasar antes de declarar el cutover cerrado):
 | 3   | `web:deploy:staging` ejecutado tras un merge real                   | Job log + environment `staging`                            |
 | 4   | `/healthz` responde 200 en staging                                  | `curl -fsS "$STAGING_URL/healthz"`                         |
 | 5   | `/login` carga y el formulario autentica                            | Navegador + `curl -I "$STAGING_URL/login"`                 |
-| 6   | Contratos sin drift (OpenAPI + Kotlin)                              | `backend:contracts`, `web:contracts` verdes                |
+| 6   | Contratos sin drift (OpenAPI + Kotlin)                              | `backend:contracts` verde y `pnpm check:contracts` local   |
 | 7   | Android compila y publica APK                                       | `android:build` + artifact `app-debug.apk`                 |
 | 8   | Trivy y `pnpm audit` sin HIGH/CRITICAL nuevos                       | `security:trivy`, `security:audit`                         |
 | 9   | Sonar con `SONAR_TOKEN` nuevo                                       | `web:sonar` / `security:sonar`                             |
