@@ -1,0 +1,262 @@
+# Pipeline de carga — MIG-07 (#140)
+#
+# Reproduce el workflow `.github/workflows/load-test.yml` (issue #54) dentro de
+# GitLab: levanta PostgreSQL 16 + pgvector y Redis 7 con Docker Compose, aplica
+# migraciones y seed, arranca el stack real, ejecuta k6 sobre 50.000
+# transacciones y verifica persistencia, idempotencia y paridad de eventos.
+#
+# El job es **manual y opt-in** (`RUN_LOAD_TEST=true`): requiere un runner con
+# tag `load` que exponga el socket de Docker y tenga ≥ 4 GB de RAM y ≥ 40 GB de
+# disco. Mientras ese runner no exista, el schedule semanal crea el pipeline y
+# deja el job esperando intervención, sin bloquear el resto.
+#
+# Requisitos del runner (ver .gitlab/ci/README.md §Runners):
+#   - tag `load`, `run_untagged: false`, Linux (k6 usa `--network host`)
+#   - `/var/run/docker.sock` montado (Docker Compose in-place, no dind)
+#   - variables masked: POSTGRES_PASSWORD, AUTH_DB_PASSWORD, FINANCE_DB_PASSWORD,
+#     AGENT_DB_PASSWORD, AUDIT_DB_PASSWORD, REDIS_PASSWORD, JWT_SECRET,
+#     COOKIE_SECRET, BANK_ENCRYPTION_KEY, SEED_ADMIN_EMAIL, SEED_ADMIN_PASSWORD.
+
+load:ingest-50k:
+  stage: test
+  # `grafana/k6:latest` corre como uid 12345 y no trae Docker ni Node, así que
+  # no sirve como imagen del job (no puede instalar dependencias). El job usa
+  # `docker:27-cli` y ejecuta k6 desde la imagen oficial (K6_IMAGE) contra los
+  # contenedores levantados en el runner.
+  image: docker:27-cli
+  tags:
+    - load
+  timeout: 75m
+  # La carga no debe cancelarse a mitad de corrida: invalida el RUN_ID y las
+  # métricas publicadas.
+  interruptible: false
+  resource_group: load-test
+  allow_failure: true
+  variables:
+    # El socket se publica en el host del runner; el job comparte su red.
+    DOCKER_HOST: 'unix:///var/run/docker.sock'
+    K6_IMAGE: 'grafana/k6:latest'
+    BASE_URL: 'http://127.0.0.1:3000'
+    RUN_ID: 'load54-$CI_PIPELINE_ID'
+    LOAD_CURRENCY: 'COP'
+    SMOKE: 'false'
+    K6_SUMMARY_PATH: 'tests/load/k6-summary.json'
+  rules:
+    # Schedules nocturnos y MRs no ejecutan carga: solo cuando una persona (o
+    # el schedule semanal) lo pide explícitamente y luego pulsa "play".
+    - if: '$RUN_LOAD_TEST == "true"'
+      when: manual
+    - when: never
+  cache: {}
+  before_script:
+    # `docker:27-cli` ya trae el cliente y el plugin de compose; Node y pnpm se
+    # instalan aquí para compilar el monorepo.
+    - apk add --no-cache nodejs npm git curl bash
+    - (corepack enable || (npm install -g corepack && corepack enable))
+    - corepack prepare pnpm@12.9.1 --activate
+    - pnpm config set store-dir "$CI_PROJECT_DIR/.pnpm-store" --global
+  script:
+    - |
+      set -euo pipefail
+
+      # ---------------------------------------------------------------------
+      # 0. Comprobaciones previas y credenciales de prueba (nunca secretos reales)
+      # ---------------------------------------------------------------------
+      if ! docker compose version >/dev/null 2>&1; then
+        echo "ERROR: 'docker compose' no está disponible en el runner 'load'." >&2
+        echo "       El job necesita un runner con tag 'load' y /var/run/docker.sock montado." >&2
+        echo "       Ver .gitlab/ci/README.md §Runners antes de relanzar el job." >&2
+        exit 1
+      fi
+
+      : "${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD (variable masked de CI/CD)}"
+      : "${AUTH_DB_PASSWORD:?Falta AUTH_DB_PASSWORD (variable masked de CI/CD)}"
+      : "${FINANCE_DB_PASSWORD:?Falta FINANCE_DB_PASSWORD (variable masked de CI/CD)}"
+      : "${AGENT_DB_PASSWORD:?Falta AGENT_DB_PASSWORD (variable masked de CI/CD)}"
+      : "${AUDIT_DB_PASSWORD:?Falta AUDIT_DB_PASSWORD (variable masked de CI/CD)}"
+      : "${REDIS_PASSWORD:?Falta REDIS_PASSWORD (variable masked de CI/CD)}"
+      : "${JWT_SECRET:?Falta JWT_SECRET (variable masked de CI/CD)}"
+      : "${COOKIE_SECRET:?Falta COOKIE_SECRET (variable masked de CI/CD)}"
+      : "${BANK_ENCRYPTION_KEY:?Falta BANK_ENCRYPTION_KEY (variable masked de CI/CD)}"
+      : "${SEED_ADMIN_EMAIL:?Falta SEED_ADMIN_EMAIL (variable masked de CI/CD)}"
+      : "${SEED_ADMIN_PASSWORD:?Falta SEED_ADMIN_PASSWORD (variable masked de CI/CD)}"
+
+      # `.env` efímero con permisos 600. No se imprime en el log.
+      umask 077
+      cat > .env <<EOF
+      NODE_ENV=test
+      PORT=3000
+      CORS_ORIGINS=http://127.0.0.1:3001
+      POSTGRES_HOST=127.0.0.1
+      POSTGRES_PORT=5432
+      POSTGRES_USER=mybusiness_admin
+      POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+      POSTGRES_DB=auth_db
+      AUTH_DB_USER=auth_user
+      AUTH_DB_PASSWORD=$AUTH_DB_PASSWORD
+      FINANCE_DB_USER=finance_user
+      FINANCE_DB_PASSWORD=$FINANCE_DB_PASSWORD
+      AGENT_DB_USER=agent_user
+      AGENT_DB_PASSWORD=$AGENT_DB_PASSWORD
+      AUDIT_DB_USER=audit_user
+      AUDIT_DB_PASSWORD=$AUDIT_DB_PASSWORD
+      AUTH_DATABASE_URL=postgresql://auth_user:$AUTH_DB_PASSWORD@127.0.0.1:5432/auth_db
+      FINANCE_DATABASE_URL=postgresql://finance_user:$FINANCE_DB_PASSWORD@127.0.0.1:5432/finance_db
+      AGENT_DATABASE_URL=postgresql://agent_user:$AGENT_DB_PASSWORD@127.0.0.1:5432/agent_db
+      AUDIT_DATABASE_URL=postgresql://audit_user:$AUDIT_DB_PASSWORD@127.0.0.1:5432/audit_db
+      REDIS_HOST=127.0.0.1
+      REDIS_PORT=6379
+      REDIS_PASSWORD=$REDIS_PASSWORD
+      JWT_SECRET=$JWT_SECRET
+      JWT_ISSUER=mybusiness
+      JWT_AUDIENCE=mybusiness-api
+      JWT_EXPIRES_IN=60m
+      REFRESH_TOKEN_EXPIRES_IN=12h
+      COOKIE_SECRET=$COOKIE_SECRET
+      AUTH_COOKIE_SECURE=false
+      THROTTLE_API_LIMIT=1000000
+      THROTTLE_AUTH_LIMIT=1000
+      THROTTLE_HEAVY_LIMIT=100000
+      MCP_RATE_LIMIT_PER_MINUTE=1000
+      S3_ENDPOINT=http://127.0.0.1:9000
+      S3_FORCE_PATH_STYLE=true
+      S3_ACCESS_KEY=loadtest
+      S3_SECRET_KEY=loadtest123
+      S3_BUCKET=mybusiness-documents
+      OCR_PROVIDER=stub
+      BANK_ENCRYPTION_KEY=$BANK_ENCRYPTION_KEY
+      BANK_ENCRYPTION_KEY_VERSION=v1
+      SEED_TENANT_TAX_ID=900123456-7
+      SEED_TENANT_LEGAL_NAME="MyBusiness Load Test SAS"
+      SEED_TENANT_TRADE_NAME="MyBusiness Load"
+      SEED_TENANT_COUNTRY=CO
+      SEED_TENANT_CURRENCY=COP
+      SEED_TENANT_TIMEZONE=America/Bogota
+      SEED_TENANT_LOCALE=es-CO
+      SEED_ADMIN_EMAIL=$SEED_ADMIN_EMAIL
+      SEED_ADMIN_PASSWORD=$SEED_ADMIN_PASSWORD
+      SEED_ADMIN_FIRST_NAME=Load
+      SEED_ADMIN_LAST_NAME=Test
+      EOF
+
+      # ---------------------------------------------------------------------
+      # 1. PostgreSQL + Redis
+      # ---------------------------------------------------------------------
+      echo "Levantando postgres y redis con Docker Compose..."
+      docker compose --env-file .env -f docker/docker-compose.yml up -d postgres redis
+
+      echo "Esperando estado healthy (máx. 120 s)..."
+      healthy=0
+      for i in $(seq 1 60); do
+        pg_status="$(docker inspect -f '{{.State.Health.Status}}' mybusiness_postgres 2>/dev/null || echo missing)"
+        redis_status="$(docker inspect -f '{{.State.Health.Status}}' mybusiness_redis 2>/dev/null || echo missing)"
+        echo "  intento ${i}/60 -> postgres=${pg_status} redis=${redis_status}"
+        if [ "$pg_status" = "healthy" ] && [ "$redis_status" = "healthy" ]; then
+          healthy=1
+          break
+        fi
+        sleep 2
+      done
+      if [ "$healthy" -ne 1 ]; then
+        echo "ERROR: postgres y/o redis no alcanzaron 'healthy' en 120 s." >&2
+        docker compose --env-file .env -f docker/docker-compose.yml ps || true
+        docker compose --env-file .env -f docker/docker-compose.yml logs --no-color --tail 80 || true
+        exit 1
+      fi
+
+      # ---------------------------------------------------------------------
+      # 2. Dependencias y build del monorepo
+      # ---------------------------------------------------------------------
+      pnpm install --frozen-lockfile
+      pnpm build
+
+      # ---------------------------------------------------------------------
+      # 3. Esquema, seed y arranque del stack real
+      # ---------------------------------------------------------------------
+      set -a; . ./.env; set +a
+
+      docker exec mybusiness_postgres \
+        psql -U "$POSTGRES_USER" -d agent_db -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+      for app in auth-service agent-service audit-service finance-service; do
+        pnpm --filter "@mybusiness/${app}" db:migrate
+      done
+      pnpm --filter @mybusiness/auth-service db:seed
+
+      for app in auth-service finance-service audit-service api-gateway; do
+        echo "Arrancando ${app}..."
+        nohup node "apps/${app}/dist/main.js" > "/tmp/${app}.log" 2>&1 &
+        echo "$!" > "/tmp/${app}.pid"
+      done
+
+      wait_for() {
+        local url="$1" label="$2" attempts="$3"
+        for i in $(seq 1 "$attempts"); do
+          if curl -fsS "$url" >/dev/null 2>&1; then
+            echo "${label} OK (intento ${i}/${attempts})"
+            return 0
+          fi
+          sleep 2
+        done
+        echo "ERROR: ${label} no respondió en $((attempts * 2)) s." >&2
+        tail -n 80 /tmp/*.log || true
+        return 1
+      }
+
+      wait_for "http://127.0.0.1:3000/api/v1/health" "/api/v1/health" 45
+      wait_for "http://127.0.0.1:3000/api/v1/health/ready" "/api/v1/health/ready" 45
+
+      # ---------------------------------------------------------------------
+      # 4. k6: probe de idempotencia + ingesta (SMOKE o FULL 50k)
+      # ---------------------------------------------------------------------
+      # k6 se ejecuta en su imagen oficial con `--network host`: el runner es
+      # Linux, así que 127.0.0.1 alcanza los puertos publicados por Compose.
+      k6_run() {
+        local script="$1"
+        docker run --rm \
+          --network host \
+          -v "$CI_PROJECT_DIR":/src \
+          -w /src \
+          -e "BASE_URL=${BASE_URL}" \
+          -e "RUN_ID=${RUN_ID}" \
+          -e "SEED_ADMIN_EMAIL=${SEED_ADMIN_EMAIL}" \
+          -e "SEED_ADMIN_PASSWORD=${SEED_ADMIN_PASSWORD}" \
+          -e "LOAD_CURRENCY=${LOAD_CURRENCY}" \
+          -e "SMOKE=${SMOKE}" \
+          "$K6_IMAGE" run "$script"
+      }
+
+      k6_run tests/load/idempotency-check.js 2>&1 | tee tests/load/k6-idempotency.log
+      k6_run tests/load/ingest-50k.js 2>&1 | tee tests/load/k6-run.log
+
+      # ---------------------------------------------------------------------
+      # 5. Verificación en PostgreSQL (solo modo FULL)
+      # ---------------------------------------------------------------------
+      if [ "$SMOKE" = "true" ]; then
+        echo "Modo SMOKE: se omite la verificación en base de datos."
+        exit 0
+      fi
+
+      node scripts/verify-load-54.mjs \
+        --run-id "$RUN_ID" \
+        --email "$SEED_ADMIN_EMAIL" \
+        --db-user "$POSTGRES_USER" 2>&1 | tee tests/load/verify-load.log
+  after_script:
+    - |
+      set +e
+      for app in auth-service finance-service audit-service api-gateway; do
+        if [ -f "/tmp/${app}.pid" ]; then
+          kill "$(cat "/tmp/${app}.pid")" 2>/dev/null || true
+        fi
+      done
+      if [ -f .env ]; then
+        docker compose --env-file .env -f docker/docker-compose.yml down -v --remove-orphans || true
+      fi
+  artifacts:
+    when: always
+    expire_in: 1 week
+    paths:
+      - tests/load/k6-summary.json
+      - tests/load/verification-54.json
+      - tests/load/k6-run.log
+      - tests/load/k6-idempotency.log
+      - tests/load/verify-load.log
