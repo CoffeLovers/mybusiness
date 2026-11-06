@@ -62,6 +62,7 @@ dependencies {
     implementation(project(":feature:auth"))
     implementation(project(":feature:dashboard"))
     implementation(project(":feature:banking"))
+    implementation(project(":feature:chat"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
