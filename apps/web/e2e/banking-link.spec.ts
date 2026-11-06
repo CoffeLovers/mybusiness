@@ -23,9 +23,26 @@ window.Plaid = {
 };
 `;
 
-async function stubPlaidScript(page: Page): Promise<void> {
+/**
+ * Stub que dispara `onSuccess` al abrir el widget, como haría Plaid tras
+ * autorizar el banco. Se usa para observar el destino de vuelta real.
+ */
+const PLAID_SUCCESS_STUB = `
+window.Plaid = {
+  create: function (options) {
+    return {
+      open: function () {
+        window.Plaid.__opened = true;
+        options.onSuccess('public-sandbox-1', {});
+      },
+    };
+  },
+};
+`;
+
+async function stubPlaidScript(page: Page, body: string = PLAID_STUB): Promise<void> {
   await page.route(PLAID_SCRIPT_URL, (route) =>
-    route.fulfill({ status: 200, contentType: 'text/javascript', body: PLAID_STUB }),
+    route.fulfill({ status: 200, contentType: 'text/javascript', body }),
   );
 }
 
@@ -111,5 +128,40 @@ test.describe('Vinculación Plaid Link', () => {
     await expect(page).toHaveURL(/\/bancos(\?|$)/);
     await expect(page.getByRole('heading', { level: 1, name: 'Bancos' })).toBeVisible();
     await expect(page.getByText('Banco Santander Empresas').first()).toBeVisible();
+  });
+
+  test('e. redirect_uri nativo conserva el deep link al volver del widget', async ({ page }) => {
+    await stubPlaidScript(page, PLAID_SUCCESS_STUB);
+
+    const response = await page.goto(
+      '/banking/link?token=link-test&redirect_uri=mybusiness%3A%2F%2Fbanking%2Freturn',
+    );
+
+    // El destino resuelto viaja en el payload RSC del componente cliente: debe
+    // ser el deep link literal, no `/bancos`.
+    const html = (await response?.text()) ?? '';
+
+    expect(html).toContain('mybusiness://banking/return');
+
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Vinculando tu banco' }),
+    ).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          Boolean((window as unknown as { Plaid?: { __opened?: boolean } }).Plaid?.__opened),
+        ),
+      )
+      .toBe(true);
+
+    // Chromium no entrega `mybusiness://` sin gesto de usuario, así que la
+    // navegación al esquema se bloquea en el navegador. Lo que sí se verifica
+    // aquí es que el flujo nativo NO cae al portal web (`/bancos`); el destino
+    // exacto (`mybusiness://banking/return?public_token=…`) queda cubierto por
+    // el test unitario de `resolveReturnTo` y el `withQuery` del lanzador.
+    await page.waitForTimeout(500);
+
+    expect(page.url()).toContain('/banking/link');
+    expect(page.url()).not.toContain('/bancos');
   });
 });

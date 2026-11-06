@@ -4,8 +4,9 @@
  * Lanzador de Plaid Link para el portal web.
  *
  * Carga el script oficial desde el CDN de Plaid (sin dependencia npm), abre el
- * widget con el `link_token` acuñado por el BFF y devuelve al usuario a la
- * página de bancos con el `public_token` o con el estado de cancelación.
+ * widget con el `link_token` acuñado por el BFF y devuelve al usuario al destino
+ * resuelto (página de bancos en web o deep link nativo en Android) con el
+ * `public_token` o con el estado de cancelación.
  */
 
 import { useEffect, useState } from 'react';
@@ -120,6 +121,8 @@ export function PlaidLinkLauncher({ token, returnTo }: PlaidLinkLauncherProps) {
             window.location.assign(withQuery(returnTo, 'public_token', publicToken));
           },
           onExit: () => {
+            // Con `returnTo` nativo esto navega a `mybusiness://banking/return?status=cancelled`,
+            // que el intent-filter de `MainActivity` intercepta igual que el éxito.
             window.location.assign(withQuery(returnTo, 'status', 'cancelled'));
           },
         });
