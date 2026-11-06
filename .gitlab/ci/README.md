@@ -116,6 +116,14 @@ Lanzar uno a mano: **CI/CD → Schedules → ▶ Run**. Un schedule también se 
 glab api projects/:id/pipeline_schedules/:schedule_id/play --method POST
 ```
 
+> **Limitación conocida (GitLab.com, token actual):** el `POST/PUT` de schedules no persiste
+> `variables` y el endpoint `/pipeline_schedules/:id/variables` responde `403 Forbidden`
+> ("The current user is not authorized to set pipeline schedule variables"). `weekly-load` se creó
+> sin la variable: el pipeline semanal corre, pero sin `load:ingest-50k`. Para completarlo, añadir
+> la variable desde **CI/CD → Schedules → weekly-load → Edit → Variables**
+> (`RUN_LOAD_TEST=true`) o repetir el `POST` con un PAT con scope `api` y rol Maintainer/Owner.
+> Con la variable puesta, el job aparece **manual** y solo hay que pulsar ▶.
+
 ### ¿Por qué el load test es manual?
 
 - Necesita **75 minutos** y un runner con Docker socket y ≥ 4 GB: no debe competir con MRs.
