@@ -6,7 +6,7 @@
  * Consulta PostgreSQL real vía docker exec para verificar:
  * 1. Transacciones persistidas en finance_db vs aceptadas por k6.
  * 2. Cero duplicados en claves de idempotencia.
- * 3. Paridad de cobertura en audit_db: count(DISTINCT entity_id) de audit_logs == transacciones únicas (los eventos crudos extra del replay idempotente son duplicados esperados, no pérdida).
+ * 3. Paridad de cobertura en audit_db: count(DISTINCT entity_id) de audit_logs == transacciones únicas (el filtro `idem-${runId}-%` incluye tanto las transacciones `tx` como la `probe`; los replays idempotentes no publican eventos).
  * 4. 0 eventos en audit_dead_letters.
  * 5. Consistencia del probe de idempotencia (1 fila, importe inalterado).
  * 6. Cumplimiento estricto de p95, error HTTP y 429.
@@ -110,7 +110,7 @@ async function main() {
     SELECT count(*), count(DISTINCT idempotency_key), min(created_at), max(created_at)
     FROM transactions
     WHERE tenant_id = '${tenantId}'
-      AND idempotency_key LIKE 'idem-${runId}-tx-%';
+      AND idempotency_key LIKE 'idem-${runId}-%';
   `;
   const statsRes = runSql(dbUser, 'finance_db', statsSql);
   const [totalStr, distinctStr, minCreatedAt, maxCreatedAt] = statsRes.split('|');
@@ -125,7 +125,7 @@ async function main() {
   const dupSql = `
     SELECT count(*) FROM (
       SELECT idempotency_key FROM transactions
-      WHERE tenant_id = '${tenantId}' AND idempotency_key LIKE 'idem-${runId}-tx-%'
+      WHERE tenant_id = '${tenantId}' AND idempotency_key LIKE 'idem-${runId}-%'
       GROUP BY idempotency_key HAVING count(*) > 1
     ) dup;
   `;
@@ -151,8 +151,9 @@ async function main() {
     // Tolerancia de ±5 minutos: el evento de auditoría de la última transacción se publica
     // DESPUÉS del insert de su fila, por lo que su timestamp puede superar maxCreatedAt.
     // Paridad por transacciones cubiertas: count(DISTINCT entity_id) debe igualar las
-    // transacciones únicas. El replay idempotente drena eventos crudos extra (duplicados
-    // por petición), por eso el conteo crudo solo queda como diagnóstico.
+    // transacciones únicas (incluida la probe). El conteo crudo solo queda como
+    // diagnóstico: los replays idempotentes no publican eventos (finance publica solo
+    // si `result.created`).
     const auditSql = `
       SELECT count(DISTINCT entity_id), count(*) FROM audit_logs
       WHERE tenant_id = '${tenantId}'
@@ -251,17 +252,18 @@ async function main() {
     console.log(`  [evidencia] 3 timestamps extremos por encima del fin: ${afterTs}`);
   }
 
-  console.log(
-    `\n📊 Resumen auditoría: transacciones cubiertas=${auditDistinctIds} / transacciones únicas=${distinctKeys} | eventos crudos=${auditEventsRaw} | duplicados (replay idempotente)=${duplicateAuditEvents} | transacciones sin evento=${missingTransactions}`,
-  );
-
   // 5. Evaluación de Criterios de Aceptación
-  // Duplicados esperados: el probe de idempotencia envía el MISMO payload dos veces
-  // (original + replay) y cada petición emite un evento de auditoría con el mismo
-  // entity_id; solo existe 1 fila en transactions. Eso es duplicado, no pérdida.
+  // Comentario previo (falso) afirmaba que el replay de la probe emitía un evento por
+  // petición: NO es así — finance solo publica el evento si `result.created`, por lo que
+  // el replay no genera eventos ni duplicados. La probe aporta exactamente 1 evento y
+  // 1 fila de transacción, ambas cubiertas por el patrón `idem-${runId}-%`.
   const duplicateAuditEvents = Math.max(0, auditEventsRaw - auditDistinctIds);
   const missingTransactions = Math.max(0, distinctKeys - auditDistinctIds);
   const eventLossRate = distinctKeys > 0 ? missingTransactions / distinctKeys : 0;
+
+  console.log(
+    `\n📊 Resumen auditoría: transacciones cubiertas=${auditDistinctIds} / transacciones únicas=${distinctKeys} | eventos crudos=${auditEventsRaw} | duplicados (replay idempotente)=${duplicateAuditEvents} | transacciones sin evento=${missingTransactions}`,
+  );
 
   const checks = {
     transactions_accepted_ge_50k: {
