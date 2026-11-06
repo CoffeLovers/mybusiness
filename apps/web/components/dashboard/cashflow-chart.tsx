@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { CashflowBucket } from '@mybusiness/contracts';
 import { formatBucketLabel } from '@/lib/date-utils';
 import { formatMinorUnitsString } from '@/lib/format';
@@ -26,6 +26,18 @@ interface CashflowChartProps {
 }
 
 export function CashflowChart({ series, currency }: CashflowChartProps) {
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const handleChange = () => setReduceMotion(mediaQuery.matches);
+
+    handleChange();
+    mediaQuery.addEventListener('change', handleChange);
+
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
+
   const firstBucket = series[0];
   const isMonthly = Boolean(
     firstBucket && firstBucket.bucketStart.endsWith('-01') && series.length <= 12,
@@ -38,6 +50,7 @@ export function CashflowChart({ series, currency }: CashflowChartProps) {
     const expenseData = series.map((b) => Number(BigInt(b.expenseMinor)) / 100);
 
     return {
+      animation: !reduceMotion,
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
@@ -120,7 +133,7 @@ export function CashflowChart({ series, currency }: CashflowChartProps) {
         },
       ],
     };
-  }, [series, isMonthly, currency]);
+  }, [series, isMonthly, currency, reduceMotion]);
 
   if (series.length === 0) {
     return null;

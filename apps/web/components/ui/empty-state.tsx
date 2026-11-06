@@ -1,6 +1,8 @@
-import type { ReactNode } from 'react';
+import { createElement, type ReactNode } from 'react';
 
 import { cn } from './cn';
+
+export type TitleElement = 'p' | 'h2' | 'h3';
 
 export interface EmptyStateProps {
   title: string;
@@ -8,9 +10,17 @@ export interface EmptyStateProps {
   action?: ReactNode;
   icon?: ReactNode;
   className?: string;
+  titleAs?: TitleElement;
 }
 
-export function EmptyState({ title, description, action, icon, className }: EmptyStateProps) {
+export function EmptyState({
+  title,
+  description,
+  action,
+  icon,
+  className,
+  titleAs = 'p',
+}: EmptyStateProps) {
   return (
     <div
       className={cn(
@@ -23,7 +33,7 @@ export function EmptyState({ title, description, action, icon, className }: Empt
           {icon}
         </div>
       ) : null}
-      <p className="text-base font-semibold text-text">{title}</p>
+      {createElement(titleAs, { className: 'text-base font-semibold text-text' }, title)}
       {description ? <p className="text-sm text-text-muted">{description}</p> : null}
       {action}
     </div>
