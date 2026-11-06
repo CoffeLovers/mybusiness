@@ -40,13 +40,13 @@ export function EmptyState({ message }: DashboardEmptyStateProps) {
           <div className="mt-3 flex flex-wrap items-center justify-center gap-3">
             <Link
               href="/bancos"
-              className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-on-primary shadow-xs transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              className="inline-flex min-h-11 items-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-on-primary shadow-xs transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               Vincular cuenta bancaria
             </Link>
             <Link
               href="/facturas"
-              className="rounded-md border border-border bg-surface px-4 py-2 text-sm font-semibold text-text shadow-xs transition-colors hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              className="inline-flex min-h-11 items-center rounded-md border border-border bg-surface px-4 py-2 text-sm font-semibold text-text shadow-xs transition-colors hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               Subir factura
             </Link>
