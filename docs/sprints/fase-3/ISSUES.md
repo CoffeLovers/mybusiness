@@ -95,13 +95,13 @@ El asistente debe conversar sobre finanzas sin calcular nada: recibe JSON determ
 
 ### Criterios de aceptación
 
-- [ ] `agent.chat` responde a una pregunta de flujo de caja citando `get_cashflow_summary` y el periodo.
-- [ ] Ninguna cifra de la respuesta existe si no proviene de una herramienta; el test lo demuestra con un proveedor falso que devuelve basura.
-- [ ] `tenantId` y `userId` provienen sólo del contexto firmado; el DTO no los acepta.
-- [ ] Un timeout del proveedor devuelve respuesta degradada con código estable y sin error 500.
-- [ ] Una segunda pregunta del mismo usuario reutiliza el contexto de memoria del tenant correcto.
-- [ ] El proveedor falso permite ejecutar toda la suite sin red ni claves.
-- [ ] Cobertura ≥ 80 % en los archivos nuevos de `agent-service`.
+- [x] `agent.chat` responde a una pregunta de flujo de caja citando `get_cashflow_summary` y el periodo.
+- [x] Ninguna cifra de la respuesta existe si no proviene de una herramienta; el test lo demuestra con un proveedor falso que devuelve basura.
+- [x] `tenantId` y `userId` provienen sólo del contexto firmado; el DTO no los acepta.
+- [x] Un timeout del proveedor devuelve respuesta degradada con código estable y sin error 500.
+- [x] Una segunda pregunta del mismo usuario reutiliza el contexto de memoria del tenant correcto.
+- [x] El proveedor falso permite ejecutar toda la suite sin red ni claves.
+- [x] Cobertura ≥ 80 % en los archivos nuevos de `agent-service`.
 
 ### Validación
 
