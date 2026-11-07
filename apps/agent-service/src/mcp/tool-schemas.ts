@@ -20,9 +20,15 @@ const CURRENCY_PATTERN = /^[A-Za-z]{3}$/;
 const isoDate = z
   .string()
   .regex(ISO_DATE_PATTERN, 'Debe tener el formato YYYY-MM-DD')
-  .refine((value) => !Number.isNaN(Date.parse(`${value}T00:00:00Z`)), {
-    message: 'Debe ser una fecha ISO válida',
-  });
+  .refine(
+    (value) => {
+      const d = new Date(`${value}T00:00:00.000Z`);
+      return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
+    },
+    {
+      message: 'Debe ser una fecha ISO válida',
+    },
+  );
 
 const currencyCode = z
   .string()
@@ -48,7 +54,7 @@ const accountId = z.string().uuid('Debe ser un UUID válido');
  * validación para impedir que el modelo inyecte campos del contexto (tenantId,
  * userId, role) o parámetros no soportados en el payload RPC.
  */
-const GetCashflowSummarySchema = z
+export const GetCashflowSummarySchema = z
   .object({
     from: isoDate,
     to: isoDate,
@@ -56,7 +62,7 @@ const GetCashflowSummarySchema = z
   })
   .strict();
 
-const ListUnreconciledSchema = z
+export const ListUnreconciledSchema = z
   .object({
     page: pageNumber.optional(),
     pageSize: pageSizeNumber.optional(),
@@ -71,12 +77,12 @@ const ListUnreconciledSchema = z
  * (nunca `number` ni decimales); la conversión a decimal del proveedor ocurre
  * en finance-service vía `minorToPayPalDecimal` (ADR 003).
  */
-const positiveAmountMinor = z
+export const positiveAmountMinor = z
   .string()
   .regex(/^[1-9]\d*$/, 'Debe ser un entero positivo en unidad mínima (sin decimales ni signo)')
   .max(19, 'Excede el límite de dígitos monetarios');
 
-const CreatePaymentLinkSchema = z
+export const CreatePaymentLinkSchema = z
   .object({
     amountMinor: positiveAmountMinor,
     currency: currencyCode,
@@ -90,6 +96,79 @@ const CreatePaymentLinkSchema = z
       .optional(),
   })
   .strict();
+
+/** Esquemas de salida de herramientas MCP para contract testing. */
+export const CashflowPreviousPeriodSchema = z.object({
+  incomeMinor: z.string(),
+  expenseMinor: z.string(),
+});
+
+export const CashflowBucketSchema = z.object({
+  bucketStart: z.string(),
+  incomeMinor: z.string(),
+  expenseMinor: z.string(),
+});
+
+export const CashflowCategoryBreakdownSchema = z.object({
+  category: z.string(),
+  amountMinor: z.string(),
+  share: z.number(),
+});
+
+export const CashflowSummaryOutputSchema = z.object({
+  hasData: z.boolean(),
+  currency: currencyCode,
+  availableCurrencies: z.array(currencyCode),
+  period: z.object({ from: isoDate, to: isoDate }),
+  balanceMinor: z.string().nullable(),
+  incomeMinor: z.string().nullable(),
+  expenseMinor: z.string().nullable(),
+  burnRateMinor: z.string().nullable(),
+  runwayMonths: z.number().nullable(),
+  previousPeriod: CashflowPreviousPeriodSchema.nullable(),
+  series: z.array(CashflowBucketSchema),
+  categories: z.array(CashflowCategoryBreakdownSchema),
+});
+
+export const LedgerEvidenceSchema = z.object({
+  documentId: z.string(),
+  documentName: z.string(),
+  score: z.number(),
+  rule: z.string(),
+  matchedAt: z.string().nullable(),
+});
+
+export const LedgerRowSchema = z.object({
+  id: z.string(),
+  date: isoDate,
+  name: z.string(),
+  merchantName: z.string().nullable(),
+  category: z.string().nullable(),
+  notes: z.string().nullable(),
+  amountMinor: z.string(),
+  isoCurrencyCode: currencyCode,
+  accountId: accountId,
+  accountName: z.string(),
+  reconciliationStatus: z.string(),
+  evidence: LedgerEvidenceSchema.nullable(),
+  updatedAt: z.string(),
+});
+
+export const LedgerPageOutputSchema = z.object({
+  rows: z.array(LedgerRowSchema),
+  total: z.number().int().min(0),
+  page: z.number().int().min(1),
+  pageSize: z.number().int().min(1),
+  hasMore: z.boolean(),
+});
+
+export const CreatePaymentLinkOutputSchema = z.object({
+  paypalOrderId: z.string().min(1),
+  status: z.string().min(1),
+  checkoutUrl: z.string().url(),
+  amountMinor: positiveAmountMinor,
+  currency: currencyCode,
+});
 
 /** Nombres de herramienta alineados con `McpToolName` del paquete de contratos. */
 const MCP_TOOL_NAME_VALUES = [

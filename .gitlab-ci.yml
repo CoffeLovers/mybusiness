@@ -36,6 +36,8 @@ default:
   interruptible: true
 
 variables:
+  GIT_DEPTH: '0'
+  GIT_STRATEGY: clone
   PNPM_STORE_DIR: '$CI_PROJECT_DIR/.pnpm-store'
 
 .pnpm-base:

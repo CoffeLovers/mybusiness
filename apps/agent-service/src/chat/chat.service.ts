@@ -56,7 +56,7 @@ interface ResolvedPeriod {
  * unifica la coma decimal.
  */
 function canonicalNumber(raw: string): string {
-  const cleaned = raw.replace(/[^\d.,]/g, '');
+  const cleaned = raw.replace(/[^\d.,]/g, '').replace(/[.,]+$/, '');
   if (!cleaned) {
     return '';
   }
