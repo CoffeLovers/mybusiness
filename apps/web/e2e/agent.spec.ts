@@ -132,7 +132,7 @@ test.describe('Panel de agente (Issue #75)', () => {
     await expect(cancelButton).toBeVisible();
     await cancelButton.click();
 
-    await expect(page.getByText(/cancelad/i)).toBeVisible();
+    await expect(page.getByRole('log').getByText(/cancelad/i)).toBeVisible();
     await expect(cancelButton).toHaveCount(0);
 
     // Escribir un nuevo mensaje reactiva el botón de envío

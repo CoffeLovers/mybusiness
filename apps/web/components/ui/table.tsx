@@ -160,7 +160,7 @@ export function TableDensityToggle({ density, onChange, className }: TableDensit
           onChange('comfortable');
         }}
         className={cn(
-          'rounded px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring motion-reduce:transition-none',
+          'inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded px-3 py-2 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring motion-reduce:transition-none',
           density === 'comfortable'
             ? 'bg-primary text-on-primary'
             : 'text-text-muted hover:bg-surface-raised hover:text-text',
@@ -175,7 +175,7 @@ export function TableDensityToggle({ density, onChange, className }: TableDensit
           onChange('compact');
         }}
         className={cn(
-          'rounded px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring motion-reduce:transition-none',
+          'inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded px-3 py-2 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring motion-reduce:transition-none',
           density === 'compact'
             ? 'bg-primary text-on-primary'
             : 'text-text-muted hover:bg-surface-raised hover:text-text',
