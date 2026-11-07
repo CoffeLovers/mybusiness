@@ -57,6 +57,7 @@ const AUTHENTICATED_ROUTES = [
     label: 'resumen (rango y moneda)',
   },
   { path: '/libro-mayor', label: 'libro mayor' },
+  { path: '/agente', label: 'agente conversacional' },
 ] as const;
 
 test.describe('Accesibilidad WCAG AA (RD-08)', () => {
@@ -98,5 +99,37 @@ test.describe('Accesibilidad WCAG AA (RD-08)', () => {
     await page.waitForLoadState('load');
     await expect(page.locator('html')).toHaveClass(/\bdark\b/);
     await expectNoBlockingViolations(page, 'resumen (tema oscuro)');
+  });
+
+  test('modo denso en tablas — conmutación y persistencia accesible (SF4-10)', async ({ page }) => {
+    await page.goto('/design-system');
+    await page.waitForLoadState('load');
+
+    const toggleGroup = page.getByRole('group', { name: 'Densidad de la tabla' });
+    await expect(toggleGroup).toBeVisible();
+
+    const compactBtn = toggleGroup.getByRole('button', { name: 'Compacta' });
+    const comfortableBtn = toggleGroup.getByRole('button', { name: 'Cómoda' });
+
+    await expect(comfortableBtn).toHaveAttribute('aria-pressed', 'true');
+    await expect(compactBtn).toHaveAttribute('aria-pressed', 'false');
+
+    await compactBtn.click();
+    await expect(compactBtn).toHaveAttribute('aria-pressed', 'true');
+    await expect(comfortableBtn).toHaveAttribute('aria-pressed', 'false');
+
+    // Verificar persistencia en localStorage
+    const stored = await page.evaluate(() => localStorage.getItem('mybusiness.table.density'));
+    expect(stored).toBe('compact');
+
+    // Recargar página y verificar que se mantiene la preferencia
+    await page.reload();
+    await page.waitForLoadState('load');
+    const compactBtnReloaded = page
+      .getByRole('group', { name: 'Densidad de la tabla' })
+      .getByRole('button', { name: 'Compacta' });
+    await expect(compactBtnReloaded).toHaveAttribute('aria-pressed', 'true');
+
+    await expectNoBlockingViolations(page, 'sistema de diseño (modo denso)');
   });
 });

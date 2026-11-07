@@ -179,6 +179,7 @@ export function AgentChat({ initialBudget, budgetError }: AgentChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [pending, setPending] = useState(false);
+  const [announcement, setAnnouncement] = useState('');
   const [streamStatus, setStreamStatus] = useState<StreamStatus>('idle');
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [fallbackNotice, setFallbackNotice] = useState(false);
@@ -208,6 +209,7 @@ export function AgentChat({ initialBudget, budgetError }: AgentChatProps) {
   const submitFallback = async (message: string, assistantId: string): Promise<void> => {
     setStreamStatus('fallback');
     setFallbackNotice(true);
+    setAnnouncement('Conectando con canal estándar...');
 
     const response = await fetch('/api/agent/chat', {
       method: 'POST',
@@ -293,6 +295,7 @@ export function AgentChat({ initialBudget, budgetError }: AgentChatProps) {
     setFallbackNotice(false);
     setPending(true);
     setStreamStatus('connecting');
+    setAnnouncement('El asistente está generando una respuesta...');
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -357,6 +360,9 @@ export function AgentChat({ initialBudget, budgetError }: AgentChatProps) {
                   const status = parsed.status === 'start' ? 'tool' : 'generating';
                   setStreamStatus(status);
                   setActiveTool(status === 'tool' ? toolName : null);
+                  if (status === 'tool') {
+                    setAnnouncement(`Consultando herramienta: ${toolName ?? 'en curso'}`);
+                  }
                 } else if (currentEvent === 'token') {
                   const delta =
                     typeof parsed.delta === 'string'
@@ -413,6 +419,7 @@ export function AgentChat({ initialBudget, budgetError }: AgentChatProps) {
 
                   setStreamStatus('idle');
                   setActiveTool(null);
+                  setAnnouncement('El asistente ha completado la respuesta.');
                 } else if (currentEvent === 'error') {
                   const code = typeof parsed.code === 'string' ? parsed.code : 'stream_error';
                   throw new Error(code);
@@ -441,6 +448,7 @@ export function AgentChat({ initialBudget, budgetError }: AgentChatProps) {
     } catch (cause) {
       if (cause instanceof Error && cause.name === 'AbortError') {
         setStreamStatus('cancelled');
+        setAnnouncement('Consulta cancelada por el usuario.');
         setMessages((current) =>
           current.map((msg) =>
             msg.id === assistantId
@@ -458,6 +466,7 @@ export function AgentChat({ initialBudget, budgetError }: AgentChatProps) {
       }
 
       setError(cause instanceof Error && cause.message.length > 0 ? cause.message : 'error');
+      setAnnouncement('Error al generar respuesta.');
       setLastFailed(message);
       // Limpiar mensaje vacío del asistente si falló antes de emitir nada
       setMessages((current) =>
@@ -543,7 +552,12 @@ export function AgentChat({ initialBudget, budgetError }: AgentChatProps) {
         </div>
       ) : null}
 
-      <div role="log" aria-live="polite" aria-busy={pending} className="flex flex-col gap-4">
+      {/* Región viva dedicada para lectores de pantalla: anuncia inicio y fin sin leer token a token (WCAG 2.1 AA) */}
+      <div aria-live="polite" aria-atomic="true" className="sr-only">
+        {announcement}
+      </div>
+
+      <div role="log" aria-label="Historial de conversación" className="flex flex-col gap-4">
         {messages.length === 0 ? (
           <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface-raised p-4">
             <p className="text-sm text-text-muted">Prueba con una de estas consultas:</p>
