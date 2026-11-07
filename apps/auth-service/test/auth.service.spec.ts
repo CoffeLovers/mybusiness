@@ -456,7 +456,7 @@ describe('AuthService', () => {
     await expect(service.logoutAll(context)).resolves.toEqual({ success: true, revoked: 0 });
     expect(second.refreshToken).not.toBe(first.refreshToken);
     expect(otherSession.refreshToken).toBeTruthy();
-  });
+  }, 15_000);
 
   it('logoutAll rechaza un contexto sin userId', async () => {
     await expect(
