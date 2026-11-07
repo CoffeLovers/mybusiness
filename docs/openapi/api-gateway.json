@@ -1386,6 +1386,29 @@
         ]
       }
     },
+    "/api/v1/agent/slos": {
+      "get": {
+        "operationId": "AgentGatewayController_getSlos",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "channel",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Agent"
+        ]
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "operationId": "AuthGatewayController_login",
