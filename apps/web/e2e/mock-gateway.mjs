@@ -565,7 +565,8 @@ function handleBankingLinkToken(request, response) {
   });
 }
 
-async function handleBankingExchange(request, response) {  const tenantId = getTenantIdFromRequest(request);
+async function handleBankingExchange(request, response) {
+  const tenantId = getTenantIdFromRequest(request);
   if (!tenantId) {
     sendError(response, 401, 'unauthorized');
     return;
@@ -1302,6 +1303,122 @@ async function handleAgentChat(request, response) {
   });
 }
 
+async function handleAgentChatStream(request, response) {
+  let raw = '';
+  for await (const chunk of request) {
+    raw += chunk;
+  }
+  let body = {};
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    sendJson(response, 400, { error: 'invalid_json' });
+    return;
+  }
+
+  const message = typeof body.message === 'string' ? body.message : '';
+
+  if (message.includes('fail')) {
+    sendJson(response, 500, { error: 'PROVIDER_ERROR' });
+    return;
+  }
+
+  response.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+
+  const lastEventId = parseInt(request.headers['last-event-id'] || '0', 10) || 0;
+  const events = [];
+  let id = 1;
+
+  if (message.includes('degraded')) {
+    events.push({
+      id: String(id++),
+      type: 'done',
+      usage: {
+        promptTokens: 0,
+        completionTokens: 0,
+        costMicroUsd: 0,
+        budgetRemainingMicroUsd: agentBudgetRemainingMicroUsd,
+        cacheHit: false,
+      },
+      degraded: true,
+      reason: message.includes('budget') ? 'BUDGET_EXHAUSTED' : 'PROVIDER_UNAVAILABLE',
+    });
+  } else {
+    events.push({
+      id: String(id++),
+      type: 'tool',
+      tool: 'get_cashflow_summary',
+      status: 'start',
+      period: '2026-11',
+    });
+    events.push({
+      id: String(id++),
+      type: 'citation',
+      citation: {
+        source: 'tool',
+        ref: 'cashflow-2026-11',
+        tool: 'get_cashflow_summary',
+        period: '2026-11',
+        label: 'Resumen de flujo de caja',
+      },
+    });
+    events.push({
+      id: String(id++),
+      type: 'citation',
+      citation: {
+        source: 'memory',
+        ref: 'memory-currency-preference',
+        label: 'Preferencia de moneda EUR',
+      },
+    });
+    events.push({
+      id: String(id++),
+      type: 'tool',
+      tool: 'get_cashflow_summary',
+      status: 'complete',
+      period: '2026-11',
+    });
+    events.push({
+      id: String(id++),
+      type: 'token',
+      delta: 'Tu saldo actual es 45.000,00 €',
+    });
+    events.push({
+      id: String(id++),
+      type: 'token',
+      delta: ' y el flujo de caja del mes es positivo.',
+    });
+
+    agentBudgetRemainingMicroUsd = Math.max(0, agentBudgetRemainingMicroUsd - 500_000);
+
+    events.push({
+      id: String(id++),
+      type: 'done',
+      usage: {
+        promptTokens: 120,
+        completionTokens: 48,
+        costMicroUsd: 320,
+        budgetRemainingMicroUsd: agentBudgetRemainingMicroUsd,
+        cacheHit: false,
+      },
+      degraded: false,
+    });
+  }
+
+  for (const ev of events) {
+    if (parseInt(ev.id, 10) > lastEventId) {
+      response.write(`id: ${ev.id}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`);
+    }
+  }
+
+  response.end();
+}
+
 const server = createServer((request, response) => {
   response.on('finish', () => {
     request.resume();
@@ -1317,6 +1434,11 @@ const server = createServer((request, response) => {
 
   if (method === 'POST' && path === '/api/v1/agent/chat') {
     void handleAgentChat(request, response);
+    return;
+  }
+
+  if (method === 'POST' && path === '/api/v1/agent/chat/stream') {
+    void handleAgentChatStream(request, response);
     return;
   }
 

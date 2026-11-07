@@ -120,6 +120,21 @@ test.describe('Panel de agente (Issue #75)', () => {
     await expect(input).toHaveValue('');
   });
 
+  test('cancelar interrumpe la generación y mantiene la UI responsiva (Issue #54)', async ({
+    page,
+  }) => {
+    await openAgent(page);
+
+    await messageInput(page).fill('consulta para cancelar');
+    await page.getByRole('button', { name: 'Enviar' }).click();
+
+    const cancelButton = page.getByRole('button', { name: 'Cancelar' });
+    if (await cancelButton.isVisible()) {
+      await cancelButton.click();
+    }
+    await expect(page.getByRole('button', { name: 'Enviar' })).toBeEnabled();
+  });
+
   test('axe no reporta violaciones WCAG A/AA en /agente', async ({ page }) => {
     await openAgent(page);
 

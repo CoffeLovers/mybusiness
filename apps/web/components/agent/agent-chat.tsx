@@ -1,11 +1,12 @@
 'use client';
 
 /**
- * Panel del agente conversacional (SF3-05, #75).
+ * Panel del agente conversacional (SF3-05, #75; SF4-01, #54).
  *
  * El chat vive en el cliente: el mensaje del usuario se pinta de inmediato y la
- * respuesta del BFF se añade al hilo. Las cifras de consumo y el presupuesto
- * restante provienen siempre de `usage`, nunca se estiman en el navegador.
+ * respuesta del BFF se consume de forma incremental vía SSE (`ReadableStream`).
+ * Las cifras de consumo y el presupuesto restante provienen siempre de `usage`,
+ * nunca se estiman en el navegador.
  */
 
 import { useRef, useState } from 'react';
@@ -76,6 +77,8 @@ export interface AgentChatProps {
   initialBudget: BudgetSnapshot | null;
   budgetError: boolean;
 }
+
+type StreamStatus = 'idle' | 'connecting' | 'tool' | 'generating' | 'cancelled' | 'fallback';
 
 /** Código de error estable del BFF, nunca el cuerpo remoto. */
 async function readErrorCode(response: Response): Promise<string> {
@@ -176,6 +179,9 @@ export function AgentChat({ initialBudget, budgetError }: AgentChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [pending, setPending] = useState(false);
+  const [streamStatus, setStreamStatus] = useState<StreamStatus>('idle');
+  const [activeTool, setActiveTool] = useState<string | null>(null);
+  const [fallbackNotice, setFallbackNotice] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastFailed, setLastFailed] = useState<string | null>(null);
   const [budget, setBudget] = useState<BudgetView | null>(
@@ -187,12 +193,65 @@ export function AgentChat({ initialBudget, budgetError }: AgentChatProps) {
           remainingMicroUsd: initialBudget.availableMicroUsd,
         },
   );
+
   const nextId = useRef(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const lastEventIdRef = useRef<string | null>(null);
 
   const makeId = (role: 'user' | 'assistant'): string => {
     nextId.current += 1;
 
     return `${role}-${String(nextId.current)}`;
+  };
+
+  /** Ejecuta el chat estándar no-streaming como fallback resiliente. */
+  const submitFallback = async (message: string, assistantId: string): Promise<void> => {
+    setStreamStatus('fallback');
+    setFallbackNotice(true);
+
+    const response = await fetch('/api/agent/chat', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json', ...csrfHeaders() },
+      body: JSON.stringify({ message }),
+    });
+
+    if (!response.ok) {
+      throw new Error(await readErrorCode(response));
+    }
+
+    const payload: unknown = await response.json();
+
+    if (!isChatResponse(payload)) {
+      throw new Error('invalid_response');
+    }
+
+    setMessages((current) =>
+      current.map((msg) =>
+        msg.id === assistantId
+          ? {
+              id: assistantId,
+              role: 'assistant',
+              content: payload.answer,
+              citations: payload.citations,
+              degraded: payload.degraded,
+              ...(payload.reason === undefined ? {} : { reason: payload.reason }),
+              usage: payload.usage,
+            }
+          : msg,
+      ),
+    );
+
+    const remaining = Math.max(0, payload.usage.budgetRemainingMicroUsd);
+    setBudget((current) => {
+      const limit = current?.limitMicroUsd ?? null;
+
+      return {
+        limitMicroUsd: limit,
+        spentMicroUsd: limit === null ? null : Math.max(0, limit - remaining),
+        remainingMicroUsd: remaining,
+      };
+    });
   };
 
   const submit = async (rawMessage: string, appendUser = true): Promise<void> => {
@@ -209,58 +268,205 @@ export function AgentChat({ initialBudget, budgetError }: AgentChatProps) {
       ]);
     }
 
+    const assistantId = makeId('assistant');
+    setMessages((current) => [
+      ...current,
+      {
+        id: assistantId,
+        role: 'assistant',
+        content: '',
+        citations: [],
+        degraded: false,
+        usage: {
+          promptTokens: 0,
+          completionTokens: 0,
+          costMicroUsd: 0,
+          budgetRemainingMicroUsd: budget?.remainingMicroUsd ?? 0,
+          cacheHit: false,
+        },
+      },
+    ]);
+
     setInput('');
     setError(null);
     setLastFailed(null);
+    setFallbackNotice(false);
     setPending(true);
+    setStreamStatus('connecting');
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     try {
-      const response = await fetch('/api/agent/chat', {
+      const headers: Record<string, string> = {
+        'content-type': 'application/json',
+        ...csrfHeaders(),
+      };
+      if (lastEventIdRef.current) {
+        headers['last-event-id'] = lastEventIdRef.current;
+      }
+
+      const response = await fetch('/api/agent/chat/stream', {
         method: 'POST',
         credentials: 'same-origin',
-        headers: { 'content-type': 'application/json', ...csrfHeaders() },
+        headers,
         body: JSON.stringify({ message }),
+        signal: controller.signal,
       });
 
-      if (!response.ok) {
-        throw new Error(await readErrorCode(response));
+      const contentType = response.headers.get('content-type') ?? '';
+
+      // Si el stream falla al iniciar o no es SSE, recurrir al endpoint estándar.
+      if (!response.ok || !contentType.includes('text/event-stream') || !response.body) {
+        if (!controller.signal.aborted) {
+          await submitFallback(message, assistantId);
+          return;
+        }
       }
 
-      const payload: unknown = await response.json();
-
-      if (!isChatResponse(payload)) {
-        throw new Error('invalid_response');
+      if (!response.body) {
+        throw new Error('empty_body');
       }
 
-      setMessages((current) => [
-        ...current,
-        {
-          id: makeId('assistant'),
-          role: 'assistant',
-          content: payload.answer,
-          citations: payload.citations,
-          degraded: payload.degraded,
-          ...(payload.reason === undefined ? {} : { reason: payload.reason }),
-          usage: payload.usage,
-        },
-      ]);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
 
-      const remaining = Math.max(0, payload.usage.budgetRemainingMicroUsd);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
 
-      setBudget((current) => {
-        const limit = current?.limitMicroUsd ?? null;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
 
-        return {
-          limitMicroUsd: limit,
-          spentMicroUsd: limit === null ? null : Math.max(0, limit - remaining),
-          remainingMicroUsd: remaining,
-        };
-      });
+        let currentEvent = 'message';
+        let currentData = '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.length === 0) {
+            if (currentData.length > 0) {
+              try {
+                const parsed = JSON.parse(currentData) as Record<string, unknown>;
+
+                if (currentEvent === 'tool') {
+                  const toolName = typeof parsed.tool === 'string' ? parsed.tool : null;
+                  const status = parsed.status === 'start' ? 'tool' : 'generating';
+                  setStreamStatus(status);
+                  setActiveTool(status === 'tool' ? toolName : null);
+                } else if (currentEvent === 'token') {
+                  const delta =
+                    typeof parsed.delta === 'string'
+                      ? parsed.delta
+                      : typeof parsed.token === 'string'
+                        ? parsed.token
+                        : '';
+                  setStreamStatus('generating');
+                  setMessages((current) =>
+                    current.map((msg) =>
+                      msg.id === assistantId ? { ...msg, content: msg.content + delta } : msg,
+                    ),
+                  );
+                } else if (currentEvent === 'citation') {
+                  const citation = (parsed.citation ?? parsed) as Citation;
+                  if (citation && typeof citation.ref === 'string') {
+                    setMessages((current) =>
+                      current.map((msg) => {
+                        if (msg.role !== 'assistant' || msg.id !== assistantId) return msg;
+                        const exists = msg.citations.some((c: Citation) => c.ref === citation.ref);
+                        if (exists) return msg;
+                        return { ...msg, citations: [...msg.citations, citation] };
+                      }),
+                    );
+                  }
+                } else if (currentEvent === 'done') {
+                  const finalUsage = parsed.usage as ChatUsage | undefined;
+                  const degraded = Boolean(parsed.degraded);
+                  const reason = typeof parsed.reason === 'string' ? parsed.reason : undefined;
+
+                  setMessages((current) =>
+                    current.map((msg) => {
+                      if (msg.role !== 'assistant' || msg.id !== assistantId) return msg;
+                      return {
+                        ...msg,
+                        degraded,
+                        ...(reason ? { reason } : {}),
+                        ...(finalUsage ? { usage: finalUsage } : {}),
+                      };
+                    }),
+                  );
+
+                  if (finalUsage) {
+                    const remaining = Math.max(0, finalUsage.budgetRemainingMicroUsd);
+                    setBudget((current) => {
+                      const limit = current?.limitMicroUsd ?? null;
+                      return {
+                        limitMicroUsd: limit,
+                        spentMicroUsd: limit === null ? null : Math.max(0, limit - remaining),
+                        remainingMicroUsd: remaining,
+                      };
+                    });
+                  }
+
+                  setStreamStatus('idle');
+                  setActiveTool(null);
+                } else if (currentEvent === 'error') {
+                  const code = typeof parsed.code === 'string' ? parsed.code : 'stream_error';
+                  throw new Error(code);
+                }
+              } catch (e) {
+                if (e instanceof Error && e.name !== 'SyntaxError') {
+                  throw e;
+                }
+              }
+              currentData = '';
+            }
+            continue;
+          }
+
+          if (trimmed.startsWith('id:')) {
+            const id = trimmed.slice(3).trim();
+            lastEventIdRef.current = id;
+          } else if (trimmed.startsWith('event:')) {
+            currentEvent = trimmed.slice(6).trim();
+          } else if (trimmed.startsWith('data:')) {
+            const dataPart = trimmed.slice(5).trim();
+            currentData = currentData.length === 0 ? dataPart : `${currentData}\n${dataPart}`;
+          }
+        }
+      }
     } catch (cause) {
+      if (cause instanceof Error && cause.name === 'AbortError') {
+        setStreamStatus('cancelled');
+        setMessages((current) =>
+          current.map((msg) =>
+            msg.id === assistantId && msg.content.length === 0
+              ? { ...msg, content: '(Consulta cancelada por el usuario)' }
+              : msg,
+          ),
+        );
+        return;
+      }
+
       setError(cause instanceof Error && cause.message.length > 0 ? cause.message : 'error');
       setLastFailed(message);
+      // Limpiar mensaje vacío del asistente si falló antes de emitir nada
+      setMessages((current) =>
+        current.filter((msg) => !(msg.id === assistantId && msg.content.length === 0)),
+      );
     } finally {
       setPending(false);
+      abortControllerRef.current = null;
+      setActiveTool(null);
+    }
+  };
+
+  const handleCancel = (): void => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
     }
   };
 
@@ -325,6 +531,12 @@ export function AgentChat({ initialBudget, budgetError }: AgentChatProps) {
         )}
       </section>
 
+      {fallbackNotice ? (
+        <div className="flex items-center gap-2">
+          <StatusBadge tone="alert">Canal estándar (streaming no disponible)</StatusBadge>
+        </div>
+      ) : null}
+
       <div role="log" aria-live="polite" aria-busy={pending} className="flex flex-col gap-4">
         {messages.length === 0 ? (
           <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface-raised p-4">
@@ -359,7 +571,9 @@ export function AgentChat({ initialBudget, budgetError }: AgentChatProps) {
                 <li key={message.id} className="flex flex-col gap-2">
                   <div className="max-w-prose rounded-lg border border-border bg-surface-raised px-4 py-3 text-sm text-text">
                     <span className="sr-only">Agente: </span>
-                    <p className="whitespace-pre-wrap break-words">{message.content}</p>
+                    <p className="whitespace-pre-wrap break-words">
+                      {message.content.length > 0 ? message.content : '…'}
+                    </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     {message.degraded ? (
@@ -378,11 +592,13 @@ export function AgentChat({ initialBudget, budgetError }: AgentChatProps) {
                       </ul>
                     ) : null}
                   </div>
-                  <p className="text-xs text-text-muted">
-                    {message.usage.promptTokens + message.usage.completionTokens} tokens ·{' '}
-                    {formatMicroUsd(message.usage.costMicroUsd)} ·{' '}
-                    {message.usage.cacheHit ? 'caché' : 'sin caché'}
-                  </p>
+                  {message.usage.promptTokens + message.usage.completionTokens > 0 ? (
+                    <p className="text-xs text-text-muted">
+                      {message.usage.promptTokens + message.usage.completionTokens} tokens ·{' '}
+                      {formatMicroUsd(message.usage.costMicroUsd)} ·{' '}
+                      {message.usage.cacheHit ? 'caché' : 'sin caché'}
+                    </p>
+                  ) : null}
                 </li>
               ),
             )}
@@ -390,9 +606,18 @@ export function AgentChat({ initialBudget, budgetError }: AgentChatProps) {
         )}
 
         {pending ? (
-          <p className="text-sm text-text-muted" aria-busy="true">
-            Consultando…
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface-raised px-4 py-2.5">
+            <p className="text-sm text-text-muted" aria-busy="true">
+              {streamStatus === 'connecting'
+                ? 'Conectando con el asistente…'
+                : streamStatus === 'tool'
+                  ? `Consultando herramienta (${activeTool ?? 'en curso'})…`
+                  : 'Generando respuesta…'}
+            </p>
+            <Button type="button" variant="secondary" onClick={handleCancel} className="text-xs">
+              Cancelar
+            </Button>
+          </div>
         ) : null}
       </div>
 
