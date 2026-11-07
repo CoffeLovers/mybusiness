@@ -44,3 +44,15 @@ export {
   SPAN_ATTR_TENANT_ID,
   SPAN_ATTR_USER_ROLE,
 } from './interceptors';
+export {
+  AgentMetrics,
+  agentMetrics,
+  METRIC_AGENT_FIRST_TOKEN_MS,
+  METRIC_AGENT_STREAM_DURATION_MS,
+  METRIC_AGENT_REQUESTS_TOTAL,
+  METRIC_AGENT_CANCELLATIONS_TOTAL,
+  METRIC_AGENT_ERRORS_TOTAL,
+  SLO_FIRST_TOKEN_P95_MS,
+  SLO_ERROR_RATE_MAX,
+} from './agent-metrics';
+export type { AgentMetricAttributes, RecordedMetricEntry } from './agent-metrics';

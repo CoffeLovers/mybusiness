@@ -1,6 +1,7 @@
 import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
+import { agentMetrics } from '@mybusiness/telemetry';
 import {
   AgentDegradationReason,
   type AgentChatCitation,
@@ -150,6 +151,8 @@ export class ChatService {
    * del contexto RPC seguro; el DTO del usuario nunca aporta identidad.
    */
   async chat(ctx: RequestContext, dto: AgentChatDto): Promise<AgentChatResponseDto> {
+    const startTime = Date.now();
+    const channel = ctx?.channel || 'web';
     const tenantId = ctx?.tenantId;
     if (!tenantId) {
       throw new BadRequestException('tenantId es requerido en el contexto RPC.');
@@ -166,6 +169,20 @@ export class ChatService {
     // 1. Caché semántica: atajo sin coste de tokens.
     const cached = await this.readCache(tenantId, message);
     if (cached) {
+      const durationMs = Date.now() - startTime;
+      agentMetrics.recordFirstToken(durationMs, {
+        channel,
+        tenantId,
+        streaming: false,
+        status: 'success',
+      });
+      agentMetrics.recordStreamDuration(durationMs, {
+        channel,
+        tenantId,
+        streaming: false,
+        status: 'success',
+      });
+      agentMetrics.recordRequest({ channel, tenantId, streaming: false, status: 'success' });
       return cached;
     }
 
@@ -185,6 +202,20 @@ export class ChatService {
         AgentDegradationReason.BUDGET_EXHAUSTED,
         tenantId,
       );
+      const durationMs = Date.now() - startTime;
+      agentMetrics.recordFirstToken(durationMs, {
+        channel,
+        tenantId,
+        streaming: false,
+        status: 'error',
+      });
+      agentMetrics.recordStreamDuration(durationMs, {
+        channel,
+        tenantId,
+        streaming: false,
+        status: 'error',
+      });
+      agentMetrics.recordError({ channel, tenantId, streaming: false, status: 'error' });
       return {
         answer: degraded.message,
         citations: [],
@@ -272,6 +303,20 @@ export class ChatService {
         `Todas las herramientas fallaron para tenant=${tenantId}: la respuesta se degrada`,
       );
       await this.budgetService.release({ tenantId, correlationId });
+      const durationMs = Date.now() - startTime;
+      agentMetrics.recordFirstToken(durationMs, {
+        channel,
+        tenantId,
+        streaming: false,
+        status: 'error',
+      });
+      agentMetrics.recordStreamDuration(durationMs, {
+        channel,
+        tenantId,
+        streaming: false,
+        status: 'error',
+      });
+      agentMetrics.recordError({ channel, tenantId, streaming: false, status: 'error' });
       return {
         answer: buildDeterministicAnswer(facts),
         citations,
@@ -292,6 +337,20 @@ export class ChatService {
       );
     } catch (error) {
       await this.budgetService.release({ tenantId, correlationId });
+      const durationMs = Date.now() - startTime;
+      agentMetrics.recordFirstToken(durationMs, {
+        channel,
+        tenantId,
+        streaming: false,
+        status: 'error',
+      });
+      agentMetrics.recordStreamDuration(durationMs, {
+        channel,
+        tenantId,
+        streaming: false,
+        status: 'error',
+      });
+      agentMetrics.recordError({ channel, tenantId, streaming: false, status: 'error' });
       const code =
         error instanceof LlmProviderError && error.code === 'LLM_TIMEOUT'
           ? 'LLM_TIMEOUT'
@@ -331,6 +390,21 @@ export class ChatService {
         cacheHit: false,
         degraded: true,
       });
+
+      const durationMs = Date.now() - startTime;
+      agentMetrics.recordFirstToken(durationMs, {
+        channel,
+        tenantId,
+        streaming: false,
+        status: 'error',
+      });
+      agentMetrics.recordStreamDuration(durationMs, {
+        channel,
+        tenantId,
+        streaming: false,
+        status: 'error',
+      });
+      agentMetrics.recordError({ channel, tenantId, streaming: false, status: 'error' });
 
       return {
         answer: buildDeterministicAnswer(facts),
@@ -376,6 +450,21 @@ export class ChatService {
         false,
       ),
     };
+
+    const durationMs = Date.now() - startTime;
+    agentMetrics.recordFirstToken(durationMs, {
+      channel,
+      tenantId,
+      streaming: false,
+      status: 'success',
+    });
+    agentMetrics.recordStreamDuration(durationMs, {
+      channel,
+      tenantId,
+      streaming: false,
+      status: 'success',
+    });
+    agentMetrics.recordRequest({ channel, tenantId, streaming: false, status: 'success' });
 
     await this.writeCache(tenantId, message, response);
 

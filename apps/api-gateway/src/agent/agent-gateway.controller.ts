@@ -6,13 +6,14 @@ import {
   Inject,
   Post,
   Query,
+  Req,
   Res,
   ValidationPipe,
 } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
 import { ApiTags } from '@nestjs/swagger';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import {
   AgentChatDto,
   AgentPatterns,
@@ -24,6 +25,7 @@ import {
   type UserContext,
 } from '@mybusiness/contracts';
 import { CurrentUser, Roles, rpcSend } from '@mybusiness/common';
+import { agentMetrics } from '@mybusiness/telemetry';
 import { firstValueFrom } from 'rxjs';
 
 @ApiTags('Agent')
@@ -59,12 +61,14 @@ export class AgentGatewayController {
   @Throttle({ heavy: { limit: 10, ttl: 60000 } })
   @HttpCode(200)
   @Post('chat')
-  chat(@CurrentUser() user: UserContext, @Body() dto: AgentChatDto) {
+  chat(@CurrentUser() user: UserContext, @Body() dto: AgentChatDto, @Req() req: Request) {
+    const channel = (req.headers['x-mybusiness-channel'] as string) || 'web';
     return rpcSend(this.agentClient, AgentPatterns.CHAT, {
       ...dto,
       tenantId: user.tenantId,
       userId: user.userId,
       role: user.role,
+      channel,
     });
   }
 
@@ -74,12 +78,27 @@ export class AgentGatewayController {
   async chatStream(
     @CurrentUser() user: UserContext,
     @Body() dto: AgentChatDto,
+    @Req() req: Request,
     @Res() res: Response,
   ) {
+    const channel = (req.headers['x-mybusiness-channel'] as string) || 'web';
+    const startTime = Date.now();
+    let firstTokenRecorded = false;
+
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders?.();
+
+    req.on('close', () => {
+      if (!res.writableEnded) {
+        agentMetrics.recordCancellation({
+          channel,
+          tenantId: user.tenantId,
+          streaming: true,
+        });
+      }
+    });
 
     try {
       const response = await firstValueFrom(
@@ -88,11 +107,22 @@ export class AgentGatewayController {
           tenantId: user.tenantId,
           userId: user.userId,
           role: user.role,
+          channel,
         }),
       );
 
       let eventId = 1;
       const sendEvent = (type: string, data: unknown) => {
+        if (!firstTokenRecorded && (type === 'token' || type === 'tool')) {
+          firstTokenRecorded = true;
+          const firstTokenMs = Date.now() - startTime;
+          agentMetrics.recordFirstToken(firstTokenMs, {
+            channel,
+            tenantId: user.tenantId,
+            streaming: true,
+            status: 'success',
+          });
+        }
         res.write(`id: ${eventId++}\nevent: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
       };
 
@@ -125,6 +155,20 @@ export class AgentGatewayController {
         });
       }
 
+      const totalDurationMs = Date.now() - startTime;
+      agentMetrics.recordStreamDuration(totalDurationMs, {
+        channel,
+        tenantId: user.tenantId,
+        streaming: true,
+        status: 'success',
+      });
+      agentMetrics.recordRequest({
+        channel,
+        tenantId: user.tenantId,
+        streaming: true,
+        status: 'success',
+      });
+
       sendEvent('done', {
         id: String(eventId),
         type: 'done',
@@ -134,6 +178,20 @@ export class AgentGatewayController {
       });
       res.end();
     } catch (error: any) {
+      const totalDurationMs = Date.now() - startTime;
+      agentMetrics.recordStreamDuration(totalDurationMs, {
+        channel,
+        tenantId: user.tenantId,
+        streaming: true,
+        status: 'error',
+      });
+      agentMetrics.recordError({
+        channel,
+        tenantId: user.tenantId,
+        streaming: true,
+        status: 'error',
+      });
+
       res.write(
         `id: 999\nevent: error\ndata: ${JSON.stringify({
           id: '999',
@@ -144,6 +202,13 @@ export class AgentGatewayController {
       );
       res.end();
     }
+  }
+
+  @Roles(UserRole.TENANT_ADMIN, UserRole.SUPER_ADMIN)
+  @HttpCode(200)
+  @Get('slos')
+  getSlos(@Query('channel') channel?: string) {
+    return agentMetrics.evaluateSlos(channel);
   }
 
   @Roles(UserRole.ACCOUNTANT, UserRole.TENANT_ADMIN, UserRole.SUPER_ADMIN)
