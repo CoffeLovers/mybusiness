@@ -1265,6 +1265,30 @@
         ]
       }
     },
+    "/api/v1/agent/chat/stream": {
+      "post": {
+        "operationId": "AgentGatewayController_chatStream",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentChatDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Agent"
+        ]
+      }
+    },
     "/api/v1/agent/memory/query": {
       "post": {
         "operationId": "AgentGatewayController_queryMemory",

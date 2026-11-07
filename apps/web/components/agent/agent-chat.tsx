@@ -443,8 +443,14 @@ export function AgentChat({ initialBudget, budgetError }: AgentChatProps) {
         setStreamStatus('cancelled');
         setMessages((current) =>
           current.map((msg) =>
-            msg.id === assistantId && msg.content.length === 0
-              ? { ...msg, content: '(Consulta cancelada por el usuario)' }
+            msg.id === assistantId
+              ? {
+                  ...msg,
+                  content:
+                    msg.content.length === 0
+                      ? '(Consulta cancelada por el usuario)'
+                      : `${msg.content} (cancelado por el usuario)`,
+                }
               : msg,
           ),
         );

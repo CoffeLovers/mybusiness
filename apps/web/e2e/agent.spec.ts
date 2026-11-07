@@ -125,13 +125,18 @@ test.describe('Panel de agente (Issue #75)', () => {
   }) => {
     await openAgent(page);
 
-    await messageInput(page).fill('consulta para cancelar');
+    await messageInput(page).fill('cancel stream test');
     await page.getByRole('button', { name: 'Enviar' }).click();
 
     const cancelButton = page.getByRole('button', { name: 'Cancelar' });
-    if (await cancelButton.isVisible()) {
-      await cancelButton.click();
-    }
+    await expect(cancelButton).toBeVisible();
+    await cancelButton.click();
+
+    await expect(page.getByText(/cancelad/i)).toBeVisible();
+    await expect(cancelButton).toHaveCount(0);
+
+    // Escribir un nuevo mensaje reactiva el botón de envío
+    await messageInput(page).fill('nueva consulta');
     await expect(page.getByRole('button', { name: 'Enviar' })).toBeEnabled();
   });
 

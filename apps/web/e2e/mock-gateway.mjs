@@ -1330,6 +1330,22 @@ async function handleAgentChatStream(request, response) {
     'X-Accel-Buffering': 'no',
   });
 
+  if (message.includes('cancel')) {
+    response.write(
+      `id: 1\nevent: token\ndata: ${JSON.stringify({ token: 'Iniciando proceso largo...' })}\n\n`,
+    );
+    const interval = setInterval(() => {
+      response.write(
+        `id: 2\nevent: token\ndata: ${JSON.stringify({ token: ' procesando...' })}\n\n`,
+      );
+    }, 200);
+    request.on('close', () => {
+      clearInterval(interval);
+      response.end();
+    });
+    return;
+  }
+
   const lastEventId = parseInt(request.headers['last-event-id'] || '0', 10) || 0;
   const events = [];
   let id = 1;
