@@ -41,6 +41,7 @@
   extends: .pnpm-base
   cache:
     key:
+      prefix: v2
       files:
         - pnpm-lock.yaml
     paths:
