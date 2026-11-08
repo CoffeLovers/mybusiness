@@ -1,6 +1,6 @@
 # Fase 5 — Pruebas integrales, seguridad y cumplimiento (Sprint 9)
 
-> **Ventana:** 2027-01-25 → 2027-02-05 · **Equipo:** 2 personas (Farid y Juancho) · **Capacidad:** 42 SP planificados sobre 42 disponibles (Sprint 9)
+> **Ventana:** 2027-01-25 → 2027-02-05 · **Responsable:** Juancho (@JuanchR4) · **Capacidad:** 42 SP planificados sobre 42 disponibles (Sprint 9)
 > **Issues:** [`ISSUES.md`](ISSUES.md) (#78–#84) · **Epic:** [#77](https://gitlab.com/coffelovers2/mybusiness/-/work_items/77) · **Plan marco:** [`../../PLAN-INTEGRAL-DESARROLLO.md`](../../PLAN-INTEGRAL-DESARROLLO.md) · **Fase previa:** [`../fase-4/README.md`](../fase-4/README.md) · **ADR-009:** [`../../adr/009-production-deployment-target.md`](../../adr/009-production-deployment-target.md) · **Seguridad:** [`../../security.md`](../../security.md)
 
 ## 1. Objetivo de la fase
@@ -52,14 +52,12 @@ Al cerrar la fase:
 
 ### Reparto de Capacidad
 
-| Persona   | GitLab                  | Sprint 9 | Total  |
-| --------- | ----------------------- | -------- | ------ |
-| Farid     | `@farid15berrio10-a11y` | 24       | 24     |
-| Juancho   | `@JuanchR4`             | 18       | 18     |
-| **Total** |                         | **42**   | **42** |
+| Persona   | GitLab      | Sprint 9 | Total  |
+| --------- | ----------- | -------- | ------ |
+| Juancho   | `@JuanchR4` | 42       | 42     |
+| **Total** |             | **42**   | **42** |
 
-- **Farid (@farid15berrio10-a11y — 24 SP):** Hardening y pentesting local (SF5-02, 8 SP), Retención y cumplimiento GDPR/Habeas Data (SF5-04, 5 SP), Decisión y arquitectura de despliegue en producción ADR-009 (SF5-05, 5 SP), Pipeline de seguridad integral y dependencias en GitLab CI (SF5-07, 6 SP).
-- **Juancho (@JuanchR4 — 18 SP):** Suite de pruebas integrales E2E cross-service (SF5-01, 8 SP), Prueba de carga masiva 50k y estrés de concurrencia SSE (SF5-03, 5 SP), Certificación de cobros PayPal y set dorado del agente ampliado (SF5-06, 5 SP).
+- **Juancho (@JuanchR4 — 42 SP):** Ownership completo de las 7 issues de Fase 5 (Sprint 9): Suite integral E2E cross-service (SF5-01, 8 SP), Hardening y pentesting local (SF5-02, 8 SP), Prueba de carga masiva 50k y estrés SSE (SF5-03, 5 SP), Retención y cumplimiento GDPR/Habeas Data (SF5-04, 5 SP), Decisión de despliegue en producción ADR-009 (SF5-05, 5 SP), Certificación PayPal y set dorado ampliado (SF5-06, 5 SP), y Pipeline de seguridad integral en GitLab CI (SF5-07, 6 SP).
 
 ## 5. Matriz de dependencias y camino crítico
 

@@ -7,15 +7,15 @@
 
 ## Resumen
 
-| ID     | Título                                                                                       | Labels                                                           | Owner                         | SP  | Sprint | GitLab |
-| ------ | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ----------------------------- | --- | ------ | ------ |
-| SF5-01 | [QA] Suite de pruebas integrales E2E cross-service (Open Banking, facturas y libro mayor)    | `qa`, `backend`, `finance`, `phase-5`, `sprint-9`                | Juancho (@JuanchR4)           | 8   | 9      | #78    |
-| SF5-02 | [Security] Hardening, auditoría de seguridad y pruebas de penetración                        | `security`, `backend`, `web`, `phase-5`, `sprint-9`              | Farid (@farid15berrio10-a11y) | 8   | 9      | #79    |
-| SF5-03 | [Perf] Prueba de carga masiva y estrés de concurrencia (50k transacciones & SSE)             | `qa`, `performance`, `devops`, `phase-5`, `sprint-9`             | Juancho (@JuanchR4)           | 5   | 9      | #80    |
-| SF5-04 | [Compliance] Retención, purga segura y portabilidad de datos (GDPR / Habeas Data)            | `compliance`, `backend`, `audit`, `phase-5`, `sprint-9`          | Farid (@farid15berrio10-a11y) | 5   | 9      | #81    |
-| SF5-05 | [Infra] Decisión y arquitectura de despliegue en producción (ADR-009)                        | `devops`, `architecture`, `documentation`, `phase-5`, `sprint-9` | Farid (@farid15berrio10-a11y) | 5   | 9      | #82    |
-| SF5-06 | [QA] Certificación de cobros PayPal y evaluación del agente con set dorado ampliado          | `qa`, `agent`, `payments`, `phase-5`, `sprint-9`                 | Juancho (@JuanchR4)           | 5   | 9      | #83    |
-| SF5-07 | [DevOps] Pipeline de seguridad integral y dependencias (SAST/DAST y escaneo de contenedores) | `ci-cd`, `devops`, `security`, `phase-5`, `sprint-9`             | Farid (@farid15berrio10-a11y) | 6   | 9      | #84    |
+| ID     | Título                                                                                       | Labels                                                           | Owner               | SP  | Sprint | GitLab |
+| ------ | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------- | --- | ------ | ------ |
+| SF5-01 | [QA] Suite de pruebas integrales E2E cross-service (Open Banking, facturas y libro mayor)    | `qa`, `backend`, `finance`, `phase-5`, `sprint-9`                | Juancho (@JuanchR4) | 8   | 9      | #78    |
+| SF5-02 | [Security] Hardening, auditoría de seguridad y pruebas de penetración                        | `security`, `backend`, `web`, `phase-5`, `sprint-9`              | Juancho (@JuanchR4) | 8   | 9      | #79    |
+| SF5-03 | [Perf] Prueba de carga masiva y estrés de concurrencia (50k transacciones & SSE)             | `qa`, `performance`, `devops`, `phase-5`, `sprint-9`             | Juancho (@JuanchR4) | 5   | 9      | #80    |
+| SF5-04 | [Compliance] Retención, purga segura y portabilidad de datos (GDPR / Habeas Data)            | `compliance`, `backend`, `audit`, `phase-5`, `sprint-9`          | Juancho (@JuanchR4) | 5   | 9      | #81    |
+| SF5-05 | [Infra] Decisión y arquitectura de despliegue en producción (ADR-009)                        | `devops`, `architecture`, `documentation`, `phase-5`, `sprint-9` | Juancho (@JuanchR4) | 5   | 9      | #82    |
+| SF5-06 | [QA] Certificación de cobros PayPal y evaluación del agente con set dorado ampliado          | `qa`, `agent`, `payments`, `phase-5`, `sprint-9`                 | Juancho (@JuanchR4) | 5   | 9      | #83    |
+| SF5-07 | [DevOps] Pipeline de seguridad integral y dependencias (SAST/DAST y escaneo de contenedores) | `ci-cd`, `devops`, `security`, `phase-5`, `sprint-9`             | Juancho (@JuanchR4) | 6   | 9      | #84    |
 
 Todas las issues llevan además los labels `phase-5` y `sprint-9`.
 
@@ -66,7 +66,7 @@ pnpm --filter @mybusiness/contracts test
 ## SF5-02 — [Security] Hardening, auditoría de seguridad y pruebas de penetración
 
 **Labels:** `phase-5`, `sprint-9`, `security`, `backend`, `web`  
-**Owner:** Farid (@farid15berrio10-a11y) · **SP:** 8 · **Depende de:** #56, #57, #6, #7
+**Owner:** Juancho (@JuanchR4) · **SP:** 8 · **Depende de:** #56, #57, #6, #7
 
 ### Contexto
 
@@ -146,7 +146,7 @@ pnpm --filter @mybusiness/api-gateway test:load
 ## SF5-04 — [Compliance] Retención, purga segura y portabilidad de datos (GDPR / Habeas Data)
 
 **Labels:** `phase-5`, `sprint-9`, `compliance`, `backend`, `audit`  
-**Owner:** Farid (@farid15berrio10-a11y) · **SP:** 5 · **Depende de:** #15, #58
+**Owner:** Juancho (@JuanchR4) · **SP:** 5 · **Depende de:** #15, #58
 
 ### Contexto
 
@@ -182,7 +182,7 @@ pnpm --filter @mybusiness/finance-service test:compliance
 ## SF5-05 — [Infra] Decisión y arquitectura de despliegue en producción (ADR-009)
 
 **Labels:** `phase-5`, `sprint-9`, `devops`, `architecture`, `documentation`  
-**Owner:** Farid (@farid15berrio10-a11y) · **SP:** 5 · **Depende de:** #71, #76
+**Owner:** Juancho (@JuanchR4) · **SP:** 5 · **Depende de:** #71, #76
 
 ### Contexto
 
@@ -257,7 +257,7 @@ pnpm --filter @mybusiness/finance-service test:paypal
 ## SF5-07 — [DevOps] Pipeline de seguridad integral y dependencias (SAST/DAST y escaneo de contenedores)
 
 **Labels:** `phase-5`, `sprint-9`, `ci-cd`, `devops`, `security`  
-**Owner:** Farid (@farid15berrio10-a11y) · **SP:** 6 · **Depende de:** #70, #72, #76
+**Owner:** Juancho (@JuanchR4) · **SP:** 6 · **Depende de:** #70, #72, #76
 
 ### Contexto
 
