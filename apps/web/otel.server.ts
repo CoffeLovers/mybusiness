@@ -7,6 +7,6 @@
  *   cada fetch server-side hacia el API Gateway (BFF → gateway → microservicios).
  * - `startTelemetry` es no-op si OTEL_ENABLED no es `true` (default off).
  */
-import { startTelemetry } from '@mybusiness/telemetry';
+import { startTelemetry } from '@mybusiness/telemetry/lifecycle';
 
 startTelemetry({ serviceName: 'web-bff' });

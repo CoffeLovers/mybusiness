@@ -6,8 +6,8 @@
  * `traceparent` en cada fetch hacia el API Gateway (instrumentación undici).
  */
 export async function register(): Promise<void> {
-  if (process.env.NEXT_RUNTIME !== 'nodejs') {
-    return;
+  // En desarrollo local Next.js no carga el SDK de OpenTelemetry grpc
+  if (process.env.NODE_ENV === 'production' && process.env.OTEL_ENABLED === 'true') {
+    await import('./otel.server');
   }
-  await import('./otel.server');
 }
