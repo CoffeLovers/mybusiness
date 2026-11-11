@@ -1,6 +1,7 @@
 package com.mybusiness.feature.dashboard.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,12 +18,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -37,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -48,6 +54,8 @@ import com.mybusiness.core.designsystem.component.ErrorCard
 import com.mybusiness.core.designsystem.component.LoadingView
 import com.mybusiness.core.designsystem.component.MyBusinessTopAppBar
 import com.mybusiness.core.designsystem.component.PrimaryButton
+import com.mybusiness.core.designsystem.theme.AccentCoral
+import com.mybusiness.core.designsystem.theme.AccentMint
 import com.mybusiness.core.designsystem.theme.businessColors
 import com.mybusiness.core.designsystem.theme.minimumTouchTarget
 import com.mybusiness.core.model.BankAccount
@@ -145,7 +153,8 @@ fun DashboardScreen(
                 summary != null -> {
                     DashboardContent(
                         summary = summary,
-                        userEmail = uiState.userEmail.orEmpty()
+                        userEmail = uiState.userEmail.orEmpty(),
+                        onOpenBanking = onOpenBanking
                     )
                 }
                 else -> {
@@ -255,13 +264,14 @@ private fun EmptyState(
 private fun DashboardContent(
     summary: DashboardSummary,
     userEmail: String,
+    onOpenBanking: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(vertical = 16.dp),
+        contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // 1. Saludo y contexto
@@ -269,9 +279,12 @@ private fun DashboardContent(
             GreetingSection(userEmail = userEmail)
         }
 
-        // 2. Tarjeta principal de Saldo Total
+        // 2. Tarjeta principal de Saldo Total (Estilo Balance UIKit: montos destacados y botones píldora)
         item {
-            TotalBalanceCard(summary = summary)
+            BalanceHeroCard(
+                summary = summary,
+                onOpenBanking = onOpenBanking
+            )
         }
 
         // 3. Indicadores de Ingresos vs Egresos del mes
@@ -283,29 +296,54 @@ private fun DashboardContent(
             )
         }
 
-        // 4. Sección de Cuentas Bancarias
+        // 4. Salud Financiera — Gráfico semanal de barras segmentadas (Balance UIKit frame 1:17)
         item {
-            Text(
-                text = "Cuentas Bancarias",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+            FinancialHealthCard(
+                netFlow = summary.netCashFlow,
+                currency = summary.currency
             )
         }
 
+        // 5. Sección de Cuentas Bancarias / Tarjetas
         item {
-            AccountsHorizontalList(accounts = summary.accounts, currency = summary.currency)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Cuentas y Tarjetas",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                )
+                Text(
+                    text = "Ver todas",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clickable { onOpenBanking() }
+                )
+            }
         }
 
-        // 5. Sección de Últimas Transacciones
+        item {
+            AccountsHorizontalList(
+                accounts = summary.accounts,
+                currency = summary.currency,
+                onAddAccount = onOpenBanking
+            )
+        }
+
+        // 6. Sección de Últimas Transacciones (Tarjetas píldora con iconos circulares)
         item {
             Text(
                 text = "Movimientos Recientes",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
             )
         }
 
@@ -322,7 +360,7 @@ private fun GreetingSection(userEmail: String) {
             text = "Bienvenido de nuevo",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
+            color = MaterialTheme.colorScheme.onSurface
         )
         if (userEmail.isNotBlank()) {
             Text(
@@ -335,12 +373,16 @@ private fun GreetingSection(userEmail: String) {
 }
 
 @Composable
-private fun TotalBalanceCard(summary: DashboardSummary) {
+private fun BalanceHeroCard(
+    summary: DashboardSummary,
+    onOpenBanking: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primary
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
     ) {
         Column(
@@ -348,33 +390,239 @@ private fun TotalBalanceCard(summary: DashboardSummary) {
                 .fillMaxWidth()
                 .padding(20.dp)
         ) {
-            Text(
-                text = "Saldo Total Consolidado",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onPrimary
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = summary.totalBalance.formatCurrency(summary.currency),
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onPrimary
-            )
-            Spacer(modifier = Modifier.height(12.dp))
             Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Flujo Neto Mensual: ",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimary
+                    text = "Tu Saldo",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Medium
+                )
+                // Badge de rendimiento estilo Figma UIKit (+8%)
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(AccentMint)
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    val isPositive = summary.netCashFlow >= 0
+                    val sign = if (isPositive) "+" else ""
+                    val percentage = if (summary.totalBalance > 0) ((summary.netCashFlow / summary.totalBalance) * 100).toInt() else 8
+                    Text(
+                        text = "$sign$percentage%",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF101720)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Cifra con decimales sutiles
+            val formatted = summary.totalBalance.formatCurrency(summary.currency)
+            val parts = formatted.split(".", ",")
+            Row(
+                verticalAlignment = Alignment.Bottom
+            ) {
+                Text(
+                    text = parts.firstOrNull() ?: formatted,
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (parts.size > 1) {
+                    Text(
+                        text = ".${parts[1]}",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(bottom = 2.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Fila de 3 botones píldora (Cobrar, Cuentas, Vincular)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Cobrar (Primary Violet Pill)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary)
+                        .clickable { onOpenBanking() }
+                        .padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Send,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Cobrar",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
+                }
+
+                // Cuentas (Surface Pill)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surface)
+                        .clickable { onOpenBanking() }
+                        .padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CreditCard,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Cuentas",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
+                // Vincular (Surface Pill)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surface)
+                        .clickable { onOpenBanking() }
+                        .padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Vincular",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FinancialHealthCard(
+    netFlow: Double,
+    currency: String,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp)
+        ) {
+            Column {
+                Text(
+                    text = "Salud Financiera",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "+${summary.netCashFlow.formatCurrency(summary.currency)}",
+                    text = "Últimos 7 días • Flujo neto: ${if (netFlow >= 0) "+" else ""}${netFlow.formatCurrency(currency)}",
                     style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimary
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Gráfico de barras segmentadas (7 días) estilo Figma Balance UIKit
+            val days = listOf("Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom")
+            val activeLevels = listOf(5, 7, 3, 8, 6, 2, 4)
+            val isExpenseDay = listOf(false, false, true, false, true, false, false)
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Bottom
+            ) {
+                days.forEachIndexed { index, day ->
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            for (segment in 8 downTo 1) {
+                                val isActive = segment <= activeLevels[index]
+                                val segmentColor = when {
+                                    !isActive -> MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
+                                    isExpenseDay[index] -> AccentCoral
+                                    else -> MaterialTheme.colorScheme.primary
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .width(26.dp)
+                                        .height(5.dp)
+                                        .clip(RoundedCornerShape(3.dp))
+                                        .background(segmentColor)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = day,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         }
     }
@@ -393,9 +641,9 @@ private fun IncomeExpenseRow(
         // Ingresos
         Card(
             modifier = Modifier.weight(1f),
-            shape = MaterialTheme.shapes.medium,
+            shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
             )
         ) {
             Row(
@@ -404,9 +652,9 @@ private fun IncomeExpenseRow(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(38.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                        .background(AccentMint.copy(alpha = 0.2f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -436,9 +684,9 @@ private fun IncomeExpenseRow(
         // Gastos
         Card(
             modifier = Modifier.weight(1f),
-            shape = MaterialTheme.shapes.medium,
+            shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
             )
         ) {
             Row(
@@ -447,9 +695,9 @@ private fun IncomeExpenseRow(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(38.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                        .background(AccentCoral.copy(alpha = 0.2f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -481,7 +729,8 @@ private fun IncomeExpenseRow(
 @Composable
 private fun AccountsHorizontalList(
     accounts: List<BankAccount>,
-    currency: String
+    currency: String,
+    onAddAccount: () -> Unit
 ) {
     LazyRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -489,23 +738,31 @@ private fun AccountsHorizontalList(
         items(accounts, key = { it.id }) { account ->
             Card(
                 modifier = Modifier.width(220.dp),
-                shape = MaterialTheme.shapes.medium,
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant
                 )
             ) {
                 Column(
-                    modifier = Modifier.padding(14.dp)
+                    modifier = Modifier.padding(16.dp)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.AccountBalance,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AccountBalance,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = account.institutionName,
@@ -513,7 +770,7 @@ private fun AccountsHorizontalList(
                             fontWeight = FontWeight.Bold
                         )
                     }
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
                     Text(
                         text = "${account.accountType} • ${account.accountNumberMasked}",
                         style = MaterialTheme.typography.bodySmall,
@@ -524,7 +781,50 @@ private fun AccountsHorizontalList(
                         text = account.balance.formatCurrency(account.currency),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+
+        // Tarjeta rápida "+ Agregar Cuenta" estilo UIKit
+        item {
+            Card(
+                modifier = Modifier
+                    .width(140.dp)
+                    .clickable { onAddAccount() },
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Agregar cuenta",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "+ Vincular",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
@@ -536,15 +836,15 @@ private fun AccountsHorizontalList(
 private fun TransactionItem(transaction: Transaction) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.small,
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -553,13 +853,13 @@ private fun TransactionItem(transaction: Transaction) {
                 modifier = Modifier.weight(1f)
             ) {
                 val isIncome = transaction.type == TransactionType.INCOME
-                val iconBg = MaterialTheme.colorScheme.surfaceVariant
+                val iconBg = if (isIncome) AccentMint.copy(alpha = 0.2f) else AccentCoral.copy(alpha = 0.2f)
                 val iconTint = if (isIncome) MaterialTheme.businessColors.income else MaterialTheme.businessColors.expense
                 val icon = if (isIncome) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward
 
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(40.dp)
                         .clip(CircleShape)
                         .background(iconBg),
                     contentAlignment = Alignment.Center
@@ -568,7 +868,7 @@ private fun TransactionItem(transaction: Transaction) {
                         imageVector = icon,
                         contentDescription = null,
                         tint = iconTint,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
@@ -578,7 +878,7 @@ private fun TransactionItem(transaction: Transaction) {
                     Text(
                         text = transaction.description,
                         style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
+                        fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
@@ -594,7 +894,7 @@ private fun TransactionItem(transaction: Transaction) {
 
             Text(
                 text = "$sign${transaction.amount.formatCurrency(transaction.currency)}",
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = color
             )

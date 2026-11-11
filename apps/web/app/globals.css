@@ -69,18 +69,18 @@
 
   /* Superficies */
   --color-surface: #ffffff;
-  --color-surface-raised: #f4f6f8;
-  --color-border: #c3ccd6;
-  --color-border-strong: #6b7280;
+  --color-surface-raised: #f4f3fe;
+  --color-border: #e5e3fc;
+  --color-border-strong: #847ec7;
 
   /* Texto */
   --color-text: #101720;
   --color-text-muted: #55606f;
 
   /* Marca */
-  --color-primary: #1d4ed8;
+  --color-primary: #5844ed;
   --color-on-primary: #ffffff;
-  --color-focus-ring: #1d4ed8;
+  --color-focus-ring: #7966f3;
 
   /* Semántica financiera */
   --color-income: #047857;
@@ -88,47 +88,50 @@
   --color-neutral: #4b5563;
   --color-alert: #92400e;
 
-  /* Acento de marca y superficie inversa (identicos en claro y oscuro:
-     la seccion inversa siempre es oscura y el acento es de marca). */
-  --color-accent: #ddf84b;
-  --color-on-accent: #000000;
-  --color-inverse: #1a1a1a;
-  --color-inverse-raised: #262626;
+  /* Acento de marca y superficie inversa */
+  --color-accent: #dad5fb;
+  --color-on-accent: #101720;
+  --color-accent-mint: #2ad19b;
+  --color-accent-coral: #ff6b50;
+  --color-inverse: #03034a;
+  --color-inverse-raised: #0d1354;
   --color-on-inverse: #ffffff;
-  --color-inverse-muted: #b3b3b3;
+  --color-inverse-muted: #a3aebd;
 }
 
 :root.dark {
   color-scheme: dark;
 
   /* Superficies */
-  --color-surface: #0b0f16;
-  --color-surface-raised: #151b24;
-  --color-border: #3f4b5c;
-  --color-border-strong: #7c8ba1;
+  --color-surface: #03034a;
+  --color-surface-raised: #0d1354;
+  --color-border: #1e2563;
+  --color-border-strong: #6371d6;
 
   /* Texto */
   --color-text: #f2f5f8;
   --color-text-muted: #a3aebd;
 
   /* Marca */
-  --color-primary: #7aa2ff;
-  --color-on-primary: #0b0f16;
-  --color-focus-ring: #7aa2ff;
+  --color-primary: #b4a9fe;
+  --color-on-primary: #03034a;
+  --color-focus-ring: #b4a9fe;
 
   /* Semántica financiera */
-  --color-income: #34d399;
-  --color-expense: #f87171;
+  --color-income: #2ad19b;
+  --color-expense: #ff6b50;
   --color-neutral: #9aa5b4;
   --color-alert: #fbbf24;
 
-  /* Acento de marca y superficie inversa: mismos valores que en claro. */
-  --color-accent: #ddf84b;
-  --color-on-accent: #000000;
-  --color-inverse: #1a1a1a;
-  --color-inverse-raised: #262626;
+  /* Acento de marca y superficie inversa */
+  --color-accent: #dad5fb;
+  --color-on-accent: #03034a;
+  --color-accent-mint: #2ad19b;
+  --color-accent-coral: #ff6b50;
+  --color-inverse: #03034a;
+  --color-inverse-raised: #0d1354;
   --color-on-inverse: #ffffff;
-  --color-inverse-muted: #b3b3b3;
+  --color-inverse-muted: #a3aebd;
 }
 
 /* Mapeo de tokens a utilidades de Tailwind v4.
@@ -157,6 +160,8 @@
   --color-alert: var(--color-alert);
   --color-accent: var(--color-accent);
   --color-on-accent: var(--color-on-accent);
+  --color-accent-mint: var(--color-accent-mint);
+  --color-accent-coral: var(--color-accent-coral);
   --color-inverse: var(--color-inverse);
   --color-inverse-raised: var(--color-inverse-raised);
   --color-on-inverse: var(--color-on-inverse);

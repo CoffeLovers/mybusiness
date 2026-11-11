@@ -10,6 +10,7 @@ object Radii {
     val md = 8.dp
     val lg = 12.dp
     val xl = 16.dp
+    val xxl = 24.dp
     val full = CircleShape
 }
 
@@ -18,5 +19,5 @@ val Shapes = Shapes(
     small = RoundedCornerShape(Radii.md),
     medium = RoundedCornerShape(Radii.lg),
     large = RoundedCornerShape(Radii.xl),
-    extraLarge = RoundedCornerShape(Radii.xl)
+    extraLarge = RoundedCornerShape(Radii.xxl)
 )

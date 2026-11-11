@@ -209,7 +209,7 @@ function ConnectionCard({
             return (
               <li
                 key={account.id}
-                className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-border bg-surface px-3 py-3"
+                className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-border/80 bg-surface px-4 py-3.5 transition-colors"
               >
                 <div className="flex min-w-0 flex-col gap-0.5">
                   <span className="truncate text-sm font-medium text-text">{account.name}</span>
