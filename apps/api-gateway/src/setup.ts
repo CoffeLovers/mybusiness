@@ -83,8 +83,10 @@ export function setupGatewayApp(app: INestApplication): void {
     ],
   });
 
-  // Global Prefix
-  app.setGlobalPrefix('api/v1');
+  // Global Prefix (excluyendo probes estándar de orquestadores /healthz y /health)
+  app.setGlobalPrefix('api/v1', {
+    exclude: ['healthz/(.*)', 'healthz', 'health/(.*)', 'health'],
+  });
 
   // Global Pipes & Interceptors
   app.useGlobalPipes(

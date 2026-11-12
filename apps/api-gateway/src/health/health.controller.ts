@@ -8,7 +8,7 @@ import Redis from 'ioredis';
 @ApiTags('Health')
 @Public()
 @SkipThrottle({ default: true, auth: true, api: true, heavy: true })
-@Controller('health')
+@Controller(['health', 'healthz'])
 export class HealthController {
   private redisClient?: Redis;
 
@@ -34,12 +34,23 @@ export class HealthController {
     return {
       status: 'ok',
       service: 'api-gateway',
+      uptime: Math.floor(process.uptime()),
       timestamp: new Date().toISOString(),
     };
   }
 
-  @Get('ready')
-  async ready() {
+  @Get('liveness')
+  liveness() {
+    return {
+      status: 'ok',
+      service: 'api-gateway',
+      uptime: Math.floor(process.uptime()),
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Get(['ready', 'readiness'])
+  async readiness() {
     try {
       const redis = this.getRedis();
       const pong = await redis.ping();
@@ -48,16 +59,22 @@ export class HealthController {
       }
       return {
         status: 'ready',
-        uptime: process.uptime(),
-        redis: 'connected',
+        service: 'api-gateway',
+        uptime: Math.floor(process.uptime()),
+        checks: {
+          redis: 'connected',
+        },
         timestamp: new Date().toISOString(),
       };
     } catch (err: any) {
       throw new HttpException(
         {
           status: 'not_ready',
-          uptime: process.uptime(),
-          redis: 'disconnected',
+          service: 'api-gateway',
+          uptime: Math.floor(process.uptime()),
+          checks: {
+            redis: 'disconnected',
+          },
           error: err?.message || 'Redis no disponible',
           timestamp: new Date().toISOString(),
         },

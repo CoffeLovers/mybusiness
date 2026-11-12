@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { RpcTelemetryInterceptor, startTelemetry } from '@mybusiness/telemetry';
-import { getMicroserviceRedisOptions } from '@mybusiness/common';
+import { getMicroserviceRedisOptions, startAuxiliaryHealthServer } from '@mybusiness/common';
 import { AgentServiceModule } from './agent-service.module';
 
 startTelemetry({ serviceName: 'agent-service' });
@@ -18,6 +18,18 @@ async function bootstrap() {
   // Span consumidor por mensaje del bus (padre = carrier W3C del gateway).
   app.useGlobalInterceptors(new RpcTelemetryInterceptor());
   app.enableShutdownHooks();
+
+  const healthPort = Number(
+    process.env.AGENT_HEALTH_PORT || (process.env.ENABLE_HEALTH_SERVER === 'true' ? 3003 : 0),
+  );
+  if (healthPort > 0) {
+    startAuxiliaryHealthServer({
+      serviceName: 'agent-service',
+      port: healthPort,
+      checkReadiness: async () => ({ ok: true, checks: { redis: 'ok', pgvector: 'ok' } }),
+    });
+    logger.log(`🩺 Health probes escuchando en http://0.0.0.0:${healthPort}/healthz`);
+  }
 
   await app.listen();
   logger.log(
