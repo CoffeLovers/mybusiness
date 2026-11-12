@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { minorToPayPalDecimal, MoneyFormatError } from '@mybusiness/contracts';
 
@@ -129,6 +129,7 @@ interface TokenCache {
  * expiración. Ningún log ni mensaje de error incluye el token, las
  * credenciales o el cuerpo bruto del proveedor.
  */
+@Injectable()
 export class PayPalClient {
   private readonly logger = new Logger(PayPalClient.name);
   private readonly mode: PayPalMode;
