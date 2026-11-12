@@ -10,11 +10,12 @@ import {
   MCP_PROTOCOL_VERSION,
   McpErrorCodes,
   McpPatterns,
+  PaymentsPatterns,
+  UserRole,
   type McpJsonRpcResponse,
   type McpJsonRpcRequest,
   type McpToolName,
   type McpToolsListResult,
-  type UserRole,
   type WithContext,
 } from '@mybusiness/contracts';
 import { McpController } from '../src/mcp/mcp.controller';
@@ -24,8 +25,9 @@ import { MCP_TOOLS } from '../src/mcp/tool-schemas';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
+const INVOICE_ID = '44444444-4444-4444-8444-444444444444';
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const ROLE: UserRole = 'ADMIN';
-
 interface Harness {
   controller: McpController;
   service: McpToolsService;
@@ -82,6 +84,19 @@ function callTool(name: string, args: Record<string, unknown>) {
   return rpc('tools/call', { name, arguments: args });
 }
 
+/** Igual que `callTool` pero con un rol explícito (el sobre lo resuelve el servidor). */
+function callToolAs(name: string, args: Record<string, unknown>, role: string) {
+  return {
+    jsonrpc: '2.0' as const,
+    id: 1,
+    method: 'tools/call',
+    params: { name, arguments: args },
+    tenantId: TENANT_ID,
+    userId: USER_ID,
+    role,
+  };
+}
+
 function expectFailure(response: McpJsonRpcResponse): {
   code: number;
   message: string;
@@ -112,14 +127,15 @@ describe('McpController', () => {
     );
   });
 
-  it('tools/list expone exactamente 2 herramientas de solo lectura con additionalProperties:false', async () => {
+  it('tools/list expone las 3 herramientas con additionalProperties:false', async () => {
     const response = await harness.controller.handle(rpc('tools/list'));
 
     const result = (response as { result: McpToolsListResult }).result;
-    expect(result.tools).toHaveLength(2);
+    expect(result.tools).toHaveLength(3);
     expect(result.tools.map((tool) => tool.name)).toEqual([
       'get_cashflow_summary',
       'list_unreconciled_transactions',
+      'create_payment_link',
     ]);
     for (const tool of result.tools) {
       expect(tool.inputSchema.additionalProperties).toBe(false);
@@ -221,6 +237,171 @@ describe('McpController', () => {
     const response = await harness.controller.handle(rpc('resources/list'));
 
     expect(expectFailure(response).code).toBe(McpErrorCodes.METHOD_NOT_FOUND);
+  });
+
+  it('create_payment_link crea la orden con contexto autorizado y devuelve el link', async () => {
+    harness.send.mockReturnValue(
+      of({
+        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        tenantId: TENANT_ID,
+        invoiceRef: INVOICE_ID,
+        paypalOrderId: 'PAYPAL-123',
+        status: 'CREATED',
+        amountMinor: '250000',
+        currency: 'COP',
+        checkoutUrl: 'https://www.sandbox.paypal.com/checkoutnow?token=PAYPAL-123',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      }),
+    );
+
+    const response = await harness.controller.handle(
+      callToolAs(
+        'create_payment_link',
+        { amountMinor: '250000', currency: 'cop', invoiceId: INVOICE_ID },
+        UserRole.ACCOUNTANT,
+      ),
+    );
+
+    expect(harness.send).toHaveBeenCalledWith(
+      PaymentsPatterns.PAYPAL_CREATE_ORDER,
+      expect.objectContaining({
+        amountMinor: '250000',
+        currency: 'COP',
+        invoiceRef: INVOICE_ID,
+        idempotencyKey: expect.stringMatching(UUID_PATTERN) as string,
+        tenantId: TENANT_ID,
+        userId: USER_ID,
+      }),
+    );
+    expect('result' in response).toBe(true);
+    const result = (response as { result: { data: Record<string, unknown> } }).result.data;
+    expect(result).toEqual({
+      paypalOrderId: 'PAYPAL-123',
+      status: 'CREATED',
+      checkoutUrl: 'https://www.sandbox.paypal.com/checkoutnow?token=PAYPAL-123',
+      amountMinor: '250000',
+      currency: 'COP',
+    });
+  });
+
+  it('create_payment_link respeta la clave de idempotencia del agente cuando la provee', async () => {
+    harness.send.mockReturnValue(
+      of({
+        id: 'a',
+        paypalOrderId: 'P',
+        status: 'CREATED',
+        checkoutUrl: 'https://x/y',
+        amountMinor: '1',
+        currency: 'USD',
+      }),
+    );
+
+    await harness.controller.handle(
+      callToolAs(
+        'create_payment_link',
+        {
+          amountMinor: '1000',
+          currency: 'USD',
+          invoiceId: INVOICE_ID,
+          idempotencyKey: 'agent-key-123',
+        },
+        UserRole.ACCOUNTANT,
+      ),
+    );
+
+    expect(harness.send).toHaveBeenCalledWith(
+      PaymentsPatterns.PAYPAL_CREATE_ORDER,
+      expect.objectContaining({ idempotencyKey: 'agent-key-123' }),
+    );
+  });
+
+  it.each(['12.5', '0', '-100', 2500])(
+    'create_payment_link rechaza floats/números/decimales (%p) con TOOL_INVALID_INPUT',
+    async (amountMinor) => {
+      const response = await harness.controller.handle(
+        callTool('create_payment_link', { amountMinor, currency: 'COP', invoiceId: INVOICE_ID }),
+      );
+
+      expect(expectFailure(response).data?.code).toBe(McpErrorCodes.TOOL_INVALID_INPUT);
+      expect(harness.send).not.toHaveBeenCalled();
+    },
+  );
+
+  it('create_payment_link sin clave genera UUID servidor-side y NO hace replay entre invocaciones con el mismo JSON-RPC id', async () => {
+    harness.send.mockReturnValue(
+      of({
+        id: 'a',
+        paypalOrderId: 'P',
+        status: 'CREATED',
+        checkoutUrl: 'https://x/y',
+        amountMinor: '1',
+        currency: 'USD',
+      }),
+    );
+
+    // Ambas invocaciones comparten el mismo `id` JSON-RPC (1) y no proveen
+    // idempotencyKey: deben producir claves servidor-side distintas, nunca una
+    // colisión en UNIQUE (tenant_id, idempotency_key) que replaye una orden ajena.
+    await harness.controller.handle(
+      callToolAs(
+        'create_payment_link',
+        { amountMinor: '1000', currency: 'COP', invoiceId: INVOICE_ID },
+        UserRole.ACCOUNTANT,
+      ),
+    );
+    await harness.controller.handle(
+      callToolAs(
+        'create_payment_link',
+        { amountMinor: '2000', currency: 'USD', invoiceId: INVOICE_ID },
+        UserRole.ACCOUNTANT,
+      ),
+    );
+
+    expect(harness.send).toHaveBeenCalledTimes(2);
+    const [, firstPayload] = harness.send.mock.calls[0];
+    const [, secondPayload] = harness.send.mock.calls[1];
+    expect(firstPayload.idempotencyKey).toMatch(UUID_PATTERN);
+    expect(secondPayload.idempotencyKey).toMatch(UUID_PATTERN);
+    expect(firstPayload.idempotencyKey).not.toBe(secondPayload.idempotencyKey);
+
+    // Idempotentemente, cada una creó su propia orden: no hay deduplicación cruzada.
+    expect(firstPayload.amountMinor).toBe('1000');
+    expect(secondPayload.amountMinor).toBe('2000');
+  });
+
+  it('create_payment_link rechaza una clave de idempotencia mayor a 255 caracteres', async () => {
+    const response = await harness.controller.handle(
+      callToolAs(
+        'create_payment_link',
+        {
+          amountMinor: '1000',
+          currency: 'COP',
+          invoiceId: INVOICE_ID,
+          idempotencyKey: 'k'.repeat(256),
+        },
+        UserRole.ACCOUNTANT,
+      ),
+    );
+
+    expect(expectFailure(response).data?.code).toBe(McpErrorCodes.TOOL_INVALID_INPUT);
+    expect(harness.send).not.toHaveBeenCalled();
+  });
+
+  it('create_payment_link exige permiso de cobro incluso con contexto válido', async () => {
+    // El rol del sobre por defecto (ADMIN) no está en la matriz payments:write.
+    const response = await harness.controller.handle(
+      callTool('create_payment_link', {
+        amountMinor: '1000',
+        currency: 'USD',
+        invoiceId: INVOICE_ID,
+      }),
+    );
+
+    expect('result' in response).toBe(false);
+    const failure = (response as { error: { code: number; message: string } }).error;
+    expect(failure.code).toBe(-32000);
+    expect(failure.message).toContain('autorizado');
+    expect(harness.send).not.toHaveBeenCalled();
   });
 
   it('responde INVALID_PARAMS cuando tools/call recibe una herramienta desconocida', async () => {
@@ -360,7 +541,11 @@ describe('McpToolsService auditoría', () => {
 
   it('cada herramienta declarada es invocable por nombre', () => {
     const names: McpToolName[] = MCP_TOOLS.map((tool) => tool.name);
-    expect(names).toEqual(['get_cashflow_summary', 'list_unreconciled_transactions']);
+    expect(names).toEqual([
+      'get_cashflow_summary',
+      'list_unreconciled_transactions',
+      'create_payment_link',
+    ]);
     expect(McpPatterns.RPC).toBe('mcp.rpc');
   });
 });
@@ -418,7 +603,7 @@ describe('McpController validación de solicitudes', () => {
 
     expect(response.id).toBeNull();
     const result = (response as { result: McpToolsListResult }).result;
-    expect(result.tools).toHaveLength(2);
+    expect(result.tools).toHaveLength(3);
   });
 
   it.each([

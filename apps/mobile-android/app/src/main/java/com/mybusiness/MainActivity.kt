@@ -44,6 +44,14 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        // Deep link del widget (mybusiness://dashboard): se recrea la Activity para que
+        // el NavHost vuelva a calcular su startDestination (Dashboard si hay sesión, si no
+        // Login). Así el tile siempre abre el resumen sin duplicar navegación ni apilar
+        // destinos; handleDeepLink queda reservado solo para banking.
+        if (isDashboardDeepLink(intent)) {
+            recreate()
+            return
+        }
         handleDeepLink(intent)
     }
 
@@ -59,8 +67,15 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    /** `mybusiness://dashboard` — abre el resumen recreando la Activity. */
+    private fun isDashboardDeepLink(intent: Intent?): Boolean {
+        val uri = intent?.data ?: return false
+        return uri.scheme == SCHEME && uri.host == HOST_DASHBOARD
+    }
+
     private companion object {
         const val SCHEME = "mybusiness"
         const val HOST = "banking"
+        const val HOST_DASHBOARD = "dashboard"
     }
 }

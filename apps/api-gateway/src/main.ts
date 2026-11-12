@@ -27,8 +27,8 @@ async function bootstrap() {
   SwaggerModule.setup('docs', app, document);
 
   const port = process.env.PORT || 3000;
-  await app.listen(port);
-  logger.log(`🚀 API Gateway escuchando en http://localhost:${port}/api/v1`);
+  await app.listen(port, '0.0.0.0');
+  logger.log(`🚀 API Gateway escuchando en http://0.0.0.0:${port}/api/v1`);
   logger.log(`📚 Swagger Docs disponibles en http://localhost:${port}/docs`);
 }
 bootstrap();

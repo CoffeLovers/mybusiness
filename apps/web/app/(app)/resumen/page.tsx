@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import type { CashflowSummaryResponse } from '@mybusiness/contracts';
 import { CashflowChart } from '@/components/dashboard/cashflow-chart';
 import { CategoryBreakdown } from '@/components/dashboard/category-breakdown';
@@ -57,12 +58,36 @@ export default async function ResumenPage(props: PageProps) {
 
   return (
     <section className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
-        <span className="w-fit rounded-full bg-accent px-3 py-1 text-[11px] font-semibold tracking-wider text-on-accent uppercase">
-          Panel financiero
-        </span>
-        <h1 className="text-4xl font-semibold tracking-tight text-text">Resumen</h1>
-        <p className="text-base text-text-muted">Hola, {firstName}. Bienvenido de nuevo.</p>
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div className="flex flex-col gap-2">
+          <span className="w-fit rounded-full bg-accent px-3 py-1 text-[11px] font-semibold tracking-wider text-on-accent uppercase">
+            Panel financiero
+          </span>
+          <h1 className="text-4xl font-semibold tracking-tight text-text">Resumen</h1>
+          <p className="text-base text-text-muted">Hola, {firstName}. Bienvenido de nuevo.</p>
+        </div>
+
+        {/* Fila de acciones rápidas estilo píldora Balance UIKit */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/cobros"
+            className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-on-primary shadow-xs transition-colors hover:opacity-90"
+          >
+            <span>Cobrar</span>
+          </Link>
+          <Link
+            href="/bancos"
+            className="inline-flex items-center gap-1.5 rounded-full bg-surface-raised border border-border px-4 py-2 text-sm font-medium text-text shadow-xs transition-colors hover:bg-surface"
+          >
+            <span>Cuentas</span>
+          </Link>
+          <Link
+            href="/movimientos"
+            className="inline-flex items-center gap-1.5 rounded-full bg-surface-raised border border-border px-4 py-2 text-sm font-medium text-text shadow-xs transition-colors hover:bg-surface"
+          >
+            <span>+ Movimientos</span>
+          </Link>
+        </div>
       </header>
 
       {errorMessage !== null ? (

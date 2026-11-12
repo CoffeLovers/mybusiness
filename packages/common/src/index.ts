@@ -20,3 +20,4 @@ export * from './queues/bullmq.module';
 export * from './rpc/rpc-send';
 export * from './config/duration';
 export * from './config/env.loader';
+export * from './health/health';

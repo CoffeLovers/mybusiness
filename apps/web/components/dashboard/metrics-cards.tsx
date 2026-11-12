@@ -80,8 +80,8 @@ export function MetricsCards({
             key={card.id}
             className={
               isFeatured
-                ? 'flex flex-col justify-between rounded-lg border border-accent bg-accent p-5 text-on-accent shadow-sm sm:col-span-2 lg:col-span-1'
-                : 'flex flex-col justify-between rounded-lg border border-border bg-surface-raised p-5 shadow-xs transition-shadow hover:shadow-sm'
+                ? 'flex flex-col justify-between rounded-3xl border border-accent/60 bg-accent p-6 text-on-accent shadow-sm sm:col-span-2 lg:col-span-1'
+                : 'flex flex-col justify-between rounded-2xl border border-border bg-surface-raised p-6 shadow-xs transition-shadow hover:shadow-sm'
             }
             aria-describedby={`${card.id}-subtitle`}
           >

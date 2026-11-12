@@ -21,4 +21,17 @@ export { Select } from './select';
 
 export { Skeleton } from './skeleton';
 
-export { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from './table';
+export {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeaderCell,
+  TableRow,
+  TableContext,
+  useTableContext,
+  useTableDensity,
+  TableDensityToggle,
+  TABLE_DENSITY_STORAGE_KEY,
+} from './table';
+export type { TableProps, TableDensity, TableDensityToggleProps } from './table';

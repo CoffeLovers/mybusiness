@@ -2,6 +2,13 @@ import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import {
+  agentMetrics,
+  METRIC_AGENT_FIRST_TOKEN_MS,
+  METRIC_AGENT_STREAM_DURATION_MS,
+  METRIC_AGENT_REQUESTS_TOTAL,
+  METRIC_AGENT_ERRORS_TOTAL,
+} from '@mybusiness/telemetry';
+import {
   AgentDegradationReason,
   type AgentChatResponseDto,
   type McpCallToolResult,
@@ -239,6 +246,7 @@ describe('ChatService — asistente conversacional determinista (#72)', () => {
   let harness: Harness;
 
   beforeEach(() => {
+    agentMetrics.clear();
     harness = createHarness();
   });
 
@@ -392,6 +400,7 @@ describe('ChatService — memoria del tenant y segunda pregunta', () => {
   let harness: Harness;
 
   beforeEach(() => {
+    agentMetrics.clear();
     harness = createHarness();
   });
 
@@ -477,6 +486,7 @@ describe('ChatService — caché semántica tolerante a fallos', () => {
   let harness: Harness;
 
   beforeEach(() => {
+    agentMetrics.clear();
     harness = createHarness();
   });
 
@@ -528,6 +538,7 @@ describe('ChatService — router determinista y envoltura del proveedor', () => 
   let harness: Harness;
 
   beforeEach(() => {
+    agentMetrics.clear();
     harness = createHarness();
   });
 
@@ -622,6 +633,52 @@ describe('ChatService — router determinista y envoltura del proveedor', () => 
     expect(response.code).toBe('ALL_TOOLS_FAILED');
     expect(response.citations.some((citation) => citation.ref === 'mem-prev')).toBe(true);
     expect(response.answer).toContain('No puedo confirmar cifras');
+  });
+});
+
+describe('ChatService — Métricas de observabilidad y SLOs (SF4-12, #65)', () => {
+  beforeEach(() => {
+    agentMetrics.clear();
+  });
+
+  it('emite first_token_ms, stream_duration_ms y requests_total con tenantId y canal en chat exitoso', async () => {
+    const harness = createHarness();
+    const response = await harness.service.chat(
+      { ...CTX, channel: 'android' },
+      { message: CASHFLOW_QUESTION },
+    );
+
+    expect(response.degraded).toBe(false);
+
+    const recorded = agentMetrics.getRecordedMetrics();
+    const firstToken = recorded.find((m) => m.metric === METRIC_AGENT_FIRST_TOKEN_MS);
+    const streamDuration = recorded.find((m) => m.metric === METRIC_AGENT_STREAM_DURATION_MS);
+    const request = recorded.find((m) => m.metric === METRIC_AGENT_REQUESTS_TOTAL);
+
+    expect(firstToken).toBeDefined();
+    expect(firstToken?.attributes.channel).toBe('android');
+    expect(firstToken?.attributes.tenantId).toBe(TENANT_ID);
+    expect(firstToken?.attributes.streaming).toBe(false);
+
+    expect(streamDuration).toBeDefined();
+    expect(streamDuration?.attributes.channel).toBe('android');
+
+    expect(request).toBeDefined();
+    expect(request?.attributes.status).toBe('success');
+  });
+
+  it('emite errors_total cuando el presupuesto se agota', async () => {
+    const harness = createHarness({ granted: false });
+    const response = await harness.service.chat(CTX, { message: CASHFLOW_QUESTION });
+
+    expect(response.degraded).toBe(true);
+    expect(response.code).toBe('BUDGET_EXHAUSTED');
+
+    const recorded = agentMetrics.getRecordedMetrics();
+    const errorMetric = recorded.find((m) => m.metric === METRIC_AGENT_ERRORS_TOTAL);
+
+    expect(errorMetric).toBeDefined();
+    expect(errorMetric?.attributes.status).toBe('error');
   });
 });
 

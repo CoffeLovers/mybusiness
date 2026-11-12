@@ -17,14 +17,17 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableDensityToggle,
   TableHead,
   TableHeaderCell,
   TableRow,
   fieldControlClasses,
+  useTableDensity,
 } from '@/components/ui';
 
 export default function DesignSystemPage() {
   const [open, setOpen] = useState(false);
+  const { density: tableDensity, setDensity: setTableDensity } = useTableDensity();
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-8 p-6">
@@ -145,8 +148,11 @@ export default function DesignSystemPage() {
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold text-text">Tabla</h2>
-        <Table>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-text">Tabla</h2>
+          <TableDensityToggle density={tableDensity} onChange={setTableDensity} />
+        </div>
+        <Table density={tableDensity}>
           <TableHead>
             <TableRow>
               <TableHeaderCell>Fecha</TableHeaderCell>

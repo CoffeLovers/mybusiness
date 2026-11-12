@@ -187,7 +187,7 @@ Regla transversal: los cálculos, permisos y acciones financieras críticas se r
 | 2    | 3–4     | Portal web y CI/CD, Open Banking, OCR, colas, conciliación | Planificada en `sprints/fase-2/`         |
 | 3    | 5–6     | Agentes, MCP interno, gobernanza de tokens, PayPal         | Planificada en `sprints/fase-3/`         |
 | 4    | 7–8     | Experiencia avanzada web y Android (streaming, OS, admin)  | Planificada en `sprints/fase-4/`         |
-| 5    | 9       | Pruebas integrales, seguridad y cumplimiento               | Pendiente                                |
+| 5    | 9       | Pruebas integrales, seguridad y cumplimiento               | Planificada en `sprints/fase-5/`         |
 | 6    | 10      | Producción, monitoreo y lanzamiento                        | Pendiente                                |
 
 ### Fase 2 — Canales y datos (Sprints 3 y 4)

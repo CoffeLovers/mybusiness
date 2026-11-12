@@ -21,11 +21,13 @@ export function extractRpcContext(data: unknown): RpcContext {
       : typeof record.id === 'string'
         ? record.id
         : String(record.userId ?? record.id ?? '');
+  const channel = typeof record.channel === 'string' ? record.channel : undefined;
 
   return {
     tenantId,
     userId,
     role: record.role as RequestContext['role'],
+    ...(channel ? { channel } : {}),
   };
 }
 
@@ -40,6 +42,7 @@ export function stripRpcContext<T>(data: T): Omit<T, keyof RequestContext> {
   delete rest.tenantId;
   delete rest.userId;
   delete rest.role;
+  delete rest.channel;
   return rest as Omit<T, keyof RequestContext>;
 }
 

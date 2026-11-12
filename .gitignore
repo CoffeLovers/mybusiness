@@ -49,6 +49,9 @@ docker-data/
 # Artefactos de compilación sueltos
 *.js.map
 
+# Exportaciones temporales de diseño
+docs/design/figma-export/
+
 # App web (Next.js / Playwright)
 apps/web/playwright-report/
 apps/web/test-results/

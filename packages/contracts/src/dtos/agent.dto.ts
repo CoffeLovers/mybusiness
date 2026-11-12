@@ -360,6 +360,54 @@ export class AgentChatResponseDto {
 
 export type AgentChatRpcPayload = WithContext<AgentChatDto>;
 
+// ==========================================
+// Streaming del Asistente SSE (SF4-01)
+// ==========================================
+
+export type AgentStreamEventType = 'token' | 'tool' | 'citation' | 'done' | 'error';
+
+export interface AgentStreamTokenEvent {
+  id: string;
+  type: 'token';
+  delta: string;
+}
+
+export interface AgentStreamToolEvent {
+  id: string;
+  type: 'tool';
+  tool: string;
+  status: 'start' | 'complete';
+  period?: string;
+}
+
+export interface AgentStreamCitationEvent {
+  id: string;
+  type: 'citation';
+  citation: AgentChatCitation;
+}
+
+export interface AgentStreamDoneEvent {
+  id: string;
+  type: 'done';
+  usage: AgentChatUsageDto;
+  degraded: boolean;
+  reason?: AgentDegradationReason;
+}
+
+export interface AgentStreamErrorEvent {
+  id: string;
+  type: 'error';
+  code: string;
+  message: string;
+}
+
+export type AgentStreamEvent =
+  | AgentStreamTokenEvent
+  | AgentStreamToolEvent
+  | AgentStreamCitationEvent
+  | AgentStreamDoneEvent
+  | AgentStreamErrorEvent;
+
 export type GetAgentBudgetRpcPayload = WithContext<GetAgentBudgetDto>;
 export type GetAgentUsageRpcPayload = WithContext<GetAgentUsageDto>;
 export type ReserveTokenBudgetRpcPayload = WithContext<ReserveTokenBudgetDto>;

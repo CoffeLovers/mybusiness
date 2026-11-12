@@ -1,16 +1,32 @@
-import { Body, Controller, HttpCode, Inject, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Inject,
+  Post,
+  Query,
+  Req,
+  Res,
+  ValidationPipe,
+} from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
 import { ApiTags } from '@nestjs/swagger';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
+import type { Request, Response } from 'express';
 import {
   AgentChatDto,
   AgentPatterns,
+  GetAgentBudgetDto,
   QueryAgentMemoryDto,
   StoreAgentMemoryDto,
   UserRole,
+  type AgentChatResponseDto,
   type UserContext,
 } from '@mybusiness/contracts';
 import { CurrentUser, Roles, rpcSend } from '@mybusiness/common';
+import { agentMetrics } from '@mybusiness/telemetry';
+import { firstValueFrom } from 'rxjs';
 
 @ApiTags('Agent')
 @SkipThrottle({ api: true, auth: true })
@@ -45,8 +61,164 @@ export class AgentGatewayController {
   @Throttle({ heavy: { limit: 10, ttl: 60000 } })
   @HttpCode(200)
   @Post('chat')
-  chat(@CurrentUser() user: UserContext, @Body() dto: AgentChatDto) {
+  chat(@CurrentUser() user: UserContext, @Body() dto: AgentChatDto, @Req() req: Request) {
+    const channel = (req.headers['x-mybusiness-channel'] as string) || 'web';
     return rpcSend(this.agentClient, AgentPatterns.CHAT, {
+      ...dto,
+      tenantId: user.tenantId,
+      userId: user.userId,
+      role: user.role,
+      channel,
+    });
+  }
+
+  @Roles(UserRole.ACCOUNTANT, UserRole.TENANT_ADMIN, UserRole.SUPER_ADMIN)
+  @Throttle({ heavy: { limit: 10, ttl: 60000 } })
+  @Post('chat/stream')
+  async chatStream(
+    @CurrentUser() user: UserContext,
+    @Body() dto: AgentChatDto,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const channel = (req.headers['x-mybusiness-channel'] as string) || 'web';
+    const startTime = Date.now();
+    let firstTokenRecorded = false;
+
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    req.on('close', () => {
+      if (!res.writableEnded) {
+        agentMetrics.recordCancellation({
+          channel,
+          tenantId: user.tenantId,
+          streaming: true,
+        });
+      }
+    });
+
+    try {
+      const response = await firstValueFrom(
+        rpcSend<AgentChatResponseDto>(this.agentClient, AgentPatterns.CHAT, {
+          ...dto,
+          tenantId: user.tenantId,
+          userId: user.userId,
+          role: user.role,
+          channel,
+        }),
+      );
+
+      let eventId = 1;
+      const sendEvent = (type: string, data: unknown) => {
+        if (!firstTokenRecorded && (type === 'token' || type === 'tool')) {
+          firstTokenRecorded = true;
+          const firstTokenMs = Date.now() - startTime;
+          agentMetrics.recordFirstToken(firstTokenMs, {
+            channel,
+            tenantId: user.tenantId,
+            streaming: true,
+            status: 'success',
+          });
+        }
+        res.write(`id: ${eventId++}\nevent: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
+      };
+
+      if (response.citations && response.citations.length > 0) {
+        for (const citation of response.citations) {
+          if (citation.tool) {
+            sendEvent('tool', {
+              id: String(eventId),
+              type: 'tool',
+              tool: citation.tool,
+              status: 'complete',
+              period: citation.period,
+            });
+          }
+          sendEvent('citation', {
+            id: String(eventId),
+            type: 'citation',
+            citation,
+          });
+        }
+      }
+
+      const answer = response.answer ?? '';
+      const words = answer.match(/(\S+\s*|\s+)/g) || [answer];
+      for (const word of words) {
+        sendEvent('token', {
+          id: String(eventId),
+          type: 'token',
+          delta: word,
+        });
+      }
+
+      const totalDurationMs = Date.now() - startTime;
+      agentMetrics.recordStreamDuration(totalDurationMs, {
+        channel,
+        tenantId: user.tenantId,
+        streaming: true,
+        status: 'success',
+      });
+      agentMetrics.recordRequest({
+        channel,
+        tenantId: user.tenantId,
+        streaming: true,
+        status: 'success',
+      });
+
+      sendEvent('done', {
+        id: String(eventId),
+        type: 'done',
+        usage: response.usage,
+        degraded: response.degraded,
+        reason: response.reason,
+      });
+      res.end();
+    } catch (error: any) {
+      const totalDurationMs = Date.now() - startTime;
+      agentMetrics.recordStreamDuration(totalDurationMs, {
+        channel,
+        tenantId: user.tenantId,
+        streaming: true,
+        status: 'error',
+      });
+      agentMetrics.recordError({
+        channel,
+        tenantId: user.tenantId,
+        streaming: true,
+        status: 'error',
+      });
+
+      res.write(
+        `id: 999\nevent: error\ndata: ${JSON.stringify({
+          id: '999',
+          type: 'error',
+          code: error?.code || 'stream_error',
+          message: error?.message || 'Error en streaming de agente',
+        })}\n\n`,
+      );
+      res.end();
+    }
+  }
+
+  @Roles(UserRole.TENANT_ADMIN, UserRole.SUPER_ADMIN)
+  @HttpCode(200)
+  @Get('slos')
+  getSlos(@Query('channel') channel?: string) {
+    return agentMetrics.evaluateSlos(channel);
+  }
+
+  @Roles(UserRole.ACCOUNTANT, UserRole.TENANT_ADMIN, UserRole.SUPER_ADMIN)
+  @HttpCode(200)
+  @Get('budget')
+  budget(
+    @CurrentUser() user: UserContext,
+    @Query(new ValidationPipe({ transform: true, whitelist: true })) dto: GetAgentBudgetDto,
+  ) {
+    return rpcSend(this.agentClient, AgentPatterns.GET_BUDGET, {
       ...dto,
       tenantId: user.tenantId,
       userId: user.userId,

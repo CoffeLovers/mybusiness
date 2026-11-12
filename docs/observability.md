@@ -87,3 +87,98 @@ solo la UI (16686).
   garantiza que serializaciones aguas abajo (logs, JSON, auditoría) no lo vean.
 - Fuera de alcance en SF3-07: propagación de trazas en jobs BullMQ (colas durables,
   ADR-002), dashboards/alertas (SF3-13), instrumentación Android.
+
+## SLOs y Alertas de Streaming/Chat del Agente Conversacional (SF4-12, #65)
+
+Instrumentación de métricas de rendimiento y confiabilidad para el agente conversacional (`agent-service` y `api-gateway`) mediante OpenTelemetry Metrics API (`packages/telemetry`).
+
+### Métricas emitidas
+
+| Métrica                     | Tipo      | Unidad | Descripción                                                                                                     | Atributos permitidos (Anti-PII)                        |
+| --------------------------- | --------- | ------ | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `agent.first_token_ms`      | Histogram | ms     | Tiempo transcurrido desde la recepción de la petición hasta el primer token/evento emitido al cliente           | `channel`, `tenantId`, `streaming`, `status`           |
+| `agent.stream_duration_ms`  | Histogram | ms     | Duración total de la respuesta conversacional completa (desde solicitud hasta cierre de stream o respuesta RPC) | `channel`, `tenantId`, `streaming`, `status`           |
+| `agent.requests_total`      | Counter   | 1      | Volumen total de consultas atendidas exitosamente por el asistente                                              | `channel`, `tenantId`, `streaming`, `status=success`   |
+| `agent.cancellations_total` | Counter   | 1      | Total de peticiones abortadas o canceladas por desconexión del cliente                                          | `channel`, `tenantId`, `streaming`, `status=cancelled` |
+| `agent.errors_total`        | Counter   | 1      | Total de ejecuciones fallidas (presupuesto agotado, timeout LLM, fallo de herramientas o grounding)             | `channel`, `tenantId`, `streaming`, `status=error`     |
+
+### Definición de Service Level Objectives (SLOs)
+
+1. **Latencia hasta primer token (TTFT - Time To First Token):**
+   - **Objetivo:** $\ge 95\%$ de las peticiones deben emitir el primer token en **menos de 2.000 ms (2 s)** (`p95 < 2s`).
+   - Medido tanto en streaming (`/agent/chat/stream`) como en respuestas completas (`/agent/chat`).
+2. **Tasa de error conversacional (Error Rate):**
+   - **Objetivo:** La tasa de fallo debe ser **menor al 2%** (`error_rate < 0.02`).
+   - $\text{Error Rate} = \frac{\text{agent.errors\_total}}{\text{agent.requests\_total} + \text{agent.errors\_total}}$.
+3. **Desglose dimensional por canal:**
+   - Métricas y evaluaciones aisladas para `channel="web"` y `channel="android"`.
+
+### Política Estricta Anti-PII
+
+Las métricas del asistente conversacional cumplen con una política de cero filtración de información:
+
+- **PROHIBIDO:** Registrar en métricas, spans o dimensiones el texto del prompt, pregunta del usuario, contenido de citas, cuerpo de respuestas o identificadores personales (emails, teléfonos).
+- **PERMITIDO:** Únicamente metadatos técnicos y de auditoría: `tenantId`, `channel` (`web` \| `android`), `streaming` (booleano) y `status` (`success` \| `error` \| `cancelled`).
+
+### Reglas de Alerta Prometheus / Alertmanager
+
+```yaml
+groups:
+  - name: mybusiness-agent-slos
+    rules:
+      - alert: AgentFirstTokenP95High
+        expr: histogram_quantile(0.95, sum(rate(agent_first_token_ms_bucket[5m])) by (le, channel)) > 2000
+        for: 5m
+        labels:
+          severity: warning
+          component: agent-service
+        annotations:
+          summary: 'Latencia p95 de primer token del agente excede el SLO de 2s en canal {{ $labels.channel }}'
+          description: 'El p95 actual es {{ $value }}ms (SLO: 2000ms). Requiere diagnóstico inmediato de proveedores y herramientas.'
+          runbook_url: 'docs/observability.md#runbook-de-diagnóstico-agentfirsttokenp95high'
+
+      - alert: AgentHighErrorRate
+        expr: (sum(rate(agent_errors_total[5m])) by (channel) / (sum(rate(agent_requests_total[5m])) by (channel) + sum(rate(agent_errors_total[5m])) by (channel))) > 0.02
+        for: 5m
+        labels:
+          severity: critical
+          component: agent-service
+        annotations:
+          summary: 'Tasa de error del agente excede el SLO del 2% en canal {{ $labels.channel }}'
+          description: 'La tasa de error actual es {{ $value | humanizePercentage }} (SLO: < 2%).'
+          runbook_url: 'docs/observability.md#runbook-de-diagnóstico-agenthigherrorrate'
+
+      - alert: AgentClientCancellationSpike
+        expr: sum(rate(agent_cancellations_total[5m])) by (channel) / sum(rate(agent_requests_total[5m])) by (channel) > 0.10
+        for: 5m
+        labels:
+          severity: warning
+          component: api-gateway
+        annotations:
+          summary: 'Incremento anómalo de cancelaciones del cliente en el agente (>10%)'
+          description: 'Los usuarios están cancelando o abortando conversaciones, posiblemente debido a latencia percibida.'
+```
+
+### Runbook de Diagnóstico
+
+#### Runbook: `AgentFirstTokenP95High`
+
+1. **Identificar el canal afectado:** Inspeccionar la etiqueta `channel` (`web` o `android`).
+2. **Revisar ratio de acierto de caché semántica (`SemanticCacheService`):**
+   - Si el acierto en caché cae a 0%, verificar estado del clúster Redis (`redis-cli ping`).
+3. **Comprobar latencia de herramientas MCP (`McpToolsService`):**
+   - Evaluar trazas en Jaeger filtrando por `mybusiness.rpc_pattern="agent.chat"`.
+   - Identificar si `get_cashflow_summary` o `list_unreconciled_transactions` están respondiendo con latencia > 1s por saturación de base de datos.
+4. **Verificar saturación del proveedor LLM upstream:**
+   - Comprobar tiempos de respuesta y límites de rate limit en los logs (`LLM_TIMEOUT`).
+
+#### Runbook: `AgentHighErrorRate`
+
+1. **Clasificar los códigos de degradación / fallo:**
+   - `BUDGET_EXHAUSTED`: Verificar si tenants específicos han agotado su cuota mensual de tokens (`BudgetService`). Notificar al tenant admin.
+   - `ALL_TOOLS_FAILED`: Microservicio financiero (`finance-service`) o herramientas MCP caídas o sin responder.
+   - `LLM_TIMEOUT` / `LLM_PROVIDER_ERROR`: Falla de conectividad o sobrecarga en el backend LLM.
+   - `LLM_UNGROUNDED_NUMBER`: El modelo está alucinando cifras no respaldadas por los facts de las herramientas; revisar prompts y grounding corpus.
+2. **Mitigación inmediata:**
+   - Habilitar fallback determinista sin llamada a proveedor si la indisponibilidad es externa.
+   - Escalar instancias de `agent-service` si la CPU supera el 85%.

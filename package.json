@@ -34,6 +34,7 @@
     "test:cov": "pnpm -r --if-present run test:cov",
     "test:load": "k6 run tests/load/ingest-50k.js",
     "verify:load": "node scripts/verify-load-54.mjs",
+    "check:health-endpoints": "node scripts/check-health-endpoints.mjs",
     "docker:up": "docker compose --env-file .env -f docker/docker-compose.yml up -d",
     "docker:down": "docker compose --env-file .env -f docker/docker-compose.yml down",
     "prepare": "husky"

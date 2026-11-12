@@ -81,7 +81,7 @@ class BankingViewModel @Inject constructor(
                             isLoading = false,
                             errorMessage = when (kind) {
                                 ErrorKind.Unauthorized -> "Tu sesión expiró. Vuelve a iniciar sesión."
-                                ErrorKind.Network, ErrorKind.Generic -> result.toUserMessage(
+                                ErrorKind.Network, ErrorKind.Generic -> result.message ?: result.toUserMessage(
                                     "No pudimos cargar tus cuentas. Inténtalo de nuevo."
                                 )
                             },
@@ -133,7 +133,7 @@ class BankingViewModel @Inject constructor(
                     is Result.Success -> {
                         _uiState.update {
                             it.copy(
-                                infoMessage = "Cuenta vinculada correctamente.",
+                                infoMessage = "Cuenta vinculada correctamente",
                                 errorMessage = null,
                                 errorKind = null
                             )
@@ -173,10 +173,11 @@ class BankingViewModel @Inject constructor(
             }
             when (val result = syncBankConnectionUseCase(connectionId)) {
                 is Result.Success -> {
+                    val summary = result.data
                     _uiState.update {
                         it.copy(
                             isSyncing = false,
-                            infoMessage = "Sincronización completada.",
+                            infoMessage = "Sincronización completada (${summary.added} nuevas, ${summary.modified} actualizadas)",
                             errorKind = null
                         )
                     }
@@ -214,7 +215,7 @@ class BankingViewModel @Inject constructor(
                         is Result.Success -> {
                             _uiState.update {
                                 it.copy(
-                                    infoMessage = "Cuenta desvinculada correctamente.",
+                                    infoMessage = "Cuenta desvinculada correctamente",
                                     errorMessage = null,
                                     errorKind = null
                                 )
@@ -246,7 +247,11 @@ class BankingViewModel @Inject constructor(
                 }
 
                 is BiometricResult.Cancelled -> _uiState.update {
-                    it.copy(infoMessage = "Desvinculación cancelada.", errorMessage = null, errorKind = null)
+                    it.copy(
+                        infoMessage = null,
+                        errorMessage = "No se desvinculó la cuenta: autenticación no superada",
+                        errorKind = ErrorKind.Generic
+                    )
                 }
 
                 is BiometricResult.Failure -> _uiState.update {

@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react';
+import { createElement, type ReactNode } from 'react';
 
 import { cn } from './cn';
+import type { TitleElement } from './empty-state';
 
 export type InlineBannerTone = 'info' | 'success' | 'warning' | 'danger';
 
@@ -9,6 +10,7 @@ export interface InlineBannerProps {
   title?: string;
   children: ReactNode;
   className?: string;
+  titleAs?: TitleElement;
 }
 
 const toneClasses: Record<InlineBannerTone, string> = {
@@ -18,7 +20,13 @@ const toneClasses: Record<InlineBannerTone, string> = {
   danger: 'border-expense/40 bg-surface-raised text-expense',
 };
 
-export function InlineBanner({ tone = 'info', title, children, className }: InlineBannerProps) {
+export function InlineBanner({
+  tone = 'info',
+  title,
+  children,
+  className,
+  titleAs = 'p',
+}: InlineBannerProps) {
   return (
     <div
       role={tone === 'danger' || tone === 'warning' ? 'alert' : 'note'}
@@ -28,7 +36,7 @@ export function InlineBanner({ tone = 'info', title, children, className }: Inli
         className,
       )}
     >
-      {title ? <p className="font-semibold">{title}</p> : null}
+      {title ? createElement(titleAs, { className: 'font-semibold' }, title) : null}
       <div>{children}</div>
     </div>
   );

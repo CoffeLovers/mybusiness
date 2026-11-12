@@ -1,15 +1,20 @@
 import { HttpException, HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ClientProxy } from '@nestjs/microservices';
+import { randomUUID } from 'node:crypto';
 import { TimeoutError, firstValueFrom } from 'rxjs';
 import {
   CashflowPatterns,
   LedgerPatterns,
   McpErrorCodes,
+  PaymentsPatterns,
+  PAYMENTS_WRITE_ROLES,
+  type CreatePaymentLinkResult,
   type McpCallToolResult,
   type McpInvocationContext,
   type McpToolName,
   type McpToolsListResult,
+  type PayPalOrderView,
 } from '@mybusiness/contracts';
 import { rpcSend } from '@mybusiness/common';
 import { McpAuditPublisher } from './mcp-audit.publisher';
@@ -153,6 +158,10 @@ export class McpToolsService {
       );
     }
 
+    if (name === 'create_payment_link') {
+      return this.createPaymentLink(args, ctx);
+    }
+
     return firstValueFrom(
       rpcSend<unknown, Record<string, unknown>>(
         this.financeClient,
@@ -161,6 +170,85 @@ export class McpToolsService {
         TOOL_TIMEOUT_MS,
       ),
     );
+  }
+
+  /**
+   * `create_payment_link` es la primera herramienta de escritura del servidor
+   * MCP: exige permiso de cobro (`payments:write`) resuelto por el servidor a
+   * partir del sobre RPC, nunca por el modelo (ADR 008). Devuelve el enlace de
+   * checkout sin exponer detalles del proveedor.
+   */
+  private async createPaymentLink(
+    args: Record<string, unknown>,
+    ctx: McpInvocationContext,
+  ): Promise<CreatePaymentLinkResult> {
+    if (!PAYMENTS_WRITE_ROLES.some((role) => role === ctx.role)) {
+      throw new McpToolError(
+        McpErrorCodes.TOOL_FORBIDDEN,
+        'No está autorizado para crear enlaces de cobro',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    const amountMinor = typeof args.amountMinor === 'string' ? args.amountMinor : undefined;
+    const currency = typeof args.currency === 'string' ? args.currency : undefined;
+    const invoiceId = typeof args.invoiceId === 'string' ? args.invoiceId : undefined;
+
+    if (!amountMinor || !currency || !invoiceId) {
+      throw new McpToolError(
+        McpErrorCodes.TOOL_INVALID_INPUT,
+        'amountMinor, currency e invoiceId son obligatorios',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const providedKey =
+      typeof args.idempotencyKey === 'string' && args.idempotencyKey.length > 0
+        ? args.idempotencyKey
+        : undefined;
+    if (providedKey && providedKey.length > 255) {
+      throw new McpToolError(
+        McpErrorCodes.TOOL_INVALID_INPUT,
+        'La clave de idempotencia no debe exceder 255 caracteres',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const order = await firstValueFrom(
+      rpcSend<PayPalOrderView, Record<string, unknown>>(
+        this.financeClient,
+        PaymentsPatterns.PAYPAL_CREATE_ORDER,
+        {
+          amountMinor,
+          currency,
+          invoiceRef: invoiceId,
+          description:
+            typeof args.description === 'string' && args.description.length > 0
+              ? args.description
+              : 'Cobro mediante enlace de pago',
+          /**
+           * Sin clave del agente se genera un UUID por invocación, nunca una
+           * clave derivada del `id` JSON-RPC: ese id es un contador por
+           * conexión y dos sesiones podrían colisionar en el índice
+           * UNIQUE (tenant_id, idempotency_key) causando replay de una orden
+           * ajena (otra factura/importe). ADR 003 §4.
+           */
+          idempotencyKey: providedKey ?? randomUUID(),
+          tenantId: ctx.tenantId,
+          userId: ctx.userId,
+          role: ctx.role,
+        },
+        TOOL_TIMEOUT_MS,
+      ),
+    );
+
+    return {
+      paypalOrderId: order.paypalOrderId,
+      status: order.status,
+      checkoutUrl: order.checkoutUrl,
+      amountMinor: order.amountMinor,
+      currency: order.currency,
+    };
   }
 
   private toToolError(error: unknown): McpToolError {

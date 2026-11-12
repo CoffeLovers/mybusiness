@@ -136,7 +136,56 @@ test.describe('Dashboard de Flujo de Caja (Issue #50)', () => {
     await retryButton.click();
   });
 
-  test('cumple accesibilidad WCAG sin violaciones críticas según axe', async ({ page }) => {
+  test('muestra el skeleton de carga solo tras 300 ms', async ({ page }) => {
+    await login(page);
+
+    // Intercepta la navegación a /resumen y retrasa ~900 ms la petición de
+    // datos para que el estado `loading` sea observable.
+    //
+    // Los prefetch se dejan pasar sin retardo: `/resumen` es dinámico (lee la
+    // cookie de sesión), así que Next solo cachea el shell de carga, no los
+    // datos. Abortarlos provoca que Next registre "Failed to fetch RSC payload"
+    // y degrade a una navegación completa del navegador, donde `loading.tsx`
+    // nunca llega a renderizarse en cliente.
+    await page.route('**/resumen*', async (route) => {
+      const headers = route.request().headers();
+      const isPrefetch =
+        headers['next-router-prefetch'] === '1' || headers['purpose'] === 'prefetch';
+
+      if (isPrefetch) {
+        await route.continue();
+        return;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      await route.continue();
+    });
+
+    await page.goto('/libro-mayor');
+    await expect(page.getByRole('heading', { level: 1, name: 'Libro mayor' })).toBeVisible();
+
+    const skeleton = page.getByTestId('delayed-skeleton');
+    const resumenLink = page
+      .getByRole('navigation', { name: 'Navegación principal' })
+      .getByRole('link', { name: 'Resumen' });
+
+    await resumenLink.click();
+
+    // El skeleton tiene un retardo anti-parpadeo: no debe estar visible en
+    // cuanto arranca la navegación.
+    await expect(skeleton).toBeHidden();
+
+    // Pasado el retardo (300 ms) se muestra mientras la ruta sigue pendiente.
+    await expect(skeleton).toBeVisible({ timeout: 2000 });
+
+    // Al resolverse la navegación, el skeleton desaparece.
+    await expect(page.getByRole('heading', { level: 1, name: 'Resumen' })).toBeVisible();
+    await expect(skeleton).toBeHidden();
+  });
+
+  test('cumple accesibilidad WCAG sin violaciones críticas ni serias según axe', async ({
+    page,
+  }) => {
     await login(page);
 
     // Análisis de accesibilidad con axe-core
@@ -144,10 +193,10 @@ test.describe('Dashboard de Flujo de Caja (Issue #50)', () => {
       .withTags(['wcag2a', 'wcag2aa'])
       .analyze();
 
-    const criticalViolations = accessibilityScanResults.violations.filter(
-      (v) => v.impact === 'critical',
+    const blockingViolations = accessibilityScanResults.violations.filter(
+      (v) => v.impact === 'critical' || v.impact === 'serious',
     );
 
-    expect(criticalViolations).toEqual([]);
+    expect(blockingViolations).toEqual([]);
   });
 });

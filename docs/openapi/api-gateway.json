@@ -249,6 +249,14 @@
         ],
         "type": "object"
       },
+      "CapturePayPalOrderDto": {
+        "properties": {
+          "amountMinor": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "CashflowSummaryQueryDto": {
         "properties": {
           "compare": {
@@ -454,6 +462,33 @@
           "totalAmountMinor",
           "currency",
           "dueDate"
+        ],
+        "type": "object"
+      },
+      "CreatePayPalOrderDto": {
+        "properties": {
+          "amountMinor": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "type": "string"
+          },
+          "invoiceRef": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "amountMinor",
+          "currency",
+          "description",
+          "invoiceRef",
+          "idempotencyKey"
         ],
         "type": "object"
       },
@@ -937,6 +972,20 @@
         ],
         "type": "object"
       },
+      "RefundPayPalOrderDto": {
+        "properties": {
+          "amountMinor": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "type": "object"
+      },
       "RegisterDto": {
         "properties": {
           "companyName": {
@@ -1218,6 +1267,29 @@
   },
   "openapi": "3.0.0",
   "paths": {
+    "/api/v1/agent/budget": {
+      "get": {
+        "operationId": "AgentGatewayController_budget",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "periodKey",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Agent"
+        ]
+      }
+    },
     "/api/v1/agent/chat": {
       "post": {
         "operationId": "AgentGatewayController_chat",
@@ -1234,6 +1306,30 @@
         },
         "responses": {
           "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Agent"
+        ]
+      }
+    },
+    "/api/v1/agent/chat/stream": {
+      "post": {
+        "operationId": "AgentGatewayController_chatStream",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentChatDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
             "description": ""
           }
         },
@@ -1282,6 +1378,29 @@
         },
         "responses": {
           "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Agent"
+        ]
+      }
+    },
+    "/api/v1/agent/slos": {
+      "get": {
+        "operationId": "AgentGatewayController_getSlos",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "channel",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
             "description": ""
           }
         },
@@ -2490,6 +2609,110 @@
         },
         "tags": [
           "Finance"
+        ]
+      }
+    },
+    "/api/v1/payments/paypal/orders": {
+      "post": {
+        "operationId": "PaymentsGatewayController_createPayPalOrder",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePayPalOrderDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Payments"
+        ]
+      }
+    },
+    "/api/v1/payments/paypal/orders/{orderId}/captures": {
+      "post": {
+        "operationId": "PaymentsGatewayController_capturePayPalOrder",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "orderId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CapturePayPalOrderDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Payments"
+        ]
+      }
+    },
+    "/api/v1/payments/paypal/orders/{orderId}/refunds": {
+      "post": {
+        "operationId": "PaymentsGatewayController_refundPayPalOrder",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "orderId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefundPayPalOrderDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Payments"
+        ]
+      }
+    },
+    "/api/v1/payments/paypal/webhooks": {
+      "post": {
+        "operationId": "PayPalWebhooksGatewayController_handleWebhook",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Webhooks"
         ]
       }
     },

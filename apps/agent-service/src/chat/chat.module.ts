@@ -6,22 +6,27 @@ import { SemanticCacheModule } from '../cache/cache.module';
 import { McpModule } from '../mcp/mcp.module';
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
-import { DeterministicLlmProvider, LLM_PROVIDER } from './llm-provider';
+import { DeterministicLlmProvider, LLM_PROVIDER, type LlmProvider } from './llm-provider';
+import { GeminiLlmProvider } from './gemini-llm-provider';
 
 /**
  * Fábrica pura del proveedor de LLM bajo el token `LLM_PROVIDER`.
- *
- * Se exporta para poder verificar el cableado (incluido el rechazo explícito
- * de proveedores no soportados) sin instanciar el contenedor de Nest.
  */
-export function createLlmProvider(config: ConfigService): DeterministicLlmProvider {
+export function createLlmProvider(config: ConfigService): LlmProvider {
   const provider = config.get<string>('LLM_PROVIDER', 'deterministic');
-  if (provider !== 'deterministic') {
-    throw new Error(
-      `Proveedor de LLM no soportado: ${provider}. Solo se admite 'deterministic' (sin red).`,
-    );
+  const apiKey = config.get<string>('GEMINI_API_KEY') || process.env.GEMINI_API_KEY;
+
+  if (provider === 'gemini' || (apiKey && provider !== 'deterministic')) {
+    return new GeminiLlmProvider(config);
   }
-  return new DeterministicLlmProvider({ mode: 'grounded' });
+
+  if (provider === 'deterministic') {
+    return new DeterministicLlmProvider({ mode: 'grounded' });
+  }
+
+  throw new Error(
+    `Proveedor de LLM no soportado: ${provider}. Solo se admiten 'gemini' y 'deterministic'.`,
+  );
 }
 
 /**

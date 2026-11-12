@@ -1,0 +1,236 @@
+# Manifiesto de Producción / Staging para MyBusiness (SF5-05, ADR-009)
+# Características:
+# - Procesos no privilegiados (non-root: USER node / nextjs, UID 1000/1001)
+# - Límites estrictos de CPU y memoria por servicio
+# - Redes segmentadas (edge_network vs internal_network)
+# - Healthchecks estandarizados (/healthz/liveness y /healthz/readiness)
+# - Job de pre-deploy para migraciones zero-downtime
+
+networks:
+  edge_network:
+    driver: bridge
+  internal_network:
+    driver: bridge
+    internal: true
+
+volumes:
+  postgres_prod_data:
+  redis_prod_data:
+
+services:
+  # ----------------------------------------------------------------------------
+  # Job de Migración Pre-Deploy (Zero-Downtime Database Migrations)
+  # ----------------------------------------------------------------------------
+  db-migrations:
+    image: mybusiness/backend-base:latest
+    restart: 'no'
+    user: '1000:1000'
+    command: ['pnpm', '-r', 'run', 'db:migrate']
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+    networks:
+      - internal_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # ----------------------------------------------------------------------------
+  # API Gateway Perimetral
+  # ----------------------------------------------------------------------------
+  api-gateway:
+    image: mybusiness/api-gateway:latest
+    restart: always
+    user: '1000:1000'
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      JWT_SECRET: ${JWT_SECRET}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    networks:
+      - edge_network
+      - internal_network
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "http.get(\"http://127.0.0.1:3000/healthz/liveness\", r=>process.exit(r.statusCode===200?0:1)).on(\"error\", ()=>process.exit(1))"',
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 1024M
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # ----------------------------------------------------------------------------
+  # Portal Web BFF (Next.js Standalone)
+  # ----------------------------------------------------------------------------
+  web:
+    image: mybusiness/web:latest
+    restart: always
+    user: '1001:1001'
+    ports:
+      - '80:3000'
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      GATEWAY_URL: http://api-gateway:3000
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+    networks:
+      - edge_network
+      - internal_network
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "http.get(\"http://127.0.0.1:3000/healthz/liveness\", r=>process.exit(r.statusCode===200?0:1)).on(\"error\", ()=>process.exit(1))"',
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # ----------------------------------------------------------------------------
+  # Auth & Identity Microservice
+  # ----------------------------------------------------------------------------
+  auth-service:
+    image: mybusiness/auth-service:latest
+    restart: always
+    user: '1000:1000'
+    environment:
+      NODE_ENV: production
+      ENABLE_HEALTH_SERVER: 'true'
+      AUTH_HEALTH_PORT: 3001
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    networks:
+      - internal_network
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "http.get(\"http://127.0.0.1:3001/healthz/liveness\", r=>process.exit(r.statusCode===200?0:1)).on(\"error\", ()=>process.exit(1))"',
+        ]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 768M
+
+  # ----------------------------------------------------------------------------
+  # Finance & Banking Microservice
+  # ----------------------------------------------------------------------------
+  finance-service:
+    image: mybusiness/finance-service:latest
+    restart: always
+    user: '1000:1000'
+    environment:
+      NODE_ENV: production
+      ENABLE_HEALTH_SERVER: 'true'
+      FINANCE_HEALTH_PORT: 3002
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    networks:
+      - internal_network
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "http.get(\"http://127.0.0.1:3002/healthz/liveness\", r=>process.exit(r.statusCode===200?0:1)).on(\"error\", ()=>process.exit(1))"',
+        ]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 1024M
+
+  # ----------------------------------------------------------------------------
+  # Agent Service (Semantic Memory & LLM Streaming)
+  # ----------------------------------------------------------------------------
+  agent-service:
+    image: mybusiness/agent-service:latest
+    restart: always
+    user: '1000:1000'
+    environment:
+      NODE_ENV: production
+      ENABLE_HEALTH_SERVER: 'true'
+      AGENT_HEALTH_PORT: 3003
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    networks:
+      - internal_network
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "http.get(\"http://127.0.0.1:3003/healthz/liveness\", r=>process.exit(r.statusCode===200?0:1)).on(\"error\", ()=>process.exit(1))"',
+        ]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 1024M
+
+  # ----------------------------------------------------------------------------
+  # Audit & Logging Service (Immutable Append-Only)
+  # ----------------------------------------------------------------------------
+  audit-service:
+    image: mybusiness/audit-service:latest
+    restart: always
+    user: '1000:1000'
+    environment:
+      NODE_ENV: production
+      ENABLE_HEALTH_SERVER: 'true'
+      AUDIT_HEALTH_PORT: 3004
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    networks:
+      - internal_network
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "http.get(\"http://127.0.0.1:3004/healthz/liveness\", r=>process.exit(r.statusCode===200?0:1)).on(\"error\", ()=>process.exit(1))"',
+        ]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.75'
+          memory: 512M

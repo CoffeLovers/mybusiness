@@ -36,11 +36,14 @@ default:
   interruptible: true
 
 variables:
+  GIT_DEPTH: '0'
+  GIT_STRATEGY: clone
   PNPM_STORE_DIR: '$CI_PROJECT_DIR/.pnpm-store'
 
 .pnpm-base:
   cache:
     key:
+      prefix: v2
       files:
         - pnpm-lock.yaml
     paths:

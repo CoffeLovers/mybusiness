@@ -30,6 +30,7 @@ export const AgentPatterns = {
   SETTLE_BUDGET: 'agent.budget.settle',
   RELEASE_BUDGET: 'agent.budget.release',
   CHAT: 'agent.chat',
+  CHAT_STREAM: 'agent.chat.stream',
 } as const;
 
 export const AGENT_STORE_MEMORY = AgentPatterns.STORE_MEMORY;
@@ -42,6 +43,7 @@ export const AGENT_RESERVE_BUDGET = AgentPatterns.RESERVE_BUDGET;
 export const AGENT_SETTLE_BUDGET = AgentPatterns.SETTLE_BUDGET;
 export const AGENT_RELEASE_BUDGET = AgentPatterns.RELEASE_BUDGET;
 export const AGENT_CHAT = AgentPatterns.CHAT;
+export const AGENT_CHAT_STREAM = AgentPatterns.CHAT_STREAM;
 
 export const AgentEvents = {
   BUDGET_EXHAUSTED: 'agent.budget.exhausted',
@@ -67,4 +69,5 @@ export * from './cashflow.patterns';
 export * from './documents.patterns';
 export * from './reconciliation.patterns';
 export * from './ledger.patterns';
+export * from './payments.patterns';
 export * from '../mcp/mcp.patterns';

@@ -9,6 +9,7 @@ export interface RequestContext {
   tenantId: string;
   userId: string;
   role: UserRole;
+  channel?: string;
 }
 
 /**

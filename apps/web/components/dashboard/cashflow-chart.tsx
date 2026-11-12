@@ -5,6 +5,7 @@ import { useMemo } from 'react';
 import type { CashflowBucket } from '@mybusiness/contracts';
 import { formatBucketLabel } from '@/lib/date-utils';
 import { formatMinorUnitsString } from '@/lib/format';
+import { usePrefersReducedMotion } from '@/lib/use-prefers-reduced-motion';
 
 // Dynamic import para evitar problemas de SSR con canvas / window en Next.js
 const ReactECharts = dynamic(() => import('echarts-for-react'), {
@@ -26,6 +27,8 @@ interface CashflowChartProps {
 }
 
 export function CashflowChart({ series, currency }: CashflowChartProps) {
+  const reduceMotion = usePrefersReducedMotion();
+
   const firstBucket = series[0];
   const isMonthly = Boolean(
     firstBucket && firstBucket.bucketStart.endsWith('-01') && series.length <= 12,
@@ -38,6 +41,7 @@ export function CashflowChart({ series, currency }: CashflowChartProps) {
     const expenseData = series.map((b) => Number(BigInt(b.expenseMinor)) / 100);
 
     return {
+      animation: !reduceMotion,
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
@@ -108,19 +112,19 @@ export function CashflowChart({ series, currency }: CashflowChartProps) {
           name: 'Ingresos',
           type: 'bar',
           data: incomeData,
-          itemStyle: { color: '#047857', borderRadius: [3, 3, 0, 0] },
-          barMaxWidth: 24,
+          itemStyle: { color: '#2ad19b', borderRadius: [6, 6, 0, 0] },
+          barMaxWidth: 20,
         },
         {
           name: 'Egresos',
           type: 'bar',
           data: expenseData,
-          itemStyle: { color: '#b91c1c', borderRadius: [3, 3, 0, 0] },
-          barMaxWidth: 24,
+          itemStyle: { color: '#ff6b50', borderRadius: [6, 6, 0, 0] },
+          barMaxWidth: 20,
         },
       ],
     };
-  }, [series, isMonthly, currency]);
+  }, [series, isMonthly, currency, reduceMotion]);
 
   if (series.length === 0) {
     return null;
@@ -129,7 +133,7 @@ export function CashflowChart({ series, currency }: CashflowChartProps) {
   return (
     <section
       aria-label="Gráfico de ingresos y egresos en el tiempo"
-      className="rounded-lg border border-border bg-surface p-5 shadow-xs"
+      className="rounded-2xl border border-border bg-surface p-6 shadow-xs"
     >
       <header className="mb-4 flex items-center justify-between">
         <div>

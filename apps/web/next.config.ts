@@ -5,6 +5,11 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  serverExternalPackages: [
+    '@mybusiness/telemetry',
+    '@opentelemetry/exporter-trace-otlp-grpc',
+    '@grpc/grpc-js',
+  ],
   // Monorepo pnpm: la traza de ficheros debe partir de la raíz del repo para que
   // el output standalone incluya las dependencias hoisted.
   outputFileTracingRoot: path.join(__dirname, '../../'),
