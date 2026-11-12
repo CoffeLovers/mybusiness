@@ -16,6 +16,7 @@ import com.mybusiness.core.designsystem.component.LoadingView
 import com.mybusiness.core.navigation.Screen
 import com.mybusiness.feature.auth.ui.LoginScreen
 import com.mybusiness.feature.banking.ui.BankingScreen
+import com.mybusiness.feature.chat.ui.ChatScreen
 import com.mybusiness.feature.dashboard.ui.DashboardScreen
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -79,7 +80,8 @@ fun MyBusinessNavHost(
                         popUpTo(Screen.Dashboard) { inclusive = true }
                     }
                 },
-                onOpenBanking = { navController.navigate(Screen.Banking) }
+                onOpenBanking = { navController.navigate(Screen.Banking) },
+                onOpenChat = { navController.navigate(Screen.Chat) }
             )
         }
 
@@ -91,6 +93,12 @@ fun MyBusinessNavHost(
                         popUpTo(Screen.Dashboard) { inclusive = true }
                     }
                 }
+            )
+        }
+
+        composable<Screen.Chat> {
+            ChatScreen(
+                onBack = { navController.popBackStack() }
             )
         }
     }

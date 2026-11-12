@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -67,6 +68,7 @@ import com.mybusiness.core.model.TransactionType
 fun DashboardScreen(
     onLogoutSuccess: () -> Unit,
     onOpenBanking: () -> Unit,
+    onOpenChat: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
@@ -83,6 +85,15 @@ fun DashboardScreen(
             MyBusinessTopAppBar(
                 title = "MyBusiness",
                 actions = {
+                    IconButton(
+                        onClick = onOpenChat,
+                        modifier = Modifier.minimumTouchTarget()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SmartToy,
+                            contentDescription = "Asistente virtual"
+                        )
+                    }
                     IconButton(
                         onClick = onOpenBanking,
                         modifier = Modifier.minimumTouchTarget()

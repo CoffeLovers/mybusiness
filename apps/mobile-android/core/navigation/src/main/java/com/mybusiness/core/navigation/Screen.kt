@@ -15,4 +15,7 @@ sealed interface Screen {
 
     @Serializable
     data object Banking : Screen
+
+    @Serializable
+    data object Chat : Screen
 }
